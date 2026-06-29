@@ -1,0 +1,324 @@
+/* ============================================
+   Game Lobby Styles
+   ============================================ */
+
+.lobby-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-xl);
+}
+
+.lobby-card {
+  width: 100%;
+  max-width: 560px;
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* Header */
+.lobby-header {
+  text-align: center;
+}
+
+.lobby-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin-bottom: var(--space-lg);
+}
+
+/* Room Code Display */
+.room-code-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.room-code-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--color-text-muted);
+}
+
+.room-code-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-xl);
+  background: var(--color-bg-secondary);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.room-code-box:hover {
+  background: var(--color-bg-elevated);
+  border-style: solid;
+}
+
+.room-code-value {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 8px;
+  color: var(--color-primary-light);
+  font-family: var(--font-mono);
+}
+
+.copy-icon {
+  font-size: 1.2rem;
+}
+
+.room-code-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* Error */
+.lobby-error {
+  padding: var(--space-sm) var(--space-md);
+  background: hsla(0, 75%, 55%, 0.15);
+  border: 1px solid hsla(0, 75%, 55%, 0.3);
+  border-radius: var(--radius-md);
+  color: hsl(0, 75%, 65%);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Player count */
+.player-count {
+  text-align: center;
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.player-count span:first-child {
+  font-weight: 700;
+  color: var(--color-primary-light);
+  font-size: 1.2rem;
+}
+
+/* Player Grid */
+.players-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+@media (max-width: 480px) {
+  .players-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.player-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  transition: all var(--transition-fast);
+}
+
+.player-slot.ready {
+  border-color: hsl(145, 65%, 42%);
+  background: hsla(145, 65%, 42%, 0.08);
+}
+
+.player-slot.not-ready {
+  border-color: var(--color-border);
+}
+
+.player-slot.is-me {
+  box-shadow: 0 0 0 2px var(--color-primary), 0 0 12px hsla(230, 70%, 55%, 0.2);
+}
+
+.player-slot.empty {
+  border-style: dashed;
+  opacity: 0.4;
+}
+
+.player-avatar {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.player-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.player-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.player-name.empty-name {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.host-badge {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  background: hsla(35, 95%, 55%, 0.2);
+  border: 1px solid hsla(35, 95%, 55%, 0.4);
+  border-radius: var(--radius-full);
+  color: var(--color-accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.you-badge {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  background: hsla(230, 70%, 55%, 0.2);
+  border: 1px solid hsla(230, 70%, 55%, 0.4);
+  border-radius: var(--radius-full);
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.ready-status {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+.ready-status.ready {
+  color: var(--color-success);
+}
+
+/* Actions */
+.lobby-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-start {
+  padding: var(--space-md) var(--space-xl);
+  font-size: 1.15rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, hsl(145, 65%, 42%), hsl(160, 60%, 45%));
+  color: #fff;
+  transition: all var(--transition-base);
+}
+
+.btn-start:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px hsla(145, 65%, 42%, 0.4);
+}
+
+.btn-start:disabled, .btn-start.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(60%);
+  transform: none;
+}
+
+.btn-ready {
+  padding: var(--space-md) var(--space-xl);
+  font-size: 1.15rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  transition: all var(--transition-base);
+}
+
+.btn-ready:hover {
+  background: var(--color-primary-light);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px hsla(230, 70%, 55%, 0.35);
+}
+
+.btn-leave {
+  padding: var(--space-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  transition: color var(--transition-fast);
+}
+
+.btn-leave:hover {
+  color: var(--color-danger);
+}
+
+/* Start hint */
+.start-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Loading */
+.lobby-loading {
+  text-align: center;
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.lobby-loading p {
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error State */
+.lobby-error-state {
+  text-align: center;
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.error-icon {
+  font-size: 3rem;
+}
+
+.error-message {
+  font-size: 1.1rem;
+  color: var(--color-text-secondary);
+}

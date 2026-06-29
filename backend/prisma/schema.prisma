@@ -1,0 +1,156 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Enums
+// ============================================
+
+enum Role {
+  STUDENT
+  ADMIN
+  GUEST
+}
+
+enum TileType {
+  GO
+  PROPERTY
+  QUESTION
+  TAX
+  CHANCE
+  FREE_PARKING
+}
+
+enum GameStatus {
+  LOBBY
+  PLAYING
+  FINISHED
+}
+
+// ============================================
+// User & Authentication
+// ============================================
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?  @unique
+  password  String?
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  masteryStates    MasteryState[]
+  questionAttempts QuestionAttempt[]
+  gamePlayers      GamePlayer[]
+
+  @@map("users")
+}
+
+// ============================================
+// Skills & Questions
+// ============================================
+
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  questions     Question[]
+  masteryStates MasteryState[]
+
+  @@map("skills")
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  text          String
+  options       String[] // Array of answer choices
+  correctIndex  Int      // Index of correct answer in options array
+  difficulty    Int      @default(1) // 1 = easy, 2 = medium, 3 = hard
+  skillId       String
+  createdAt     DateTime @default(now())
+
+  // Relations
+  skill    Skill             @relation(fields: [skillId], references: [id])
+  attempts QuestionAttempt[]
+
+  @@map("questions")
+}
+
+model QuestionAttempt {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  isCorrect  Boolean
+  answeredAt DateTime @default(now())
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id])
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@map("question_attempts")
+}
+
+// ============================================
+// BKT Mastery Tracking
+// ============================================
+
+model MasteryState {
+  id        String   @id @default(uuid())
+  userId    String
+  skillId   String
+  pMastery  Float    @default(0.1) // P(L) — probability of mastery
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id])
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@unique([userId, skillId])
+  @@map("mastery_states")
+}
+
+// ============================================
+// Game Sessions
+// ============================================
+
+model Game {
+  id        String     @id @default(uuid())
+  status    GameStatus @default(LOBBY)
+  createdAt DateTime   @default(now())
+  endedAt   DateTime?
+
+  // Relations
+  players GamePlayer[]
+
+  @@map("games")
+}
+
+model GamePlayer {
+  id       String @id @default(uuid())
+  gameId   String
+  userId   String
+  position Int    @default(0)
+  money    Int    @default(1500)
+  color    String
+  order    Int    // Turn order (0-3)
+
+  // Relations
+  game Game @relation(fields: [gameId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([gameId, userId])
+  @@map("game_players")
+}
