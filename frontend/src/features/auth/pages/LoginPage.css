@@ -1,51 +1,90 @@
 /* ============================================
-   Login Page Styles
+   Login Page — Dark Data-Forward
    ============================================ */
 
 .login-page {
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
   padding: var(--space-xl);
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+/* Subtle geometric background pattern */
+.login-bg-pattern {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, hsla(220, 65%, 54%, 0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, hsla(162, 55%, 45%, 0.04) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .login-card {
   width: 100%;
-  max-width: 460px;
+  max-width: 420px;
   padding: var(--space-2xl);
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-xl);
+  animation: fadeInUp 0.4s var(--ease-out);
+  position: relative;
+  z-index: 1;
 }
+
+/* ---- Header ---- */
 
 .login-header {
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.login-logo {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
   margin-bottom: var(--space-sm);
+  box-shadow: var(--shadow-glow-primary);
 }
 
 .login-title {
-  font-size: 2.6rem;
-  font-weight: 800;
-  margin-bottom: var(--space-xs);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
 }
 
 .login-subtitle {
-  color: var(--color-text-secondary);
-  font-size: 1.05rem;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
 }
 
+/* ---- Error ---- */
+
 .login-error {
-  padding: var(--space-sm) var(--space-md);
-  background: hsla(0, 75%, 55%, 0.15);
-  border: 1px solid hsla(0, 75%, 55%, 0.3);
+  padding: var(--space-md);
+  background: var(--color-danger-soft);
+  border: 1px solid hsla(0, 68%, 56%, 0.25);
   border-radius: var(--radius-md);
-  color: hsl(0, 75%, 65%);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
+  color: hsl(0, 68%, 72%);
   text-align: center;
 }
 
-/* Form */
+/* ---- Form ---- */
+
 .login-form {
   display: flex;
   flex-direction: column;
@@ -59,158 +98,181 @@
 }
 
 .input-group label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.05em;
 }
 
 .input-group input {
+  width: 100%;
   padding: var(--space-md) var(--space-lg);
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text);
-  font-size: 1.1rem;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-family: var(--font-body);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.input-group input:focus {
   outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px hsla(230, 70%, 55%, 0.25);
 }
 
 .input-group input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--text-muted);
+}
+
+.input-group input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-glow);
 }
 
 .code-input {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-lg) !important;
   text-align: center;
-  font-size: 1.5rem !important;
-  letter-spacing: 6px;
-  font-weight: 700;
-  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: var(--weight-bold);
 }
 
-/* Buttons */
+/* ---- Buttons ---- */
+
 .btn-full {
   width: 100%;
 }
 
 .btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
   padding: var(--space-md) var(--space-xl);
-  font-size: 1.1rem;
-  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
   border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: #fff;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  border: none;
+  cursor: pointer;
   transition: all var(--transition-base);
-  text-align: center;
 }
 
 .btn-primary:hover {
-  background: var(--color-primary-light);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px hsla(230, 70%, 55%, 0.35);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-primary);
 }
 
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
+.btn-primary:active {
+  transform: translateY(0);
 }
 
-/* Choice Panel */
+/* ---- Choice Panel ---- */
+
 .choice-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+  animation: fadeIn 0.3s var(--ease-out);
 }
 
 .choice-greeting {
   text-align: center;
-  font-size: 1.15rem;
-  color: var(--color-text);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
 }
 
-.btn-host, .btn-join {
+.choice-greeting strong {
+  color: var(--text-primary);
+}
+
+.btn-host,
+.btn-join {
   display: flex;
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-lg);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-base);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-3);
+  color: var(--text-primary);
   cursor: pointer;
+  transition: all var(--transition-base);
   text-align: left;
 }
 
-.btn-host {
-  background: linear-gradient(135deg, hsl(230, 70%, 50%), hsl(260, 60%, 55%));
-  color: #fff;
-  border: none;
-}
-
-.btn-host:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px hsla(230, 70%, 50%, 0.4);
-}
-
-.btn-join {
-  background: linear-gradient(135deg, hsl(160, 60%, 40%), hsl(180, 50%, 45%));
-  color: #fff;
-  border: none;
-}
-
+.btn-host:hover,
 .btn-join:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px hsla(160, 60%, 40%, 0.4);
+  border-color: var(--color-primary);
+  background: hsla(220, 65%, 54%, 0.06);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
-.btn-host:disabled, .btn-join:disabled {
+.btn-host:disabled,
+.btn-join:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
 }
 
-.btn-icon {
-  font-size: 2rem;
+.btn-icon-wrap {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-glow);
+  color: var(--color-primary-light);
   flex-shrink: 0;
 }
 
 .btn-text {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  flex: 1;
 }
 
 .btn-text strong {
-  font-size: 1.15rem;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
 }
 
 .btn-text small {
-  font-size: 0.85rem;
-  opacity: 0.8;
-  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
-/* Divider */
+.icon-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ---- Divider ---- */
+
 .divider {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 2px;
+  letter-spacing: 0.1em;
 }
 
-.divider::before, .divider::after {
+.divider::before,
+.divider::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--color-border);
+  background: var(--border-subtle);
 }
+
+/* ---- Join Section ---- */
 
 .join-section {
   display: flex;
@@ -218,15 +280,23 @@
   gap: var(--space-md);
 }
 
+/* ---- Back Button ---- */
+
 .btn-back {
-  background: none;
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
   padding: var(--space-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  border: none;
+  background: none;
+  cursor: pointer;
   transition: color var(--transition-fast);
-  text-align: center;
 }
 
 .btn-back:hover {
-  color: var(--color-text);
+  color: var(--text-primary);
 }

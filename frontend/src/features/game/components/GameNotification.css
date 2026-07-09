@@ -1,0 +1,90 @@
+/* ============================================
+   Game Notifications — Toast Stack
+   Dark Data-Forward
+   ============================================ */
+
+.game-notifications {
+  position: fixed;
+  bottom: var(--space-xl);
+  right: var(--space-xl);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-sm);
+  max-width: 340px;
+}
+
+.notification-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  animation: slideInRight 0.3s var(--ease-out);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.notification-toast--exit {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+/* ---- Type Variants ---- */
+
+.notification-toast--reward {
+  border-left: 3px solid var(--color-success);
+}
+
+.notification-toast--reward .notification-toast__icon {
+  color: var(--color-success);
+}
+
+.notification-toast--penalty {
+  border-left: 3px solid var(--color-danger);
+}
+
+.notification-toast--penalty .notification-toast__icon {
+  color: var(--color-danger);
+}
+
+.notification-toast--milestone {
+  border-left: 3px solid var(--color-accent);
+}
+
+.notification-toast--milestone .notification-toast__icon {
+  color: var(--color-accent);
+}
+
+.notification-toast--streak {
+  border-left: 3px solid hsl(25, 90%, 55%);
+}
+
+.notification-toast--streak .notification-toast__icon {
+  color: hsl(25, 90%, 55%);
+}
+
+.notification-toast--info {
+  border-left: 3px solid var(--color-primary);
+}
+
+.notification-toast--info .notification-toast__icon {
+  color: var(--color-primary-light);
+}
+
+/* ---- Content ---- */
+
+.notification-toast__icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.notification-toast__message {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+}

@@ -1,0 +1,211 @@
+/* ============================================
+   Game Page — Main Layout
+   Dark Data-Forward
+   ============================================ */
+
+.game-page {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-0);
+  transition: filter var(--transition-slow);
+}
+
+.game-page--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-page__message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-2xl);
+  text-align: center;
+  color: var(--text-secondary);
+  animation: fadeInUp 0.4s var(--ease-out);
+}
+
+.game-page__message h2 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+}
+
+.icon-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ---- Main Layout ---- */
+
+.game-layout {
+  display: flex;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  padding-top: 70px; /* Space for turn indicator */
+  min-height: 100vh;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* ---- Right Sidebar ---- */
+
+.game-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  width: 200px;
+  flex-shrink: 0;
+}
+
+/* ---- Action Buttons ---- */
+
+.game-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  transition: all var(--transition-base);
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+}
+
+.action-btn--primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  border: none;
+}
+
+.action-btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.action-btn--end {
+  background: linear-gradient(135deg, var(--color-secondary), hsl(162, 55%, 35%));
+  color: white;
+  border: none;
+}
+
+.action-btn--end:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 12px hsla(162, 55%, 45%, 0.25);
+}
+
+.action-btn--build {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.action-btn--build:hover {
+  background: var(--surface-4);
+  border-color: var(--border-strong);
+}
+
+/* ---- Quick Stats ---- */
+
+.game-quick-stats {
+  padding: var(--space-md) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.quick-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quick-stat__label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+}
+
+.quick-stat__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.money--negative {
+  color: var(--color-danger) !important;
+}
+
+/* ---- Waiting Indicator ---- */
+
+.challenge-waiting-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  animation: fadeIn var(--transition-base);
+}
+
+.challenge-waiting {
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  max-width: 380px;
+  text-align: center;
+}
+
+.waiting-icon {
+  color: var(--color-primary-light);
+  animation: pulse-soft 2s infinite ease-in-out;
+}
+
+.challenge-waiting p {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 1200px) {
+  .game-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .player-panel {
+    width: 100%;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .game-sidebar {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}

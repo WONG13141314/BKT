@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { prisma } from '../config/db';
 import { registerLobbyHandlers } from './lobby.handlers';
+import { registerGameHandlers } from './game.handlers';
 
 export const initializeSocket = (server: HttpServer) => {
   const io = new Server(server, socketOptions);
@@ -33,6 +34,7 @@ export const initializeSocket = (server: HttpServer) => {
 
     // Register handlers
     registerLobbyHandlers(io, socket);
+    registerGameHandlers(io, socket);
 
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);

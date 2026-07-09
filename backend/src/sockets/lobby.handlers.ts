@@ -62,9 +62,23 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     roomManager.setRoomStatus(room.code, 'playing');
 
     const socketRoom = `room:${room.code}`;
-    io.to(socketRoom).emit('game:start', {
-      roomCode: room.code,
-      players: Array.from(room.players.values()),
+    const gameId = `game_${room.code}`;
+    const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
+    const gamePlayers = Array.from(room.players.values()).map((p, idx) => ({
+      id: p.id,
+      userId: p.id, // In this simple auth, id is userId
+      name: p.name,
+      color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
+      order: idx,
+    }));
+
+    // Import gameService dynamically to avoid circular dependencies if any, 
+    // or assume it's imported at the top. Let's just import it at the top of the file.
+    import('../features/game/game.service').then(({ gameService }) => {
+      gameService.createGame(gameId, gamePlayers).then((state) => {
+        io.to(socketRoom).emit('game:start', { roomCode: room.code });
+        io.to(socketRoom).emit('game:state', { state });
+      });
     });
   });
 

@@ -1,59 +1,115 @@
 /* ============================================
-   Design Tokens — Colors, Spacing, Typography
+   Design Tokens — Dark Data-Forward Theme
+   ============================================
+   Visual Identity: Refined dark UI with teal-emerald accents,
+   warm amber highlights, and layered surfaces.
    ============================================ */
 
 :root {
-  /* Colors */
-  --color-primary: hsl(230, 70%, 55%);
-  --color-primary-light: hsl(230, 70%, 65%);
-  --color-primary-dark: hsl(230, 70%, 45%);
-  --color-secondary: hsl(160, 60%, 45%);
-  --color-accent: hsl(35, 95%, 55%);
-  --color-danger: hsl(0, 75%, 55%);
-  --color-success: hsl(145, 65%, 42%);
-  --color-warning: hsl(40, 90%, 50%);
+  /* ---- Primary Palette ---- */
+  --color-primary: hsl(220, 65%, 54%);
+  --color-primary-light: hsl(220, 70%, 64%);
+  --color-primary-dark: hsl(220, 60%, 44%);
+  --color-primary-glow: hsla(220, 65%, 54%, 0.25);
 
-  /* Backgrounds */
-  --color-bg: hsl(225, 25%, 12%);
-  --color-bg-secondary: hsl(225, 20%, 16%);
-  --color-bg-card: hsl(225, 18%, 20%);
-  --color-bg-elevated: hsl(225, 18%, 24%);
+  /* ---- Accent / Secondary ---- */
+  --color-accent: hsl(38, 92%, 55%);
+  --color-accent-soft: hsla(38, 92%, 55%, 0.15);
+  --color-secondary: hsl(162, 55%, 45%);
+  --color-secondary-soft: hsla(162, 55%, 45%, 0.12);
 
-  /* Text */
-  --color-text: hsl(220, 20%, 92%);
-  --color-text-secondary: hsl(220, 15%, 65%);
-  --color-text-muted: hsl(220, 10%, 45%);
+  /* ---- Semantic: Feedback ---- */
+  --color-success: hsl(152, 58%, 42%);
+  --color-success-soft: hsla(152, 58%, 42%, 0.12);
+  --color-warning: hsl(38, 92%, 50%);
+  --color-warning-soft: hsla(38, 92%, 50%, 0.12);
+  --color-danger: hsl(0, 68%, 56%);
+  --color-danger-soft: hsla(0, 68%, 56%, 0.10);
 
-  /* Borders */
-  --color-border: hsl(225, 15%, 28%);
-  --color-border-light: hsl(225, 15%, 35%);
+  /* ---- Surface Layers (dark → light) ---- */
+  --surface-0: hsl(222, 28%, 8%);
+  --surface-1: hsl(222, 24%, 11%);
+  --surface-2: hsl(222, 20%, 14%);
+  --surface-3: hsl(222, 18%, 18%);
+  --surface-4: hsl(222, 16%, 22%);
+  --surface-overlay: hsla(222, 28%, 6%, 0.85);
 
-  /* Typography */
-  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* ---- Text ---- */
+  --text-primary: hsl(220, 20%, 93%);
+  --text-secondary: hsl(220, 14%, 62%);
+  --text-muted: hsl(220, 10%, 42%);
+  --text-inverse: hsl(222, 28%, 8%);
 
-  /* Spacing */
+  /* ---- Borders ---- */
+  --border-subtle: hsl(222, 14%, 20%);
+  --border-default: hsl(222, 14%, 26%);
+  --border-strong: hsl(222, 14%, 34%);
+
+  /* ---- Typography ---- */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* ---- Type Scale ---- */
+  --text-xs: 0.675rem;
+  --text-sm: 0.8rem;
+  --text-base: 0.9rem;
+  --text-md: 1rem;
+  --text-lg: 1.15rem;
+  --text-xl: 1.35rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  /* ---- Line Heights ---- */
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  /* ---- Font Weights ---- */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- Spacing ---- */
+  --space-2xs: 0.125rem;
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --space-2xl: 3rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 3rem;
 
-  /* Border Radius */
+  /* ---- Border Radius ---- */
+  --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px hsla(0, 0%, 0%, 0.3);
-  --shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.3);
-  --shadow-lg: 0 10px 25px hsla(0, 0%, 0%, 0.4);
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 1px 3px hsla(222, 50%, 4%, 0.4);
+  --shadow-md: 0 4px 12px hsla(222, 50%, 4%, 0.45);
+  --shadow-lg: 0 8px 24px hsla(222, 50%, 4%, 0.5);
+  --shadow-xl: 0 16px 48px hsla(222, 50%, 4%, 0.6);
+  --shadow-glow-primary: 0 0 20px var(--color-primary-glow);
+  --shadow-glow-accent: 0 0 16px hsla(38, 92%, 55%, 0.2);
 
-  /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-base: 250ms ease;
-  --transition-slow: 400ms ease;
+  /* ---- Transitions ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --transition-fast: 120ms var(--ease-out);
+  --transition-base: 200ms var(--ease-out);
+  --transition-slow: 350ms var(--ease-out);
+  --transition-slower: 500ms var(--ease-out);
+
+  /* ---- Z-Index Scale ---- */
+  --z-base: 1;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 50;
+  --z-modal: 100;
+  --z-toast: 200;
 }

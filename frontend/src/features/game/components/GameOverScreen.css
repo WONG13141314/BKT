@@ -1,0 +1,319 @@
+/* ============================================
+   Game Over Screen — Dark Data-Forward
+   ============================================ */
+
+.gameover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--surface-0);
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2xl);
+}
+
+.gameover-container {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xl);
+  padding-bottom: var(--space-3xl);
+}
+
+/* ---- Reveal animation class ---- */
+
+.gameover-reveal {
+  animation: fadeInUp 0.5s var(--ease-out) both;
+}
+
+/* ---- Header ---- */
+
+.gameover-header {
+  text-align: center;
+}
+
+.gameover-title {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+}
+
+.gameover-subtitle {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  margin-top: var(--space-xs);
+}
+
+/* ---- Score Table ---- */
+
+.gameover-scores {
+  overflow-x: auto;
+}
+
+.score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.score-table th {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.score-row {
+  animation: fadeInUp 0.4s var(--ease-out) both;
+}
+
+.score-row td {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.score-row--winner {
+  background: hsla(220, 65%, 54%, 0.04);
+}
+
+.score-row--winner td {
+  color: var(--text-primary);
+}
+
+.score-rank {
+  width: 40px;
+}
+
+.rank-icon {
+  display: flex;
+}
+
+.rank--gold { color: hsl(45, 90%, 55%); }
+.rank--silver { color: hsl(0, 0%, 72%); }
+.rank--bronze { color: hsl(25, 60%, 50%); }
+
+.rank-number {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-bold);
+  color: var(--text-muted);
+}
+
+.score-player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.score-player__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+  color: white;
+  flex-shrink: 0;
+}
+
+.score-value,
+.score-math {
+  font-family: var(--font-mono);
+}
+
+.score-multiplier {
+  font-family: var(--font-mono);
+  color: var(--color-accent) !important;
+}
+
+.score-final {
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold) !important;
+  color: var(--text-primary) !important;
+  font-size: var(--text-md) !important;
+}
+
+/* ---- Winner Announcement ---- */
+
+.gameover-winner {
+  display: flex;
+  justify-content: center;
+}
+
+.winner-card {
+  text-align: center;
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  max-width: 400px;
+  width: 100%;
+}
+
+.winner-trophy {
+  color: hsl(45, 90%, 55%);
+  animation: popIn 0.5s var(--ease-out);
+}
+
+.winner-name {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.winner-score {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
+.winner-breakdown {
+  display: flex;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.winner-highlight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-sm);
+  color: var(--color-secondary);
+  font-weight: var(--weight-medium);
+  padding: var(--space-xs) var(--space-md);
+  background: var(--color-secondary-soft);
+  border-radius: var(--radius-full);
+  margin-top: var(--space-xs);
+}
+
+/* ---- Mastery Summary ---- */
+
+.mastery-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.mastery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-md);
+}
+
+.mastery-player-card {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.mastery-player-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.mastery-player-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+}
+
+.mastery-skill-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.mastery-skill-name {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  min-width: 70px;
+}
+
+.mastery-skill-bar {
+  flex: 1;
+  height: 5px;
+  background: var(--surface-4);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.mastery-skill-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  border-radius: var(--radius-full);
+  transition: width 0.8s var(--ease-out);
+  animation: fillBar 0.8s var(--ease-out);
+}
+
+.mastery-skill-pct {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ---- Action Buttons ---- */
+
+.gameover-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-md);
+}
+
+.gameover-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-2xl);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border: none;
+}
+
+.gameover-btn--primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+}
+
+.gameover-btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.gameover-btn--secondary {
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.gameover-btn--secondary:hover {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}

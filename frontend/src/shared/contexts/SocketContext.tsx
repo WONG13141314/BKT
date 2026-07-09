@@ -27,6 +27,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const currentTokenRef = useRef<string | null>(null);
 
   // NOTE: We do NOT auto-connect on mount.
   // The socket is only created after the user authenticates and calls connectSocket().
@@ -37,6 +38,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       socketRef.current.close();
       socketRef.current = null;
     }
+    currentTokenRef.current = null;
     setSocket(null);
     setIsConnected(false);
   }, []);
@@ -45,12 +47,21 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    // Always tear down any previous socket first so we connect with the fresh token
+    // If a socket already exists with the same token, don't recreate it.
+    // This prevents an infinite destroy-recreate loop when called repeatedly
+    // while the socket is still connecting (isConnected hasn't flipped to true yet).
+    if (socketRef.current && currentTokenRef.current === token) {
+      return;
+    }
+
+    // Tear down any previous socket (e.g. token changed)
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
       socketRef.current.close();
       socketRef.current = null;
     }
+
+    currentTokenRef.current = token;
 
     const newSocket = io(SOCKET_URL, {
       auth: { token },

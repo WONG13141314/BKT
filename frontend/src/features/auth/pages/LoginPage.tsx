@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/auth.service';
 import { useSocket } from '../../../shared/contexts/SocketContext';
+import { UserPlus, ArrowRight, DoorOpen, Hash, ArrowLeft, Loader2, Dices } from 'lucide-react';
 import './LoginPage.css';
 
 export function LoginPage() {
@@ -65,10 +66,14 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <div className="login-card glass-panel">
+      <div className="login-bg-pattern" aria-hidden="true" />
+      <div className="login-card surface-2">
         <div className="login-header">
-          <h1 className="text-gradient login-title">🎲 Math Monopoly</h1>
-          <p className="login-subtitle">Learn math through an exciting board game!</p>
+          <div className="login-logo">
+            <Dices size={32} strokeWidth={1.5} />
+          </div>
+          <h1 className="heading-display login-title">Math Monopoly</h1>
+          <p className="login-subtitle">Learn math through an exciting board game</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}
@@ -76,7 +81,10 @@ export function LoginPage() {
         {step === 'name' && (
           <form onSubmit={handleNameSubmit} className="login-form">
             <div className="input-group">
-              <label htmlFor="name">Your Nickname</label>
+              <label htmlFor="name">
+                <UserPlus size={14} />
+                Your Nickname
+              </label>
               <input
                 id="name"
                 type="text"
@@ -87,7 +95,8 @@ export function LoginPage() {
               />
             </div>
             <button type="submit" className="btn-primary btn-full">
-              Continue →
+              Continue
+              <ArrowRight size={16} />
             </button>
           </form>
         )}
@@ -95,7 +104,7 @@ export function LoginPage() {
         {step === 'choice' && (
           <div className="choice-panel">
             <p className="choice-greeting">
-              Welcome, <strong>{name}</strong>! 👋
+              Welcome, <strong>{name}</strong>
             </p>
             
             <button
@@ -103,11 +112,14 @@ export function LoginPage() {
               onClick={handleHost}
               disabled={isLoading}
             >
-              <span className="btn-icon">🏠</span>
+              <span className="btn-icon-wrap">
+                <DoorOpen size={20} />
+              </span>
               <span className="btn-text">
                 <strong>Host a Game</strong>
                 <small>Create a room &amp; invite friends</small>
               </span>
+              {isLoading && <Loader2 size={16} className="icon-spin" />}
             </button>
 
             <div className="divider">
@@ -116,7 +128,10 @@ export function LoginPage() {
 
             <div className="join-section">
               <div className="input-group">
-                <label htmlFor="roomCode">Room Code</label>
+                <label htmlFor="roomCode">
+                  <Hash size={14} />
+                  Room Code
+                </label>
                 <input
                   id="roomCode"
                   type="text"
@@ -132,11 +147,14 @@ export function LoginPage() {
                 onClick={handleJoin}
                 disabled={isLoading}
               >
-                <span className="btn-icon">🚀</span>
+                <span className="btn-icon-wrap">
+                  <ArrowRight size={20} />
+                </span>
                 <span className="btn-text">
                   <strong>Join Game</strong>
                   <small>Enter with a room code</small>
                 </span>
+                {isLoading && <Loader2 size={16} className="icon-spin" />}
               </button>
             </div>
 
@@ -144,7 +162,8 @@ export function LoginPage() {
               className="btn-back"
               onClick={() => { setStep('name'); setError(''); }}
             >
-              ← Change name
+              <ArrowLeft size={14} />
+              Change name
             </button>
           </div>
         )}

@@ -23,10 +23,12 @@ enum Role {
 enum TileType {
   GO
   PROPERTY
-  QUESTION
+  COMMUNITY_CHEST
   TAX
   CHANCE
   FREE_PARKING
+  JAIL
+  GO_TO_JAIL
 }
 
 enum GameStatus {
@@ -93,8 +95,12 @@ model QuestionAttempt {
   id         String   @id @default(uuid())
   userId     String
   questionId String
+  gameId     String?
   isCorrect  Boolean
-  answeredAt DateTime @default(now())
+  timeMs     Int?      // Time taken to answer in milliseconds
+  context    String?   // Game context: 'ROLL_DICE', 'BUY_PROPERTY', etc.
+  hintLevel  Int       @default(0) // 0 = no hint, 1-3 = hint levels
+  answeredAt DateTime  @default(now())
 
   // Relations
   user     User     @relation(fields: [userId], references: [id])
@@ -129,23 +135,33 @@ model MasteryState {
 model Game {
   id        String     @id @default(uuid())
   status    GameStatus @default(LOBBY)
+  round     Int        @default(0)   // Current round (1-20)
+  maxRounds Int        @default(20)  // Total rounds before game ends
   createdAt DateTime   @default(now())
   endedAt   DateTime?
 
   // Relations
-  players GamePlayer[]
+  players    GamePlayer[]
+  properties GameProperty[]
 
   @@map("games")
 }
 
 model GamePlayer {
-  id       String @id @default(uuid())
-  gameId   String
-  userId   String
-  position Int    @default(0)
-  money    Int    @default(1500)
-  color    String
-  order    Int    // Turn order (0-3)
+  id             String  @id @default(uuid())
+  gameId         String
+  userId         String
+  position       Int     @default(0)
+  money          Int     @default(1000)  // Starting money $1,000
+  color          String
+  order          Int     // Turn order (0-3)
+  isInJail       Boolean @default(false)
+  jailTurns      Int     @default(0)     // Turns spent in jail (0-3)
+  isInDebt       Boolean @default(false)
+  streak         Int     @default(0)     // Consecutive correct answers
+  totalCorrect   Int     @default(0)
+  totalQuestions  Int     @default(0)
+  movementTokens Int     @default(0)     // Saved +1 movement bonuses
 
   // Relations
   game Game @relation(fields: [gameId], references: [id])
@@ -153,4 +169,23 @@ model GamePlayer {
 
   @@unique([gameId, userId])
   @@map("game_players")
+}
+
+// ============================================
+// In-Game Property Ownership
+// ============================================
+
+model GameProperty {
+  id        String  @id @default(uuid())
+  gameId    String
+  tileIndex Int     // Board position (0-27)
+  ownerId   String? // GamePlayer id who owns this property
+  houses    Int     @default(0) // 0-4 houses
+  hasHotel  Boolean @default(false)
+
+  // Relations
+  game Game @relation(fields: [gameId], references: [id])
+
+  @@unique([gameId, tileIndex])
+  @@map("game_properties")
 }

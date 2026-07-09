@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSocket } from '../../../shared/contexts/SocketContext';
+import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users } from 'lucide-react';
 import './GameLobby.css';
 
 interface LobbyPlayer {
@@ -48,10 +49,14 @@ export function GameLobby() {
 
   // Connect socket and perform action
   useEffect(() => {
-    if (!socket || !isConnected) {
+    // If we have no socket at all, initiate connection and wait
+    if (!socket) {
       connectSocket();
       return;
     }
+
+    // Socket exists but still connecting — just wait for it
+    if (!isConnected) return;
 
     if (hasJoined) return; // Don't re-emit after reconnect
 
@@ -77,8 +82,8 @@ export function GameLobby() {
       setError(data.message);
     };
 
-    const onGameStart = () => {
-      navigate('/game');
+    const onGameStart = (data: { roomCode: string; players: LobbyPlayer[] }) => {
+      navigate(`/game?code=${data.roomCode}`);
     };
 
     const onRoomDeleted = () => {
@@ -131,7 +136,7 @@ export function GameLobby() {
   if (!room && !error) {
     return (
       <div className="lobby-container">
-        <div className="lobby-card glass-panel">
+        <div className="lobby-card surface-2">
           <div className="lobby-loading">
             <div className="spinner"></div>
             <p>{action === 'host' ? 'Creating room...' : 'Joining room...'}</p>
@@ -145,12 +150,12 @@ export function GameLobby() {
   if (!room && error) {
     return (
       <div className="lobby-container">
-        <div className="lobby-card glass-panel">
+        <div className="lobby-card surface-2">
           <div className="lobby-error-state">
-            <span className="error-icon">😕</span>
+            <AlertCircle size={40} className="error-icon" />
             <p className="error-message">{error}</p>
             <button className="btn-primary" onClick={() => navigate('/join')}>
-              ← Go Back
+              Go Back
             </button>
           </div>
         </div>
@@ -160,17 +165,19 @@ export function GameLobby() {
 
   return (
     <div className="lobby-container">
-      <div className="lobby-card glass-panel">
+      <div className="lobby-card surface-2">
         {/* Header with room code */}
         <div className="lobby-header">
-          <h1 className="text-gradient lobby-title">Waiting Room</h1>
+          <h1 className="heading-display lobby-title">Waiting Room</h1>
           <div className="room-code-display">
             <span className="room-code-label">Room Code</span>
             <div className="room-code-box" onClick={copyCode} title="Click to copy">
               <span className="room-code-value">{room!.code}</span>
-              <span className="copy-icon">{copied ? '✅' : '📋'}</span>
+              <span className="copy-icon-btn">
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+              </span>
             </div>
-            <span className="room-code-hint">Share this code with your friends!</span>
+            <span className="room-code-hint">Share this code with your friends</span>
           </div>
         </div>
 
@@ -178,6 +185,7 @@ export function GameLobby() {
 
         {/* Player count */}
         <div className="player-count">
+          <Users size={14} />
           <span>{room!.players.length}</span> / <span>{room!.maxPlayers}</span> Players
         </div>
 
@@ -192,11 +200,17 @@ export function GameLobby() {
               <div className="player-details">
                 <span className="player-name">
                   {player.name}
-                  {player.id === room!.hostId && <span className="host-badge">👑 Host</span>}
+                  {player.id === room!.hostId && (
+                    <span className="host-badge"><Crown size={12} /> Host</span>
+                  )}
                   {player.id === myId && <span className="you-badge">You</span>}
                 </span>
                 <span className={`ready-status ${player.isReady ? 'ready' : ''}`}>
-                  {player.isReady ? '✅ Ready' : '⏳ Not Ready'}
+                  {player.isReady ? (
+                    <><UserCheck size={13} /> Ready</>
+                  ) : (
+                    <><Clock size={13} /> Not Ready</>
+                  )}
                 </span>
               </div>
             </div>
@@ -205,7 +219,7 @@ export function GameLobby() {
           {/* Empty slots */}
           {Array.from({ length: room!.maxPlayers - room!.players.length }).map((_, i) => (
             <div key={`empty-${i}`} className="player-slot empty">
-              <div className="player-avatar">❓</div>
+              <div className="player-avatar player-avatar--empty">?</div>
               <div className="player-details">
                 <span className="player-name empty-name">Waiting for player...</span>
               </div>
@@ -221,14 +235,20 @@ export function GameLobby() {
               onClick={startGame}
               disabled={!allReady}
             >
-              🎮 Start Game
+              <Gamepad2 size={18} />
+              Start Game
             </button>
           ) : (
             <button className="btn-ready btn-full" onClick={toggleReady}>
-              {room!.players.find(p => p.id === myId)?.isReady ? '❌ Unready' : '✅ Ready Up'}
+              {room!.players.find(p => p.id === myId)?.isReady ? (
+                <><Clock size={16} /> Unready</>
+              ) : (
+                <><UserCheck size={16} /> Ready Up</>
+              )}
             </button>
           )}
           <button className="btn-leave" onClick={leaveRoom}>
+            <LogOut size={14} />
             Leave Room
           </button>
         </div>

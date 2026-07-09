@@ -5,7 +5,7 @@ import { corsOptions } from './config/cors';
 
 import { authRoutes } from './features/auth/auth.routes';
 import { userRoutes } from './features/users/user.routes';
-import { gameRoutes } from './features/game/game.routes';
+import gameRoutes from './features/game/game.routes';
 
 export const app = express();
 
