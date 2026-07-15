@@ -25,7 +25,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && cd backend && npx prisma generate && npm run build
-    startCommand: cd backend && npx prisma migrate deploy && node dist/server.js
+    startCommand: cd backend && npx prisma migrate deploy && npx tsx src/server.ts
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
