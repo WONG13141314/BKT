@@ -3,7 +3,7 @@ services:
   - type: web
     name: monomath
     runtime: static
-    buildCommand: cd frontend && npm install && npm run build
+    buildCommand: npm install && npm run build --workspace=frontend
     staticPublishPath: frontend/dist
     headers:
       - path: /*
@@ -24,7 +24,7 @@ services:
     name: monomath-api
     runtime: node
     plan: free
-    buildCommand: cd backend && npm install && npx prisma generate && npm run build
+    buildCommand: npm install && cd backend && npx prisma generate && npm run build
     startCommand: cd backend && npx prisma migrate deploy && node dist/server.js
     healthCheckPath: /api/health
     envVars:
