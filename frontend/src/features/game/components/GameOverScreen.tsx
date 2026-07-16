@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FinalScore, Player, SKILL_NAMES } from '../types/game.types';
-import { Trophy, Medal, Award, TrendingUp, LogOut, RotateCcw } from 'lucide-react';
+import { FinalScore, Player } from '../types/game.types';
+import { Trophy, Medal, Award, LogOut, RotateCcw } from 'lucide-react';
 import './GameOverScreen.css';
 
 interface GameOverScreenProps {
@@ -18,14 +18,13 @@ const RANK_CONFIG: Record<number, { icon: React.ReactNode; className: string }> 
 
 export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOverScreenProps) {
   const [revealStage, setRevealStage] = useState(0);
-  // Stages: 0=nothing, 1=header, 2=score table, 3=winner, 4=mastery summary
+  // Stages: 0=nothing, 1=header, 2=score table, 3=winner
 
   useEffect(() => {
     const timers = [
       setTimeout(() => setRevealStage(1), 300),
       setTimeout(() => setRevealStage(2), 800),
       setTimeout(() => setRevealStage(3), 2000),
-      setTimeout(() => setRevealStage(4), 3000),
     ];
     return () => timers.forEach(clearTimeout);
   }, []);
@@ -33,16 +32,7 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
   const winner = scores[0];
   const sortedScores = [...scores].sort((a, b) => a.rank - b.rank);
 
-  // Find top improved skill for winner
-  const winnerPlayer = players.find(p => p.id === winner?.playerId);
-  const topSkill = winnerPlayer ? (() => {
-    let best = { name: '', val: 0 };
-    SKILL_NAMES.forEach(skill => {
-      const val = winnerPlayer.masteryStates[skill] ?? 0;
-      if (val > best.val) best = { name: skill, val };
-    });
-    return best.name;
-  })() : '';
+
 
   return (
     <div className="gameover-overlay">
@@ -64,7 +54,7 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
                   <th>#</th>
                   <th>Player</th>
                   <th>Net Worth</th>
-                  <th>× Mastery</th>
+
                   <th>+ Math</th>
                   <th>Final</th>
                 </tr>
@@ -99,7 +89,7 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
                         </div>
                       </td>
                       <td className="score-value">${score.netWorth.toLocaleString()}</td>
-                      <td className="score-multiplier">×{score.masteryMultiplier.toFixed(2)}</td>
+
                       <td className="score-math">+${score.mathBonus}</td>
                       <td className="score-final">${score.finalScore.toLocaleString()}</td>
                     </tr>
@@ -119,57 +109,16 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
               <p className="winner-score">Final Score: ${winner.finalScore.toLocaleString()}</p>
               <div className="winner-breakdown">
                 <span>Net Worth: ${winner.netWorth.toLocaleString()}</span>
-                <span>Mastery: {Math.round(winner.averageMastery * 100)}%</span>
                 <span>Correct: {winner.totalCorrect} answers</span>
               </div>
-              {topSkill && (
-                <p className="winner-highlight">
-                  <TrendingUp size={14} />
-                  Strongest skill: {topSkill}
-                </p>
-              )}
+
             </div>
           </div>
         )}
 
-        {/* Stage 4: Mastery Summary */}
-        {revealStage >= 4 && (
-          <div className="gameover-mastery gameover-reveal">
-            <h3 className="heading-display mastery-title">Skills Journey</h3>
-            <div className="mastery-grid">
-              {players.map((player) => (
-                <div key={player.id} className="mastery-player-card surface-2">
-                  <div className="mastery-player-header">
-                    <div
-                      className="mastery-player-dot"
-                      style={{ backgroundColor: player.color }}
-                    />
-                    <span>{player.name}</span>
-                  </div>
-                  {SKILL_NAMES.map((skill) => {
-                    const mastery = player.masteryStates[skill] ?? 0.1;
-                    const pct = Math.round(mastery * 100);
-                    return (
-                      <div key={skill} className="mastery-skill-row">
-                        <span className="mastery-skill-name">{skill}</span>
-                        <div className="mastery-skill-bar">
-                          <div
-                            className="mastery-skill-fill"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="mastery-skill-pct">{pct}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Action Buttons */}
-        {revealStage >= 4 && (
+        {revealStage >= 3 && (
           <div className="gameover-actions gameover-reveal">
             {onPlayAgain && (
               <button className="gameover-btn gameover-btn--primary" onClick={onPlayAgain}>

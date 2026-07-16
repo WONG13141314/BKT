@@ -1,5 +1,5 @@
-import { Player, SKILL_NAMES } from '../types/game.types';
-import { Lock, AlertTriangle, Flame, Target, Building2, CheckCircle2, BarChart3 } from 'lucide-react';
+import { Player } from '../types/game.types';
+import { Lock, AlertTriangle, Flame, Target, Building2, CheckCircle2 } from 'lucide-react';
 import './PlayerPanel.css';
 
 interface PlayerPanelProps {
@@ -36,10 +36,6 @@ export function PlayerPanel({
         {players.map((player, idx) => {
           const isCurrentTurn = idx === currentPlayerIndex;
           const isMe = player.id === myPlayerId;
-          const avgMastery = Object.values(player.masteryStates);
-          const avgMasteryValue = avgMastery.length > 0
-            ? avgMastery.reduce((s, v) => s + v, 0) / avgMastery.length
-            : 0;
 
           return (
             <div
@@ -95,33 +91,7 @@ export function PlayerPanel({
                     {player.totalCorrect}/{player.totalQuestions}
                   </span>
                 </div>
-                <div className="stat">
-                  <span className="stat__label"><BarChart3 size={10} /> Level</span>
-                  <span className="stat__value">{Math.round(avgMasteryValue * 100)}%</span>
-                </div>
               </div>
-
-              {/* Skill Mastery Bars (expanded view for current player) */}
-              {(isMe || isCurrentTurn) && (
-                <div className="panel-player__mastery">
-                  {SKILL_NAMES.map((skill) => {
-                    const mastery = player.masteryStates[skill] ?? 0.1;
-                    const percent = Math.round(mastery * 100);
-                    return (
-                      <div key={skill} className="mastery-row">
-                        <span className="mastery-row__skill">{skill}</span>
-                        <div className="mastery-row__bar">
-                          <div
-                            className="mastery-row__fill"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                        <span className="mastery-row__pct">{percent}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           );
         })}

@@ -230,24 +230,6 @@ export function QuestionPopup({
               </p>
             ))}
 
-            {/* Mastery change */}
-            <div className="quiz-result__mastery">
-              <span>{challenge.skillName}</span>
-              <div className="mastery-bar-mini">
-                <div
-                  className="mastery-bar-mini__prev"
-                  style={{ width: `${Math.round(answerResult.previousMastery * 100)}%` }}
-                />
-                <div
-                  className="mastery-bar-mini__fill"
-                  style={{ width: `${Math.round(answerResult.newMastery * 100)}%` }}
-                />
-              </div>
-              <span className="mastery-bar-mini__label">
-                {Math.round(answerResult.newMastery * 100)}%
-              </span>
-            </div>
-
             {/* Continue button */}
             <button className="quiz-continue-btn" onClick={onContinue}>
               Continue
