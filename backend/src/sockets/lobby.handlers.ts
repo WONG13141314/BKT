@@ -41,6 +41,52 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     io.to(socketRoom).emit('room:update', roomManager.serializeRoom(room));
   });
 
+  // Host adds a bot
+  socket.on('room:add-bot', (data: { difficulty?: 'easy' | 'medium' | 'hard' }) => {
+    const room = roomManager.getRoomForUser(userId);
+    if (!room) {
+      socket.emit('room:error', { message: 'You are not in a room.' });
+      return;
+    }
+
+    const { room: updatedRoom, error } = roomManager.addBot(
+      room.code,
+      userId,
+      data.difficulty ?? 'medium'
+    );
+
+    if (!updatedRoom) {
+      socket.emit('room:error', { message: error });
+      return;
+    }
+
+    const socketRoom = `room:${updatedRoom.code}`;
+    io.to(socketRoom).emit('room:update', roomManager.serializeRoom(updatedRoom));
+  });
+
+  // Host removes a bot
+  socket.on('room:remove-bot', (data: { botId: string }) => {
+    const room = roomManager.getRoomForUser(userId);
+    if (!room) {
+      socket.emit('room:error', { message: 'You are not in a room.' });
+      return;
+    }
+
+    const { room: updatedRoom, error } = roomManager.removeBot(
+      room.code,
+      userId,
+      data.botId
+    );
+
+    if (!updatedRoom) {
+      socket.emit('room:error', { message: error });
+      return;
+    }
+
+    const socketRoom = `room:${updatedRoom.code}`;
+    io.to(socketRoom).emit('room:update', roomManager.serializeRoom(updatedRoom));
+  });
+
   // Host starts the game
   socket.on('room:start', () => {
     const room = roomManager.getRoomForUser(userId);
@@ -55,7 +101,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     }
 
     if (!roomManager.canStartGame(room.code)) {
-      socket.emit('room:error', { message: 'Need 2–4 players and everyone must be ready.' });
+      socket.emit('room:error', { message: 'Need at least 2 players (human or bot) and all humans must be ready.' });
       return;
     }
 
@@ -66,14 +112,14 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
     const gamePlayers = Array.from(room.players.values()).map((p, idx) => ({
       id: p.id,
-      userId: p.id, // In this simple auth, id is userId
+      userId: p.id,
       name: p.name,
       color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
       order: idx,
+      isBot: p.isBot,
+      botDifficulty: p.botDifficulty,
     }));
 
-    // Import gameService dynamically to avoid circular dependencies if any, 
-    // or assume it's imported at the top. Let's just import it at the top of the file.
     import('../features/game/game.service').then(({ gameService }) => {
       gameService.createGame(gameId, gamePlayers).then((state) => {
         io.to(socketRoom).emit('game:start', { roomCode: room.code });
@@ -103,7 +149,6 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     if (room) {
       io.to(socketRoom).emit('room:update', roomManager.serializeRoom(room));
     } else {
-      // Room was deleted (empty)
       io.to(socketRoom).emit('room:deleted', { code });
     }
   }

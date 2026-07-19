@@ -1,0 +1,128 @@
+.card-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+  backdrop-filter: blur(4px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.card-modal {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%);
+  border: 2px solid rgba(139, 92, 246, 0.4);
+  border-radius: 20px;
+  width: 90%;
+  max-width: 380px;
+  overflow: hidden;
+  box-shadow: 
+    0 25px 50px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(139, 92, 246, 0.2);
+  animation: cardSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cardSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-modal-header {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.card-modal-header.luck-card {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+}
+
+.card-modal-header.math-card {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+}
+
+.card-modal-icon {
+  font-size: 2rem;
+  animation: bounceIcon 0.6s ease 0.3s both;
+}
+
+@keyframes bounceIcon {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.card-modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-family: 'Outfit', 'Inter', sans-serif;
+}
+
+.card-modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.card-modal-description {
+  margin: 0;
+  font-size: 1rem;
+  color: #cbd5e1;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.card-modal-challenge {
+  width: 100%;
+}
+
+.card-modal-ok {
+  padding: 0.75rem 2.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Outfit', 'Inter', sans-serif;
+}
+
+.card-modal-ok:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+}
+
+.card-modal-ok:active {
+  transform: translateY(0);
+}
+
+/* MCQ text styling (used by McqQuestion inside column-question) */
+.mcq-text {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  text-align: center;
+  line-height: 1.6;
+  max-width: 320px;
+  padding: 0.5rem;
+}

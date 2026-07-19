@@ -1,5 +1,5 @@
-import { Player } from '../types/game.types';
-import { Lock, AlertTriangle, Flame, Target, Building2, CheckCircle2 } from 'lucide-react';
+import { Player, formatRM } from '../types/game.types';
+import { Lock, Flame, Target, Building2, CheckCircle2, Star, Shield, Tag } from 'lucide-react';
 import './PlayerPanel.css';
 
 interface PlayerPanelProps {
@@ -40,7 +40,7 @@ export function PlayerPanel({
           return (
             <div
               key={player.id}
-              className={`panel-player ${isCurrentTurn ? 'panel-player--active' : ''} ${isMe ? 'panel-player--me' : ''} ${player.isInDebt ? 'panel-player--debt' : ''}`}
+              className={`panel-player ${isCurrentTurn ? 'panel-player--active' : ''} ${isMe ? 'panel-player--me' : ''} ${player.isBankrupt ? 'panel-player--bankrupt' : ''}`}
             >
               {/* Player Header */}
               <div className="panel-player__header">
@@ -48,15 +48,16 @@ export function PlayerPanel({
                   className="panel-player__avatar"
                   style={{ backgroundColor: player.color }}
                 >
-                  {player.name.charAt(0).toUpperCase()}
+                  {player.isBot ? '🤖' : player.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="panel-player__info">
                   <span className="panel-player__name">
                     {player.name}
+                    {player.isBot && <span className="panel-player__bot-tag"> (Bot)</span>}
                     {isMe && <span className="panel-player__you"> (You)</span>}
                   </span>
                   <span className={`panel-player__money ${player.money < 0 ? 'money--negative' : ''}`}>
-                    ${player.money.toLocaleString()}
+                    {formatRM(player.money)}
                   </span>
                 </div>
                 {isCurrentTurn && (
@@ -71,11 +72,20 @@ export function PlayerPanel({
                 {player.isInJail && (
                   <span className="badge badge--jail"><Lock size={10} /> Jail</span>
                 )}
-                {player.isInDebt && (
-                  <span className="badge badge--debt"><AlertTriangle size={10} /> Debt</span>
+                {player.isBankrupt && (
+                  <span className="badge badge--bankrupt">Bankrupt</span>
                 )}
                 {player.streak >= 3 && (
                   <span className="badge badge--streak"><Flame size={10} /> {player.streak}</span>
+                )}
+                {player.hasLevelUpToken && (
+                  <span className="badge badge--token"><Star size={10} /> Token</span>
+                )}
+                {player.hasRentShield && (
+                  <span className="badge badge--shield"><Shield size={10} /> Shield</span>
+                )}
+                {player.hasDiscountToken && (
+                  <span className="badge badge--discount"><Tag size={10} /> -30%</span>
                 )}
               </div>
 

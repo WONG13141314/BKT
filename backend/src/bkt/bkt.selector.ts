@@ -1,59 +1,54 @@
 // ============================================
-// BKT Question Selector
-// Selects questions adaptively based on player mastery and game context
+// BKT Question Selector — Redesigned
+// 4 Skills: Addition, Subtraction, PlaceValue, Money
+// New challenge contexts matching the redesigned turn flow
 // ============================================
 
-import { ChallengeContext, MathChallenge, SKILL_NAMES, SkillName } from '../features/game/game.types';
-import { generateQuestion, generateBuyPropertyQuestion, generateRentQuestion, generateTaxQuestion, generateBuildHouseQuestion } from './question.generator';
+import { ChallengeContext, MathChallenge, QuestionData } from '../features/game/game.types';
+import { SKILL_NAMES, SkillName, TIME_LIMIT_EASY, TIME_LIMIT_MEDIUM, TIME_LIMIT_HARD } from '../features/game/game.constants';
+import {
+  generateQuestion,
+  generateDiceChallenge,
+  generateSmartBuyQuestion,
+  generateRentDefenseQuestion,
+} from './question.generator';
 
 // ---- Context-to-Skill Mapping ----
-// Maps each game context to the skills that are most relevant
 
-const CONTEXT_SKILL_MAP: Record<ChallengeContext, SkillName[]> = {
-  ROLL_DICE: [...SKILL_NAMES],               // Any skill — will pick weakest
-  BUY_PROPERTY: ['Subtraction', 'Addition'],
-  PAY_RENT: ['Multiplication', 'Division'],
-  BUILD_HOUSE: ['Multiplication', 'Addition'],
-  BUILD_HOTEL: ['Multiplication', 'Subtraction'],
-  CHANCE_CARD: [...SKILL_NAMES],              // Varies by card
-  COMMUNITY_CHEST: [...SKILL_NAMES],          // Most recent failed skill
-  TAX: ['Decimals', 'Division'],
-  JAIL_ESCAPE: [...SKILL_NAMES],              // Weakest skill, reduced difficulty
-  PASSING_GO: [...SKILL_NAMES],               // Skill closest to milestone
-  FREE_PARKING: [...SKILL_NAMES],             // Mix of skills
-  TRADE: ['Addition', 'Subtraction'],
-  AUCTION: [...SKILL_NAMES],                  // Random
-  SPECIAL_EVENT: [...SKILL_NAMES],
-  MATH_DUEL: ['Multiplication', 'Division'],
-  RECOVERY: [...SKILL_NAMES],                 // Weakest skill, easier
+const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
+  DICE_CHALLENGE: ['Addition', 'Subtraction'],            // Uses dice values
+  SMART_BUY: ['Subtraction', 'Addition'],                 // Price calculations
+  RENT_DEFENSE: ['Subtraction', 'Money'],                 // Rent halving
+  CHALLENGE_CARD: SKILL_NAMES,                            // All skills eligible
+  JAIL_ESCAPE: SKILL_NAMES,                               // All, reduced difficulty
+  LEVEL_UP: SKILL_NAMES,                                  // Matched to property skill theme
 };
 
-// ---- Difficulty Thresholds ----
+// ---- Difficulty from Mastery ----
 
 function getDifficultyFromMastery(pMastery: number): 1 | 2 | 3 {
-  if (pMastery < 0.3) return 1;   // Easy — build confidence
-  if (pMastery <= 0.6) return 2;  // Medium — standard practice
-  return 3;                        // Hard — challenge and push mastery
+  if (pMastery < 0.35) return 1;   // Easy
+  if (pMastery <= 0.65) return 2;  // Medium
+  return 3;                        // Hard
 }
 
-// ---- BKT Parameters Adjusted by Difficulty ----
-// Higher difficulty = higher slip chance, lower transition rate
+// ---- BKT Parameters by Difficulty ----
 
 export interface AdjustedBktParams {
   pL0: number;
-  pT: number;   // Transition (learning) probability
-  pG: number;   // Guess probability
-  pS: number;   // Slip probability
+  pT: number;
+  pG: number;
+  pS: number;
 }
 
 export function getAdjustedParams(difficulty: 1 | 2 | 3): AdjustedBktParams {
   switch (difficulty) {
     case 1:
-      return { pL0: 0.1, pT: 0.20, pG: 0.25, pS: 0.05 };
+      return { pL0: 0.10, pT: 0.20, pG: 0.30, pS: 0.05 };  // High guess for young kids
     case 2:
-      return { pL0: 0.1, pT: 0.15, pG: 0.25, pS: 0.10 };
+      return { pL0: 0.10, pT: 0.15, pG: 0.25, pS: 0.10 };
     case 3:
-      return { pL0: 0.1, pT: 0.10, pG: 0.25, pS: 0.15 };
+      return { pL0: 0.10, pT: 0.10, pG: 0.20, pS: 0.15 };
   }
 }
 
@@ -64,33 +59,27 @@ export interface HintInfo {
   content: string | null;
 }
 
-/**
- * Determine if a hint should be shown based on consecutive failures
- */
 export function determineHint(
   consecutiveFailures: number,
   pMastery: number,
   skillName: string
 ): HintInfo {
-  if (pMastery < 0.15) {
-    // Critical: show worked example
+  if (consecutiveFailures >= 3 || pMastery < 0.15) {
     return {
       level: 3,
       content: `💡 Let's work through an example together! Take your time with ${skillName}.`,
     };
   }
-  if (consecutiveFailures >= 3) {
-    // Show simplified version
+  if (consecutiveFailures >= 2) {
     return {
       level: 2,
       content: `💡 Hint: Try breaking this problem into smaller steps!`,
     };
   }
-  if (consecutiveFailures >= 2) {
-    // Show visual clue
+  if (consecutiveFailures >= 1) {
     return {
       level: 1,
-      content: `💡 Tip: Think about what you know about ${skillName}. You can do this!`,
+      content: `💡 You can do this! Think carefully about ${skillName}.`,
     };
   }
   return { level: 0, content: null };
@@ -99,113 +88,101 @@ export function determineHint(
 // ---- Main Selection Logic ----
 
 export interface SelectionInput {
-  masteryStates: Record<string, number>;   // skillName → pMastery
+  masteryStates: Record<string, number>;
   context: ChallengeContext;
-  consecutiveFailures: Record<string, number>; // skillName → failures in a row
-  recentlySeenSkills: string[];            // Skills used in last few turns
-  // Contextual data for specialized question generation
-  playerMoney?: number;
+  consecutiveFailures: Record<string, number>;
+  // Dice challenge specific
+  diceValues?: [number, number];
+  // Smart Buy specific
   propertyPrice?: number;
-  rentBase?: number;
-  rentHouses?: number;
-  taxTotalAssets?: number;
-  taxType?: 'INCOME' | 'LUXURY';
-  houseCost?: number;
-  numHouses?: number;
+  // Rent Defense specific
+  rentAmount?: number;
+  // Level Up specific — skill theme of the property being leveled
+  propertySkillTheme?: SkillName;
 }
 
 /**
- * Select the best math challenge for the current game context and player state.
+ * Select the best math challenge for the current game context.
  *
  * Strategy:
- * 1. Get eligible skills from context mapping
- * 2. Prefer the weakest mastery skill (most benefit from practice)
- * 3. Avoid recently-seen skills for variety (soft preference, not hard rule)
- * 4. For jail, reduce difficulty by 1 level (jail is already a penalty)
- * 5. For free parking, choose a mix
- * 6. For passing GO, choose the skill closest to next milestone
- * 7. For recovery, pick weakest and drop difficulty
+ * 1. Get eligible skills from context
+ * 2. Select via WEIGHTED RANDOM (lower mastery = higher weight + noise)
+ * 3. Determine difficulty from mastery with context adjustments
+ * 4. Generate the question
+ * 5. Determine hint level
  */
 export function selectChallenge(input: SelectionInput): MathChallenge {
   const {
     masteryStates,
     context,
     consecutiveFailures,
-    playerMoney,
+    diceValues,
     propertyPrice,
-    rentBase,
-    rentHouses,
-    taxTotalAssets,
-    taxType,
-    houseCost,
-    numHouses,
+    rentAmount,
+    propertySkillTheme,
   } = input;
 
-  // 1. Get eligible skills for this context
-  const eligibleSkills = CONTEXT_SKILL_MAP[context] || [...SKILL_NAMES];
+  // 1. Get eligible skills
+  let eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || SKILL_NAMES;
 
-  // 2. Select skill based on context strategy
+  // For LEVEL_UP: prefer the property's skill theme
+  if (context === 'LEVEL_UP' && propertySkillTheme) {
+    eligibleSkills = [propertySkillTheme];
+  }
+
+  // 2. Select skill via weighted random
   let selectedSkill: SkillName;
   let difficulty: 1 | 2 | 3;
 
-  switch (context) {
-    case 'PASSING_GO': {
-      // Pick skill closest to the next milestone (0.5, 0.7, 0.9)
-      selectedSkill = findSkillNearestMilestone(masteryStates, eligibleSkills);
-      difficulty = getDifficultyFromMastery(masteryStates[selectedSkill] ?? 0.1);
-      break;
-    }
-    case 'JAIL_ESCAPE':
-    case 'RECOVERY': {
-      // Pick weakest skill but reduce difficulty by 1
-      selectedSkill = findWeakestSkill(masteryStates, eligibleSkills);
-      const baseDifficulty = getDifficultyFromMastery(masteryStates[selectedSkill] ?? 0.1);
-      difficulty = Math.max(1, baseDifficulty - 1) as 1 | 2 | 3;
-      break;
-    }
-    default: {
-      // Default: pick weakest eligible skill
-      selectedSkill = findWeakestSkill(masteryStates, eligibleSkills);
-      difficulty = getDifficultyFromMastery(masteryStates[selectedSkill] ?? 0.1);
-      break;
-    }
+  // Special case: DICE_CHALLENGE uses dice values directly
+  if (context === 'DICE_CHALLENGE' && diceValues) {
+    const generated = generateDiceChallenge(diceValues[0], diceValues[1], 1);
+    selectedSkill = generated.skillName as SkillName;
+    difficulty = 1; // Dice challenges are always easy
+
+    const failures = consecutiveFailures[selectedSkill] ?? 0;
+    const mastery = masteryStates[selectedSkill] ?? 0.1;
+    const hint = determineHint(failures, mastery, selectedSkill);
+
+    return buildChallenge(generated, selectedSkill, difficulty, context, hint);
   }
 
-  // 3. Determine hint
-  const failures = consecutiveFailures[selectedSkill] ?? 0;
-  const mastery = masteryStates[selectedSkill] ?? 0.1;
-  const hint = determineHint(failures, mastery, selectedSkill);
+  // Weighted random selection (lower mastery = higher weight)
+  selectedSkill = selectWeightedRandom(masteryStates, eligibleSkills);
+  difficulty = getDifficultyFromMastery(masteryStates[selectedSkill] ?? 0.1);
 
-  // 4. Generate the question (contextual or generic)
+  // Context-specific difficulty adjustments
+  switch (context) {
+    case 'JAIL_ESCAPE':
+      // Reduce difficulty by 1 — jail is already a penalty
+      difficulty = Math.max(1, difficulty - 1) as 1 | 2 | 3;
+      break;
+    case 'LEVEL_UP':
+      // Increase difficulty by 1 — boss challenge
+      difficulty = Math.min(3, difficulty + 1) as 1 | 2 | 3;
+      break;
+  }
+
+  // Confidence-based override
+  const skillFailures = consecutiveFailures[selectedSkill] ?? 0;
+  if (skillFailures >= 2) {
+    difficulty = 1; // Rebuild confidence after consecutive failures
+  }
+
+  // 3. Generate the question
   let generated;
 
   switch (context) {
-    case 'BUY_PROPERTY':
-      if (playerMoney != null && propertyPrice != null) {
-        generated = generateBuyPropertyQuestion(playerMoney, propertyPrice, difficulty);
+    case 'SMART_BUY':
+      if (propertyPrice != null) {
+        generated = generateSmartBuyQuestion(propertyPrice, difficulty);
       } else {
         generated = generateQuestion(selectedSkill, difficulty);
       }
       break;
-    case 'PAY_RENT':
-    case 'MATH_DUEL':
-      if (rentBase != null && rentHouses != null) {
-        generated = generateRentQuestion(rentBase, rentHouses, difficulty);
-      } else {
-        generated = generateQuestion(selectedSkill, difficulty);
-      }
-      break;
-    case 'TAX':
-      if (taxTotalAssets != null && taxType != null) {
-        generated = generateTaxQuestion(taxTotalAssets, taxType, difficulty);
-      } else {
-        generated = generateQuestion(selectedSkill, difficulty);
-      }
-      break;
-    case 'BUILD_HOUSE':
-    case 'BUILD_HOTEL':
-      if (houseCost != null && numHouses != null) {
-        generated = generateBuildHouseQuestion(houseCost, numHouses, difficulty);
+    case 'RENT_DEFENSE':
+      if (rentAmount != null) {
+        generated = generateRentDefenseQuestion(rentAmount, difficulty);
       } else {
         generated = generateQuestion(selectedSkill, difficulty);
       }
@@ -215,15 +192,30 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
       break;
   }
 
-  // 5. Build the MathChallenge object
-  const challengeId = `challenge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  // 4. Determine hint
+  const failures = consecutiveFailures[selectedSkill] ?? 0;
+  const mastery = masteryStates[selectedSkill] ?? 0.1;
+  const hint = determineHint(failures, mastery, selectedSkill);
+
+  return buildChallenge(generated, selectedSkill, difficulty, context, hint);
+}
+
+// ---- Helpers ----
+
+function buildChallenge(
+  generated: { questionData: QuestionData; text: string; options: string[]; correctIndex: number },
+  skill: SkillName,
+  difficulty: 1 | 2 | 3,
+  context: ChallengeContext,
+  hint: HintInfo
+): MathChallenge {
+  const id = `challenge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   return {
-    id: challengeId,
-    questionId: challengeId, // Will be replaced with actual DB id if using stored questions
-    skillId: selectedSkill,
-    skillName: selectedSkill,
+    id,
+    skillName: skill,
     difficulty,
+    questionData: generated.questionData,
     text: generated.text,
     options: generated.options,
     correctIndex: generated.correctIndex,
@@ -235,79 +227,35 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
 }
 
 /**
- * Select multiple challenges for Free Parking bonus round
+ * Weighted random skill selection.
+ * Weight = (1 - pL) × random noise [0.7, 1.3]
+ * Lower mastery = higher chance of being picked.
  */
-export function selectFreeParkingChallenges(
+function selectWeightedRandom(
   masteryStates: Record<string, number>,
-  consecutiveFailures: Record<string, number>
-): MathChallenge[] {
-  const skills = Object.entries(masteryStates).sort(([, a], [, b]) => a - b);
-  const weakestSkill = skills[0]?.[0] || 'Addition';
-  const strongestSkill = skills[skills.length - 1]?.[0] || 'Multiplication';
-  const allSkills = Object.keys(masteryStates);
-  const randomSkill = allSkills[Math.floor(Math.random() * allSkills.length)] || 'Division';
-
-  const challengeSkills = [weakestSkill, strongestSkill, randomSkill];
-
-  return challengeSkills.map((skill) =>
-    selectChallenge({
-      masteryStates,
-      context: 'FREE_PARKING',
-      consecutiveFailures,
-      recentlySeenSkills: [],
-    })
-  );
-}
-
-// ---- Helper Functions ----
-
-function findWeakestSkill(
-  masteryStates: Record<string, number>,
-  eligibleSkills: SkillName[]
+  eligibleSkills: readonly SkillName[]
 ): SkillName {
-  let weakest: SkillName = eligibleSkills[0];
-  let lowestMastery = Infinity;
+  if (eligibleSkills.length === 1) return eligibleSkills[0];
+
+  let bestSkill = eligibleSkills[0];
+  let bestWeight = -1;
 
   for (const skill of eligibleSkills) {
     const mastery = masteryStates[skill] ?? 0.1;
-    if (mastery < lowestMastery) {
-      lowestMastery = mastery;
-      weakest = skill;
+    const weight = (1 - mastery) * (0.7 + Math.random() * 0.6); // noise [0.7, 1.3]
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      bestSkill = skill;
     }
   }
 
-  return weakest;
-}
-
-function findSkillNearestMilestone(
-  masteryStates: Record<string, number>,
-  eligibleSkills: SkillName[]
-): SkillName {
-  const milestones = [0.5, 0.7, 0.9];
-  let nearest: SkillName = eligibleSkills[0];
-  let smallestGap = Infinity;
-
-  for (const skill of eligibleSkills) {
-    const mastery = masteryStates[skill] ?? 0.1;
-    for (const milestone of milestones) {
-      if (mastery < milestone) {
-        const gap = milestone - mastery;
-        if (gap < smallestGap) {
-          smallestGap = gap;
-          nearest = skill;
-        }
-        break; // Only check next milestone above current mastery
-      }
-    }
-  }
-
-  return nearest;
+  return bestSkill;
 }
 
 function getTimeLimit(difficulty: 1 | 2 | 3): number {
   switch (difficulty) {
-    case 1: return 20; // Easy: 20 seconds
-    case 2: return 15; // Medium: 15 seconds
-    case 3: return 12; // Hard: 12 seconds
+    case 1: return TIME_LIMIT_EASY;
+    case 2: return TIME_LIMIT_MEDIUM;
+    case 3: return TIME_LIMIT_HARD;
   }
 }

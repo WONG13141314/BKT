@@ -12,8 +12,8 @@ export const gameController = {
   create: async (req: Request, res: Response) => {
     try {
       const { players } = req.body;
-      if (!players || !Array.isArray(players) || players.length !== 4) {
-        return res.status(400).json({ error: 'Exactly 4 players required' });
+      if (!players || !Array.isArray(players) || players.length < 2 || players.length > 4) {
+        return res.status(400).json({ error: '2 to 4 players required' });
       }
 
       const gameId = `game_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

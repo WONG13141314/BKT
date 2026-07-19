@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSocket } from '../../../shared/contexts/SocketContext';
-import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users } from 'lucide-react';
+import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
 import './GameLobby.css';
 
 interface LobbyPlayer {
@@ -9,6 +9,8 @@ interface LobbyPlayer {
   name: string;
   isReady: boolean;
   avatar: string;
+  isBot: boolean;
+  botDifficulty?: 'easy' | 'medium' | 'hard';
 }
 
 interface RoomState {
@@ -28,11 +30,11 @@ export function GameLobby() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [hasJoined, setHasJoined] = useState(false);
+  const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
-  const action = searchParams.get('action'); // 'host' or 'join'
+  const action = searchParams.get('action');
   const codeParam = searchParams.get('code');
 
-  // Parse our own user ID from the JWT
   const getMyUserId = useCallback(() => {
     try {
       const token = localStorage.getItem('token');
@@ -47,18 +49,13 @@ export function GameLobby() {
   const myId = getMyUserId();
   const isHost = myId === room?.hostId;
 
-  // Connect socket and perform action
   useEffect(() => {
-    // If we have no socket at all, initiate connection and wait
     if (!socket) {
       connectSocket();
       return;
     }
-
-    // Socket exists but still connecting — just wait for it
     if (!isConnected) return;
-
-    if (hasJoined) return; // Don't re-emit after reconnect
+    if (hasJoined) return;
 
     if (action === 'host') {
       socket.emit('room:create');
@@ -69,7 +66,6 @@ export function GameLobby() {
     }
   }, [socket, isConnected, action, codeParam, connectSocket, hasJoined]);
 
-  // Listen for socket events
   useEffect(() => {
     if (!socket) return;
 
@@ -77,15 +73,8 @@ export function GameLobby() {
       setRoom(data);
       setError(null);
     };
-
-    const onRoomError = (data: { message: string }) => {
-      setError(data.message);
-    };
-
-    const onGameStart = (data: { roomCode: string; players: LobbyPlayer[] }) => {
-      navigate(`/game?code=${data.roomCode}`);
-    };
-
+    const onRoomError = (data: { message: string }) => setError(data.message);
+    const onGameStart = (data: { roomCode: string }) => navigate(`/game?code=${data.roomCode}`);
     const onRoomDeleted = () => {
       setRoom(null);
       setError('The room has been closed.');
@@ -104,17 +93,16 @@ export function GameLobby() {
     };
   }, [socket, navigate]);
 
-  const toggleReady = () => {
-    if (socket) socket.emit('room:ready');
+  const toggleReady = () => { if (socket) socket.emit('room:ready'); };
+  const startGame = () => { if (socket) socket.emit('room:start'); };
+  const leaveRoom = () => { if (socket) socket.emit('room:leave'); navigate('/join'); };
+
+  const addBot = () => {
+    if (socket) socket.emit('room:add-bot', { difficulty: botDifficulty });
   };
 
-  const startGame = () => {
-    if (socket) socket.emit('room:start');
-  };
-
-  const leaveRoom = () => {
-    if (socket) socket.emit('room:leave');
-    navigate('/join');
+  const removeBot = (botId: string) => {
+    if (socket) socket.emit('room:remove-bot', { botId });
   };
 
   const copyCode = async () => {
@@ -123,16 +111,13 @@ export function GameLobby() {
       await navigator.clipboard.writeText(room.code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: select a hidden input
-    }
+    } catch { /* fallback */ }
   };
 
-  const allReady = room
-    ? room.players.length >= 2 && room.players.length <= 4 && room.players.every(p => p.isReady)
-    : false;
+  const humanPlayers = room ? room.players.filter(p => !p.isBot) : [];
+  const allHumansReady = humanPlayers.length >= 1 && humanPlayers.every(p => p.isReady);
+  const canStart = room ? room.players.length >= 2 && allHumansReady : false;
 
-  // If there's no room state yet and no error, show loading
   if (!room && !error) {
     return (
       <div className="lobby-container">
@@ -146,7 +131,6 @@ export function GameLobby() {
     );
   }
 
-  // Error state (e.g., bad room code)
   if (!room && error) {
     return (
       <div className="lobby-container">
@@ -154,9 +138,7 @@ export function GameLobby() {
           <div className="lobby-error-state">
             <AlertCircle size={40} className="error-icon" />
             <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={() => navigate('/join')}>
-              Go Back
-            </button>
+            <button className="btn-primary" onClick={() => navigate('/join')}>Go Back</button>
           </div>
         </div>
       </div>
@@ -166,7 +148,7 @@ export function GameLobby() {
   return (
     <div className="lobby-container">
       <div className="lobby-card surface-2">
-        {/* Header with room code */}
+        {/* Header */}
         <div className="lobby-header">
           <h1 className="heading-display lobby-title">Waiting Room</h1>
           <div className="room-code-display">
@@ -194,7 +176,7 @@ export function GameLobby() {
           {room!.players.map(player => (
             <div
               key={player.id}
-              className={`player-slot ${player.isReady ? 'ready' : 'not-ready'} ${player.id === myId ? 'is-me' : ''}`}
+              className={`player-slot ${player.isReady ? 'ready' : 'not-ready'} ${player.id === myId ? 'is-me' : ''} ${player.isBot ? 'is-bot' : ''}`}
             >
               <div className="player-avatar">{player.avatar}</div>
               <div className="player-details">
@@ -204,6 +186,11 @@ export function GameLobby() {
                     <span className="host-badge"><Crown size={12} /> Host</span>
                   )}
                   {player.id === myId && <span className="you-badge">You</span>}
+                  {player.isBot && (
+                    <span className="bot-difficulty-badge">
+                      {player.botDifficulty ?? 'medium'}
+                    </span>
+                  )}
                 </span>
                 <span className={`ready-status ${player.isReady ? 'ready' : ''}`}>
                   {player.isReady ? (
@@ -213,6 +200,16 @@ export function GameLobby() {
                   )}
                 </span>
               </div>
+              {/* Host can remove bots */}
+              {isHost && player.isBot && (
+                <button
+                  className="remove-bot-btn"
+                  onClick={() => removeBot(player.id)}
+                  title="Remove bot"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
             </div>
           ))}
 
@@ -227,13 +224,34 @@ export function GameLobby() {
           ))}
         </div>
 
+        {/* Add Bot Section (Host only) */}
+        {isHost && room!.players.length < room!.maxPlayers && (
+          <div className="add-bot-section">
+            <div className="add-bot-controls">
+              <select
+                className="bot-difficulty-select"
+                value={botDifficulty}
+                onChange={(e) => setBotDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
+              >
+                <option value="easy">Easy Bot</option>
+                <option value="medium">Medium Bot</option>
+                <option value="hard">Hard Bot</option>
+              </select>
+              <button className="btn-add-bot" onClick={addBot}>
+                <Bot size={16} />
+                Add Bot
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="lobby-actions">
           {isHost ? (
             <button
-              className={`btn-start btn-full ${allReady ? '' : 'disabled'}`}
+              className={`btn-start btn-full ${canStart ? '' : 'disabled'}`}
               onClick={startGame}
-              disabled={!allReady}
+              disabled={!canStart}
             >
               <Gamepad2 size={18} />
               Start Game
@@ -254,11 +272,11 @@ export function GameLobby() {
         </div>
 
         {/* Start condition hint */}
-        {isHost && !allReady && (
+        {isHost && !canStart && (
           <p className="start-hint">
             {room!.players.length < 2
-              ? 'Need at least 2 players to start.'
-              : 'Waiting for all players to be ready...'}
+              ? 'Need at least 2 players (human or bot) to start.'
+              : 'Waiting for all human players to be ready...'}
           </p>
         )}
       </div>

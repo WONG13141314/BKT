@@ -1,6 +1,6 @@
-import { TileConfig, PropertyState, Player } from '../types/game.types';
+import { TileConfig, PropertyState, Player, formatRM } from '../types/game.types';
 import { COLOR_GROUPS } from '../config/board.config';
-import { X, Building2, Hotel, Tag, ArrowRight } from 'lucide-react';
+import { X, Star } from 'lucide-react';
 import './PropertyCard.css';
 
 interface PropertyCardProps {
@@ -8,12 +8,7 @@ interface PropertyCardProps {
   property: PropertyState;
   owner: Player | null;
   currentPlayer: Player;
-  mode: 'BUY' | 'RENT' | 'INFO';
-  rentAmount?: number;
-  discountPercent?: number;
   onClose: () => void;
-  onBuild?: () => void;
-  canBuild?: boolean;
 }
 
 export function PropertyCard({
@@ -21,144 +16,99 @@ export function PropertyCard({
   property,
   owner,
   currentPlayer,
-  mode,
-  rentAmount = 0,
-  discountPercent = 0,
   onClose,
-  onBuild,
-  canBuild = false,
 }: PropertyCardProps) {
   const colorGroup = tile.colorGroup ? COLOR_GROUPS[tile.colorGroup] : null;
-  const discountedPrice = discountPercent > 0
-    ? Math.round(tile.price * (1 - discountPercent / 100))
-    : tile.price;
+  const isOwned = !!owner;
+  const isMyProperty = owner?.id === currentPlayer.id;
+  const levelUpCost = Math.floor(tile.price * 0.5);
 
   return (
-    <div className="property-overlay" onClick={onClose}>
-      <div className="property-card surface-2" onClick={(e) => e.stopPropagation()}>
-        {/* Color Header */}
+    <div className="property-card-overlay" onClick={onClose}>
+      <div className="property-card" onClick={(e) => e.stopPropagation()}>
+        {/* Color header */}
         <div
           className="property-card__header"
-          style={{ backgroundColor: colorGroup?.color || 'var(--surface-3)' }}
+          style={{ background: colorGroup?.color ?? '#4A5568' }}
         >
-          <span className="property-card__name">{tile.name}</span>
-          {colorGroup && (
-            <span className="property-card__group">{colorGroup.name}</span>
+          <button className="property-card__close" onClick={onClose}>
+            <X size={18} />
+          </button>
+          <h3 className="property-card__name">{tile.name}</h3>
+          {tile.skillTheme && (
+            <span className="property-card__skill">{tile.skillTheme}</span>
           )}
         </div>
 
-        {/* Card Body */}
+        {/* Price */}
         <div className="property-card__body">
-          {/* Price */}
-          <div className="property-card__row">
-            <span>Purchase Price</span>
-            <span className="property-card__value">${tile.price}</span>
+          <div className="property-card__price">
+            <span className="price-label">Purchase Price</span>
+            <span className="price-value">{formatRM(tile.price)}</span>
           </div>
 
-          {/* Rent tiers */}
-          <div className="property-card__rent-table">
-            <div className="property-card__row">
+          {/* Rent Info */}
+          <div className="property-card__rent-info">
+            <div className="rent-row">
               <span>Base Rent</span>
-              <span>${tile.baseRent}</span>
+              <span>{formatRM(tile.baseRent)}</span>
             </div>
-            <div className="property-card__row">
-              <span>With 1 House</span>
-              <span>${tile.baseRent * 2}</span>
+            <div className="rent-row">
+              <span>Monopoly Rent (2×)</span>
+              <span>{formatRM(tile.baseRent * 2)}</span>
             </div>
-            <div className="property-card__row">
-              <span>With 2 Houses</span>
-              <span>${tile.baseRent * 3}</span>
+            <div className="rent-row rent-row--leveled">
+              <span><Star size={12} /> Leveled Up Rent</span>
+              <span>{formatRM(tile.leveledRent)}</span>
             </div>
-            <div className="property-card__row">
-              <span>With 3 Houses</span>
-              <span>${tile.baseRent * 4}</span>
-            </div>
-            <div className="property-card__row">
-              <span>With 4 Houses</span>
-              <span>${tile.baseRent * 5}</span>
-            </div>
-            <div className="property-card__row">
-              <span>With Hotel</span>
-              <span className="property-card__value">${tile.baseRent * 6}</span>
+            <div className="rent-row">
+              <span>Level Up Cost</span>
+              <span>{formatRM(levelUpCost)}</span>
             </div>
           </div>
 
-          <div className="property-card__divider" />
-
-          <div className="property-card__row">
-            <span>House Cost</span>
-            <span>${tile.houseCost}</span>
+          {/* Ownership */}
+          <div className="property-card__status">
+            {!isOwned && (
+              <span className="status-unowned">Unowned</span>
+            )}
+            {isOwned && (
+              <div className="status-owned">
+                <div
+                  className="owner-badge"
+                  style={{ background: owner!.color }}
+                >
+                  {owner!.isBot ? '🤖' : owner!.name.charAt(0)}
+                </div>
+                <span>
+                  Owned by {isMyProperty ? 'You' : owner!.name}
+                  {owner!.isBot && ' (Bot)'}
+                </span>
+              </div>
+            )}
+            {property.isLeveledUp && (
+              <span className="status-leveled">
+                <Star size={14} /> Leveled Up!
+              </span>
+            )}
           </div>
 
-          {/* Current state */}
-          {property.houses > 0 && (
-            <div className="property-card__row">
-              <span>Houses Built</span>
-              <span className="property-card__buildings-display">
-                {Array.from({ length: property.houses }).map((_, i) => (
-                  <span key={i} className="property-card__house-pip" />
-                ))}
+          {/* Color Group Info */}
+          {colorGroup && (
+            <div className="property-card__group">
+              <div
+                className="group-color-dot"
+                style={{ background: colorGroup.color }}
+              />
+              <span className="group-name">
+                {colorGroup.name.charAt(0).toUpperCase() + colorGroup.name.slice(1)} Set
+              </span>
+              <span className="group-count">
+                ({colorGroup.tileIndices.length} properties)
               </span>
             </div>
           )}
-          {property.hasHotel && (
-            <div className="property-card__row">
-              <span>Hotel</span>
-              <span className="property-card__hotel-pip" />
-            </div>
-          )}
-
-          {/* Owner */}
-          {owner && (
-            <div className="property-card__owner">
-              <div
-                className="property-card__owner-dot"
-                style={{ backgroundColor: owner.color }}
-              />
-              <span>Owned by {owner.name}</span>
-            </div>
-          )}
-
-          {/* Build button for owned properties */}
-          {canBuild && onBuild && (
-            <button className="property-card__build-btn" onClick={onBuild}>
-              <Building2 size={14} />
-              Build House (${tile.houseCost})
-            </button>
-          )}
-
-          {/* Mode-specific footer */}
-          {mode === 'BUY' && (
-            <div className="property-card__action">
-              {discountPercent > 0 ? (
-                <div className="property-card__discount">
-                  <span className="discount__original">${tile.price}</span>
-                  <ArrowRight size={14} />
-                  <span className="discount__final">${discountedPrice}</span>
-                  <span className="discount__badge">
-                    <Tag size={11} />
-                    -{discountPercent}%
-                  </span>
-                </div>
-              ) : (
-                <p className="property-card__info-text">
-                  Answer correctly for a discount!
-                </p>
-              )}
-            </div>
-          )}
-
-          {mode === 'RENT' && (
-            <div className="property-card__action property-card__action--rent">
-              <span>Rent Due:</span>
-              <span className="property-card__rent-amount">${rentAmount}</span>
-            </div>
-          )}
         </div>
-
-        <button className="property-card__close" onClick={onClose}>
-          <X size={16} />
-        </button>
       </div>
     </div>
   );

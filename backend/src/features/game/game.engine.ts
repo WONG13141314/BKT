@@ -1,6 +1,7 @@
 // ============================================
-// Game Engine — Core Game Logic
-// Turn flow, tile events, rewards, penalties
+// Game Engine — MathOpoly Redesign
+// New turn state machine, 20-tile board, no houses/hotels
+// Level Up system, challenge cards, RM currency
 // ============================================
 
 import {
@@ -11,53 +12,77 @@ import {
   ChallengeContext,
   AnswerResult,
   RewardResult,
-  PenaltyResult,
-  MilestoneResult,
   TileEvent,
   FinalScore,
-  GAME_CONSTANTS,
+  MasteryReport,
+  LuckyBreakReward,
+  ChallengeCard,
+  CardEffect,
 } from './game.types';
-import { BOARD_TILES, calculateRent, calculatePropertyValue, calculateBuildingValue, ownsFullColorGroup, COLOR_GROUPS } from './board.config';
+import { SKILL_NAMES, SkillName } from './game.constants';
+import {
+  BOARD_TILES,
+  COLOR_GROUPS,
+  calculateRent,
+  calculatePropertyValue,
+  calculateLevelUpValue,
+  ownsFullColorGroup,
+  getLevelUpCost,
+  initializeProperties,
+} from './board.config';
+import {
+  STARTING_MONEY,
+  GO_SALARY,
+  TAX_AMOUNT,
+  LUXURY_TAX_AMOUNT,
+  BAIL_COST,
+  MAX_ROUNDS,
+  CLOCK_CAP_MINUTES,
+  MAX_JAIL_TURNS,
+  TOTAL_TILES,
+  DICE_CHALLENGE_PROBABILITY,
+  DICE_CHALLENGE_BONUS,
+  SMART_BUY_DISCOUNT,
+  RENT_DEFENSE_DISCOUNT,
+  LUCKY_BREAK_CASH_OPTIONS,
+  LUCKY_BREAK_TOKEN_CHANCE,
+  formatRM,
+} from './game.constants';
+import { createShuffledDeck, drawCard } from './card.deck';
 import { updateMastery } from '../../bkt/bkt.engine';
-import { selectChallenge } from '../../bkt/bkt.selector';
-import { getAdjustedParams } from '../../bkt/bkt.selector';
-import { clampProbability, checkMastery } from '../../bkt/bkt.utils';
+import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
+import { clampProbability } from '../../bkt/bkt.utils';
+import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 
 // ============================================
 // GAME INITIALIZATION
 // ============================================
 
-/**
- * Create the initial game state when a game starts
- */
 export function initializeGameState(
   gameId: string,
-  players: { id: string; userId: string; name: string; color: string; order: number }[]
+  players: { id: string; userId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
 ): GameState {
   const playerStates: PlayerState[] = players.map((p) => ({
     id: p.id,
     userId: p.userId,
     name: p.name,
     position: 0,
-    money: GAME_CONSTANTS.STARTING_MONEY,
+    money: STARTING_MONEY,
     color: p.color,
     properties: [],
     isInJail: false,
     jailTurns: 0,
-    isInDebt: false,
+    isBankrupt: false,
     streak: 0,
     totalCorrect: 0,
     totalQuestions: 0,
-    movementTokens: 0,
-    powerCards: [],
-    masteryStates: {
-      Addition: 0.1,
-      Subtraction: 0.1,
-      Multiplication: 0.1,
-      Division: 0.1,
-      Fractions: 0.1,
-      Decimals: 0.1,
-    },
+    hasLevelUpToken: false,
+    hasRentShield: false,
+    hasDiscountToken: false,
+    masteryStates: Object.fromEntries(SKILL_NAMES.map((s) => [s, INITIAL_MASTERY])),
+    consecutiveFailures: Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])),
+    isBot: p.isBot ?? false,
+    botDifficulty: p.botDifficulty,
   }));
 
   // Sort by order
@@ -67,132 +92,177 @@ export function initializeGameState(
     return orderA - orderB;
   });
 
-  // Initialize property states for all property tiles
-  const properties: PropertyState[] = BOARD_TILES
-    .filter((t) => t.type === 'PROPERTY')
-    .map((t) => ({
-      tileIndex: t.index,
-      ownerId: null,
-      houses: 0,
-      hasHotel: false,
-    }));
-
   return {
     id: gameId,
     players: playerStates,
     tiles: BOARD_TILES,
-    properties,
+    properties: initializeProperties(),
     currentPlayerIndex: 0,
     phase: 'PLAYING',
-    turnPhase: 'ROLL',
+    turnPhase: 'ROLL_PHASE',
     round: 1,
-    maxRounds: GAME_CONSTANTS.MAX_ROUNDS,
+    maxRounds: MAX_ROUNDS,
     diceValues: [1, 1],
-    movementBonus: 0,
     currentChallenge: null,
     pendingTileEvent: null,
+    challengeCardDeck: createShuffledDeck(),
+    challengeCardIndex: 0,
+    gameStartTime: Date.now(),
+    isFinalRound: false,
     auctionState: null,
   };
 }
 
 // ============================================
-// TURN FLOW
+// TURN FLOW — State Machine
 // ============================================
 
-/**
- * Get the current player
- */
+/** Get the current player */
 export function getCurrentPlayer(state: GameState): PlayerState {
   return state.players[state.currentPlayerIndex];
 }
 
+/** Get active (non-bankrupt) players */
+export function getActivePlayers(state: GameState): PlayerState[] {
+  return state.players.filter((p) => !p.isBankrupt);
+}
+
+// ---- A. ROLL PHASE ----
+
 /**
- * Phase 1: ROLL — Player initiates a dice roll
- * Returns a MathChallenge that must be answered before the dice are rolled
+ * Start the roll phase. If player is jailed, redirect to jail decision.
+ * Otherwise roll dice and check for dice mini-challenge (1-in-3 chance).
  */
 export function startRollPhase(state: GameState): GameState {
   const player = getCurrentPlayer(state);
 
-  // If player is in jail, handle jail logic instead
+  // If player is in jail → jail decision instead
   if (player.isInJail) {
-    return startJailPhase(state);
+    return { ...state, turnPhase: 'JAIL_DECISION' };
   }
 
-  // Generate a math challenge for rolling
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'ROLL_DICE',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-  });
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-  };
-}
-
-/**
- * Process the dice roll after math challenge is answered
- */
-export function rollDice(state: GameState, answerResult: AnswerResult): GameState {
+  // Roll 2d6
   const die1 = Math.floor(Math.random() * 6) + 1;
   const die2 = Math.floor(Math.random() * 6) + 1;
-  const bonus = answerResult.isCorrect ? 1 : -1;
-  const totalMovement = Math.max(2, die1 + die2 + bonus);
 
-  return {
+  const newState: GameState = {
     ...state,
     diceValues: [die1, die2],
-    movementBonus: bonus,
+  };
+
+  // 1-in-3 chance of dice mini-challenge
+  if (Math.random() < DICE_CHALLENGE_PROBABILITY) {
+    const challenge = selectChallenge({
+      masteryStates: player.masteryStates,
+      context: 'DICE_CHALLENGE',
+      consecutiveFailures: player.consecutiveFailures,
+      diceValues: [die1, die2],
+    });
+
+    return {
+      ...newState,
+      turnPhase: 'DICE_CHALLENGE',
+      currentChallenge: challenge,
+    };
+  }
+
+  // No challenge → move directly
+  return {
+    ...newState,
     turnPhase: 'MOVING',
   };
 }
 
-/**
- * Phase 2: MOVE — Execute player movement
- */
+// ---- DICE CHALLENGE ANSWER ----
+
+export function processDiceChallengeAnswer(
+  state: GameState,
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
+  const player = getCurrentPlayer(state);
+  const challenge = state.currentChallenge!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
+
+  // Update BKT mastery
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
+
+  // Reward: RM20 bonus for correct, nothing for wrong
+  const reward: RewardResult = isCorrect
+    ? { type: 'BONUS_CASH', value: DICE_CHALLENGE_BONUS, description: `Correct! +${formatRM(DICE_CHALLENGE_BONUS)} bonus!` }
+    : { type: 'NONE', value: 0, description: 'No bonus this time.' };
+
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    money: isCorrect ? p.money + DICE_CHALLENGE_BONUS : p.money,
+    totalQuestions: p.totalQuestions + 1,
+    totalCorrect: isCorrect ? p.totalCorrect + 1 : p.totalCorrect,
+    streak: isCorrect ? p.streak + 1 : 0,
+    masteryStates: { ...p.masteryStates, [challenge.skillName]: newMastery },
+    consecutiveFailures: {
+      ...p.consecutiveFailures,
+      [challenge.skillName]: isCorrect ? 0 : (p.consecutiveFailures[challenge.skillName] ?? 0) + 1,
+    },
+  }));
+
+  const result: AnswerResult = {
+    isCorrect,
+    correctAnswer: challenge.options[challenge.correctIndex],
+    newMastery,
+    previousMastery,
+    reward,
+    streakCount: isCorrect ? (player.streak + 1) : 0,
+    streakBroken: !isCorrect && player.streak > 0,
+    showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
+  };
+
+  return {
+    newState: {
+      ...state,
+      players: updatedPlayers,
+      turnPhase: 'MOVING',
+      currentChallenge: null,
+    },
+    result,
+  };
+}
+
+// ---- B. MOVING ----
+
 export function movePlayer(state: GameState): GameState {
   const player = getCurrentPlayer(state);
-  const totalMovement = Math.max(2, state.diceValues[0] + state.diceValues[1] + state.movementBonus);
+  const totalMovement = state.diceValues[0] + state.diceValues[1]; // Pure dice, no modifier
   const oldPosition = player.position;
-  const newPosition = (oldPosition + totalMovement) % GAME_CONSTANTS.TOTAL_TILES;
-  const passedGo = newPosition < oldPosition; // Wrapped around the board
+  const newPosition = (oldPosition + totalMovement) % TOTAL_TILES;
+  const passedGo = newPosition < oldPosition; // Wrapped around
 
-  // Update player position
-  const updatedPlayers = state.players.map((p, idx) => {
-    if (idx !== state.currentPlayerIndex) return p;
-    return {
-      ...p,
-      position: newPosition,
-      // Passing GO salary handled separately after potential challenge
-      money: passedGo ? p.money + getGoSalary(p) : p.money,
-    };
-  });
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    position: newPosition,
+    money: passedGo ? p.money + GO_SALARY : p.money,
+  }));
 
   return {
     ...state,
     players: updatedPlayers,
-    turnPhase: 'TILE_EVENT',
+    turnPhase: 'RESOLVE_TILE',
   };
 }
 
-/**
- * Phase 3: TILE_EVENT — Resolve what happens on the landed tile
- */
+// ---- C. RESOLVE TILE ----
+
 export function resolveTileEvent(state: GameState): GameState {
   const player = getCurrentPlayer(state);
   const tile = BOARD_TILES[player.position];
 
-  if (!tile) {
-    return { ...state, turnPhase: 'ACTION' };
-  }
+  if (!tile) return { ...state, turnPhase: 'END_TURN' };
 
   switch (tile.type) {
     case 'GO':
-      // Already handled in move phase
-      return { ...state, turnPhase: 'ACTION' };
+      // Already collected salary in movePlayer if passed GO
+      return { ...state, turnPhase: 'END_TURN' };
 
     case 'PROPERTY':
       return resolvePropertyTile(state, player, tile.index);
@@ -200,1116 +270,1061 @@ export function resolveTileEvent(state: GameState): GameState {
     case 'TAX':
       return resolveTaxTile(state, player, tile.index);
 
-    case 'CHANCE':
-    case 'COMMUNITY_CHEST':
-      return resolveCardTile(state, player, tile.type);
+    case 'CHALLENGE_CARD':
+      return resolveChallengeCardTile(state, player);
 
-    case 'FREE_PARKING':
-      return resolveFreeParkingTile(state, player);
+    case 'LUCKY_BREAK':
+      return resolveLuckyBreak(state, player);
+
+    case 'REST':
+      return { ...state, turnPhase: 'END_TURN' };
 
     case 'GO_TO_JAIL':
       return resolveGoToJail(state, player);
 
     case 'JAIL':
-      // "Just Visiting" — no action
-      return { ...state, turnPhase: 'ACTION' };
+      // "Just Visiting"
+      return { ...state, turnPhase: 'END_TURN' };
 
     default:
-      return { ...state, turnPhase: 'ACTION' };
+      return { ...state, turnPhase: 'END_TURN' };
   }
 }
 
-// ============================================
-// TILE EVENT HANDLERS
-// ============================================
+// ---- PROPERTY TILE ----
 
-/**
- * Handle landing on a property tile
- */
 function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: number): GameState {
   const tile = BOARD_TILES[tileIndex];
   const property = state.properties.find((p) => p.tileIndex === tileIndex);
 
-  if (!property) {
-    return { ...state, turnPhase: 'ACTION' };
-  }
+  if (!property) return { ...state, turnPhase: 'END_TURN' };
 
-  // Unowned property → buy opportunity with math challenge
+  // UNOWNED → buy decision
   if (property.ownerId === null) {
-    if (player.money >= tile.price && !player.isInDebt) {
-      const challenge = selectChallenge({
-        masteryStates: player.masteryStates,
-        context: 'BUY_PROPERTY',
-        consecutiveFailures: getConsecutiveFailures(player),
-        recentlySeenSkills: [],
-        playerMoney: player.money,
-        propertyPrice: tile.price,
-      });
-
-      return {
-        ...state,
-        turnPhase: 'MATH_CHALLENGE',
-        currentChallenge: challenge,
-        pendingTileEvent: {
-          type: 'PROPERTY',
-          tileIndex,
-          tileName: tile.name,
-          propertyPrice: tile.price,
-          propertyOwner: null,
-        },
-      };
-    }
-    // Can't afford → skip to action phase
-    return { ...state, turnPhase: 'ACTION' };
-  }
-
-  // Owned by another player → pay rent with math challenge
-  if (property.ownerId !== player.id) {
-    const owner = state.players.find((p) => p.id === property.ownerId);
-    if (!owner) return { ...state, turnPhase: 'ACTION' };
-
-    const rentAmount = calculateRent(tile, property.houses, property.hasHotel);
-
-    const challenge = selectChallenge({
-      masteryStates: player.masteryStates,
-      context: 'PAY_RENT',
-      consecutiveFailures: getConsecutiveFailures(player),
-      recentlySeenSkills: [],
-      rentBase: tile.baseRent,
-      rentHouses: property.houses,
-    });
-
-    return {
-      ...state,
-      turnPhase: 'MATH_CHALLENGE',
-      currentChallenge: challenge,
-      pendingTileEvent: {
+    if (player.money >= tile.price && !player.isBankrupt) {
+      const event: TileEvent = {
         type: 'PROPERTY',
         tileIndex,
         tileName: tile.name,
-        propertyOwner: property.ownerId,
-        rentAmount,
-      },
-    };
+        propertyPrice: tile.price,
+        propertyOwner: null,
+      };
+      return {
+        ...state,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: event,
+      };
+    }
+    // Can't afford → skip (no auction in simplified version for now)
+    return { ...state, turnPhase: 'END_TURN' };
   }
 
-  // Owned by this player → no action needed
-  return { ...state, turnPhase: 'ACTION' };
+  // OWN PROPERTY → nothing
+  if (property.ownerId === player.id) {
+    return { ...state, turnPhase: 'END_TURN' };
+  }
+
+  // OPPONENT'S PROPERTY → rent
+  const owner = state.players.find((p) => p.id === property.ownerId);
+  if (!owner || owner.isBankrupt) return { ...state, turnPhase: 'END_TURN' };
+
+  // Check rent shield
+  if (player.hasRentShield) {
+    const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+      ...p,
+      hasRentShield: false,
+    }));
+    return { ...state, players: updatedPlayers, turnPhase: 'END_TURN' };
+  }
+
+  const hasMonopoly = tile.colorGroup ? ownsFullColorGroup(owner.properties, tile.colorGroup) : false;
+  const rent = calculateRent(tile, property.isLeveledUp, hasMonopoly);
+
+  const event: TileEvent = {
+    type: 'PROPERTY',
+    tileIndex,
+    tileName: tile.name,
+    propertyOwner: property.ownerId,
+    rentAmount: rent,
+    isMonopoly: hasMonopoly,
+    isLeveledUp: property.isLeveledUp,
+  };
+
+  return {
+    ...state,
+    turnPhase: 'RENT_PAYMENT',
+    pendingTileEvent: event,
+  };
 }
 
-/**
- * Handle landing on a tax tile
- */
-function resolveTaxTile(state: GameState, player: PlayerState, tileIndex: number): GameState {
-  const tile = BOARD_TILES[tileIndex];
-  const taxType: 'INCOME' | 'LUXURY' = tileIndex === 4 ? 'INCOME' : 'LUXURY';
-  const totalAssets = player.money + calculatePropertyValue(player.properties);
-  const taxAmount = taxType === 'INCOME'
-    ? Math.round(totalAssets * 0.10)
-    : 75;
+// ---- BUY DECISIONS ----
+
+/** Player buys at full price (or discounted if they have a discount token) */
+export function buyPropertyFullPrice(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  const event = state.pendingTileEvent!;
+  let price = event.propertyPrice!;
+
+  // Apply discount token if available
+  let useDiscount = false;
+  if (player.hasDiscountToken) {
+    price = Math.floor(price * 0.70); // 30% off
+    useDiscount = true;
+  }
+
+  if (player.money < price) return state; // Can't afford
+
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    money: p.money - price,
+    properties: [...p.properties, event.tileIndex],
+    hasDiscountToken: useDiscount ? false : p.hasDiscountToken,
+  }));
+
+  const updatedProperties = state.properties.map((prop) =>
+    prop.tileIndex === event.tileIndex ? { ...prop, ownerId: player.id } : prop
+  );
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    properties: updatedProperties,
+    turnPhase: 'END_TURN',
+    pendingTileEvent: null,
+  };
+}
+
+/** Player opts into Smart Buy challenge */
+export function startSmartBuyChallenge(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  const event = state.pendingTileEvent!;
 
   const challenge = selectChallenge({
     masteryStates: player.masteryStates,
-    context: 'TAX',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-    taxTotalAssets: totalAssets,
-    taxType,
+    context: 'SMART_BUY',
+    consecutiveFailures: player.consecutiveFailures,
+    propertyPrice: event.propertyPrice,
   });
 
   return {
     ...state,
-    turnPhase: 'MATH_CHALLENGE',
+    turnPhase: 'SMART_BUY_CHALLENGE',
     currentChallenge: challenge,
+  };
+}
+
+/** Process Smart Buy answer */
+export function processSmartBuyAnswer(
+  state: GameState,
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
+  const player = getCurrentPlayer(state);
+  const challenge = state.currentChallenge!;
+  const event = state.pendingTileEvent!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
+
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
+
+  const fullPrice = event.propertyPrice!;
+  const discountedPrice = Math.floor(fullPrice * (1 - SMART_BUY_DISCOUNT));
+  const finalPrice = isCorrect ? discountedPrice : fullPrice;
+
+  const reward: RewardResult = isCorrect
+    ? { type: 'DISCOUNT', value: SMART_BUY_DISCOUNT * 100, description: `Smart Buy! 20% off — you pay ${formatRM(discountedPrice)} instead of ${formatRM(fullPrice)}!` }
+    : { type: 'NONE', value: 0, description: `Full price: ${formatRM(fullPrice)}` };
+
+  if (player.money < finalPrice) {
+    // Can't afford even after discount/full price — skip purchase
+    const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+    return {
+      newState: { ...state, players: updatedPlayers, turnPhase: 'END_TURN', currentChallenge: null, pendingTileEvent: null },
+      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    };
+  }
+
+  // Apply discount token stack if available
+  let actualPrice = finalPrice;
+  let useDiscountToken = false;
+  const currentPlayer = state.players[state.currentPlayerIndex];
+  if (currentPlayer.hasDiscountToken) {
+    actualPrice = Math.floor(actualPrice * 0.70);
+    useDiscountToken = true;
+  }
+
+  const updatedPlayers = updatePlayerInList(
+    updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery),
+    state.currentPlayerIndex,
+    (p) => ({
+      ...p,
+      money: p.money - actualPrice,
+      properties: [...p.properties, event.tileIndex],
+      hasDiscountToken: useDiscountToken ? false : p.hasDiscountToken,
+    })
+  );
+
+  const updatedProperties = state.properties.map((prop) =>
+    prop.tileIndex === event.tileIndex ? { ...prop, ownerId: player.id } : prop
+  );
+
+  return {
+    newState: {
+      ...state,
+      players: updatedPlayers,
+      properties: updatedProperties,
+      turnPhase: 'END_TURN',
+      currentChallenge: null,
+      pendingTileEvent: null,
+    },
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+  };
+}
+
+/** Player skips buying */
+export function skipBuy(state: GameState): GameState {
+  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+}
+
+// ---- RENT ----
+
+/** Player pays full rent (skips defense) */
+export function payFullRent(state: GameState): GameState {
+  const event = state.pendingTileEvent!;
+  const rent = event.rentAmount!;
+
+  return transferRent(state, rent);
+}
+
+/** Player opts into Rent Defense challenge */
+export function startRentDefense(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  const event = state.pendingTileEvent!;
+
+  const challenge = selectChallenge({
+    masteryStates: player.masteryStates,
+    context: 'RENT_DEFENSE',
+    consecutiveFailures: player.consecutiveFailures,
+    rentAmount: event.rentAmount,
+  });
+
+  return {
+    ...state,
+    turnPhase: 'RENT_CHALLENGE',
+    currentChallenge: challenge,
+  };
+}
+
+/** Process Rent Defense answer */
+export function processRentDefenseAnswer(
+  state: GameState,
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
+  const player = getCurrentPlayer(state);
+  const challenge = state.currentChallenge!;
+  const event = state.pendingTileEvent!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
+
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
+
+  const fullRent = event.rentAmount!;
+  const halfRent = Math.floor(fullRent * RENT_DEFENSE_DISCOUNT);
+  const actualRent = isCorrect ? halfRent : fullRent;
+
+  const reward: RewardResult = isCorrect
+    ? { type: 'RENT_HALF', value: halfRent, description: `Defense successful! Pay only ${formatRM(halfRent)} instead of ${formatRM(fullRent)}!` }
+    : { type: 'NONE', value: 0, description: `Full rent: ${formatRM(fullRent)}` };
+
+  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  const stateAfterAnswer = { ...state, players: updatedPlayers, currentChallenge: null };
+  const finalState = transferRent(stateAfterAnswer, actualRent);
+
+  return {
+    newState: { ...finalState, pendingTileEvent: null },
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+  };
+}
+
+function transferRent(state: GameState, rent: number): GameState {
+  const event = state.pendingTileEvent!;
+  const payerIdx = state.currentPlayerIndex;
+  const ownerIdx = state.players.findIndex((p) => p.id === event.propertyOwner);
+
+  if (ownerIdx === -1) return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+
+  const updatedPlayers = state.players.map((p, idx) => {
+    if (idx === payerIdx) return { ...p, money: p.money - rent };
+    if (idx === ownerIdx) return { ...p, money: p.money + rent };
+    return p;
+  });
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    turnPhase: 'END_TURN',
+    pendingTileEvent: null,
+  };
+}
+
+// ---- TAX ----
+
+function resolveTaxTile(state: GameState, player: PlayerState, tileIndex: number): GameState {
+  const tile = BOARD_TILES[tileIndex];
+  const taxAmount = tile.name === 'Cukai Mewah' ? LUXURY_TAX_AMOUNT : TAX_AMOUNT;
+
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    money: p.money - taxAmount,
+  }));
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    turnPhase: 'END_TURN',
     pendingTileEvent: {
       type: 'TAX',
       tileIndex,
       tileName: tile.name,
       taxAmount,
-      taxType,
     },
   };
 }
 
-/**
- * Handle landing on a Chance or Community Chest tile
- * Simplified: generates a random math challenge with a money reward/penalty
- */
-function resolveCardTile(state: GameState, player: PlayerState, cardType: 'CHANCE' | 'COMMUNITY_CHEST'): GameState {
-  const context: ChallengeContext = cardType === 'CHANCE' ? 'CHANCE_CARD' : 'COMMUNITY_CHEST';
+// ---- CHALLENGE CARD ----
 
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context,
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-  });
+function resolveChallengeCardTile(state: GameState, player: PlayerState): GameState {
+  const { card, newIndex, newDeck } = drawCard(state.challengeCardDeck, state.challengeCardIndex);
 
-  // Generate a random card effect
-  const cardEffects = cardType === 'CHANCE'
-    ? CHANCE_EFFECTS
-    : COMMUNITY_CHEST_EFFECTS;
-  const effect = cardEffects[Math.floor(Math.random() * cardEffects.length)];
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-    pendingTileEvent: {
-      type: cardType,
-      tileIndex: player.position,
-      tileName: cardType === 'CHANCE' ? 'Chance' : 'Community Chest',
-      card: {
-        id: `card_${Date.now()}`,
-        title: effect.title,
-        description: effect.description,
-        mathContext: challenge.text,
-        effect: effect.effect,
-      },
-    },
+  const event: TileEvent = {
+    type: 'CHALLENGE_CARD',
+    tileIndex: player.position,
+    tileName: 'Challenge Card',
+    card,
   };
-}
 
-/**
- * Handle landing on Free Parking (Knowledge Boost)
- * Bonus round: 3 rapid-fire questions
- */
-function resolveFreeParkingTile(state: GameState, player: PlayerState): GameState {
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'FREE_PARKING',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-  });
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-    pendingTileEvent: {
-      type: 'FREE_PARKING',
-      tileIndex: player.position,
-      tileName: 'Knowledge Boost',
-    },
-  };
-}
-
-/**
- * Handle landing on Go To Jail
- */
-function resolveGoToJail(state: GameState, player: PlayerState): GameState {
-  // Plea bargain: answer correctly to reduce jail time
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'JAIL_ESCAPE',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-  });
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-    pendingTileEvent: {
-      type: 'GO_TO_JAIL',
-      tileIndex: player.position,
-      tileName: 'Go To Jail',
-    },
-  };
-}
-
-/**
- * Handle jail escape attempts
- */
-function startJailPhase(state: GameState): GameState {
-  const player = getCurrentPlayer(state);
-
-  // Auto-release after max jail turns
-  if (player.jailTurns >= GAME_CONSTANTS.MAX_JAIL_TURNS) {
-    const updatedPlayers = state.players.map((p, idx) => {
-      if (idx !== state.currentPlayerIndex) return p;
-      return {
-        ...p,
-        isInJail: false,
-        jailTurns: 0,
-        money: p.money - GAME_CONSTANTS.BAIL_COST, // Auto-pay bail
-      };
+  if (card.isMathCard) {
+    // Math challenge card → generate question
+    const challenge = selectChallenge({
+      masteryStates: player.masteryStates,
+      context: 'CHALLENGE_CARD',
+      consecutiveFailures: player.consecutiveFailures,
     });
 
     return {
       ...state,
-      players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-      turnPhase: 'ROLL',
+      challengeCardDeck: newDeck,
+      challengeCardIndex: newIndex,
+      turnPhase: 'CARD_MATH_CHALLENGE',
+      currentChallenge: challenge,
+      pendingTileEvent: event,
     };
   }
 
-  // Offer math challenge to escape
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'JAIL_ESCAPE',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-  });
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-    pendingTileEvent: {
-      type: 'JAIL',
-      tileIndex: 7, // Jail tile index
-      tileName: 'Jail Escape',
-    },
-  };
-}
-
-// ============================================
-// ANSWER PROCESSING
-// ============================================
-
-/**
- * Process a player's answer to a math challenge
- * Updates BKT, applies rewards/penalties, modifies game state
- */
-export function processAnswer(
-  state: GameState,
-  selectedAnswer: number,
-  timeMs: number
-): { newState: GameState; result: AnswerResult } {
-  const challenge = state.currentChallenge;
-  if (!challenge) {
-    throw new Error('No active challenge to answer');
-  }
-
-  const player = getCurrentPlayer(state);
-  const isCorrect = selectedAnswer === challenge.correctIndex;
-
-  // 1. BKT Update
-  const currentMastery = player.masteryStates[challenge.skillName] ?? 0.1;
-  const adjustedParams = getAdjustedParams(challenge.difficulty);
-  const newMastery = updateMastery(currentMastery, isCorrect, adjustedParams);
-
-  // 2. Update streak
-  const newStreak = isCorrect ? player.streak + 1 : 0;
-  const streakBroken = !isCorrect && player.streak > 0;
-
-  // 3. Calculate reward/penalty
-  const reward = calculateReward(isCorrect, challenge.context, state, newStreak);
-  const penalty = isCorrect ? null : calculatePenalty(challenge.context, state);
-
-  // 4. Check milestones
-  const milestones = checkMilestones(currentMastery, newMastery, challenge.skillName);
-
-  // 5. Determine hint for next time
-  const consecutiveFailures = getConsecutiveFailures(player);
-  const newFailures = isCorrect ? 0 : (consecutiveFailures[challenge.skillName] ?? 0) + 1;
-  const showHintNext = newFailures >= 2 || newMastery < 0.15;
-
-  // 6. Apply game state changes
-  let updatedPlayers = state.players.map((p, idx) => {
-    if (idx !== state.currentPlayerIndex) return p;
-    return {
-      ...p,
-      masteryStates: {
-        ...p.masteryStates,
-        [challenge.skillName]: newMastery,
-      },
-      streak: newStreak,
-      totalCorrect: isCorrect ? p.totalCorrect + 1 : p.totalCorrect,
-      totalQuestions: p.totalQuestions + 1,
-      movementTokens: reward.type === 'MOVEMENT'
-        ? p.movementTokens + reward.value
-        : p.movementTokens,
-      money: applyMoneyChange(p.money, reward, penalty),
-    };
-  });
-
-  // Apply milestone bonuses
-  for (const milestone of milestones) {
-    updatedPlayers = updatedPlayers.map((p, idx) => {
-      if (idx !== state.currentPlayerIndex) return p;
-      return { ...p, money: p.money + milestone.cashBonus };
-    });
-  }
-
-  const result: AnswerResult = {
-    isCorrect,
-    correctAnswer: challenge.options[challenge.correctIndex],
-    newMastery,
-    previousMastery: currentMastery,
-    reward,
-    penalty,
-    milestones,
-    streakCount: newStreak,
-    streakBroken,
-    showHintNext,
-  };
-
-  // 7. Determine next turn phase based on context
-  const nextState = resolvePostAnswer(
-    { ...state, players: updatedPlayers, currentChallenge: null },
-    challenge.context,
-    isCorrect
+  // Luck card → apply effect immediately
+  const stateAfterCard = applyCardEffect(
+    { ...state, challengeCardDeck: newDeck, challengeCardIndex: newIndex },
+    card.effect,
+    player
   );
 
-  return { newState: nextState, result };
+  return {
+    ...stateAfterCard,
+    turnPhase: 'CARD_DRAW', // Show card to player briefly before END_TURN
+    pendingTileEvent: event,
+  };
 }
 
-/**
- * Determine what happens after answering a challenge
- */
-function resolvePostAnswer(
+/** Process a math challenge card answer */
+export function processCardChallengeAnswer(
   state: GameState,
-  context: ChallengeContext,
-  isCorrect: boolean
-): GameState {
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
-  const event = state.pendingTileEvent;
+  const challenge = state.currentChallenge!;
+  const card = state.pendingTileEvent!.card!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
 
-  switch (context) {
-    case 'ROLL_DICE': {
-      // Roll the dice now
-      const die1 = Math.floor(Math.random() * 6) + 1;
-      const die2 = Math.floor(Math.random() * 6) + 1;
-      const bonus = isCorrect ? 1 : -1;
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
 
-      return {
-        ...state,
-        diceValues: [die1, die2],
-        movementBonus: bonus,
-        turnPhase: 'MOVING',
-        pendingTileEvent: null,
-      };
-    }
+  const effect = isCorrect ? card.correctReward! : card.wrongOutcome!;
+  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  let stateAfterEffect = { ...state, players: updatedPlayers };
+  stateAfterEffect = applyCardEffect(stateAfterEffect, effect, getCurrentPlayer(stateAfterEffect));
 
-    case 'BUY_PROPERTY': {
-      if (!event) return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
+  const reward: RewardResult = isCorrect
+    ? { type: 'BONUS_CASH', value: 0, description: `${card.name} — Correct! ${describeEffect(effect)}` }
+    : { type: 'NONE', value: 0, description: `${card.name} — ${describeEffect(effect)}` };
 
-      const tile = BOARD_TILES[event.tileIndex];
-      const discount = isCorrect ? GAME_CONSTANTS.MATH_DISCOUNT_PERCENT / 100 : 0;
-      const finalPrice = Math.round(tile.price * (1 - discount));
+  return {
+    newState: {
+      ...stateAfterEffect,
+      turnPhase: 'END_TURN',
+      currentChallenge: null,
+      pendingTileEvent: null,
+    },
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+  };
+}
 
-      // Buy the property
-      const updatedPlayers = state.players.map((p, idx) => {
-        if (idx !== state.currentPlayerIndex) return p;
-        return {
-          ...p,
-          money: p.money - finalPrice,
-          properties: [...p.properties, event.tileIndex],
-        };
-      });
+/** Transition from CARD_DRAW to END_TURN (after player sees the card) */
+export function acknowledgeCard(state: GameState): GameState {
+  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+}
 
-      const updatedProperties = state.properties.map((prop) => {
-        if (prop.tileIndex !== event.tileIndex) return prop;
-        return { ...prop, ownerId: player.id };
-      });
+function applyCardEffect(state: GameState, effect: CardEffect, player: PlayerState): GameState {
+  const playerIdx = state.currentPlayerIndex;
 
-      return {
-        ...state,
-        players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-        properties: updatedProperties,
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
-      };
-    }
-
-    case 'PAY_RENT': {
-      if (!event || !event.rentAmount || !event.propertyOwner) {
-        return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
-      }
-
-      const discount = isCorrect ? GAME_CONSTANTS.RENT_DISCOUNT_PERCENT / 100 : 0;
-      const finalRent = Math.round(event.rentAmount * (1 - discount));
-
-      const updatedPlayers = state.players.map((p, idx) => {
-        if (idx === state.currentPlayerIndex) {
-          return { ...p, money: p.money - finalRent };
-        }
-        if (p.id === event.propertyOwner) {
-          return { ...p, money: p.money + finalRent };
-        }
+  switch (effect.type) {
+    case 'GAIN_MONEY':
+      return updatePlayerMoney(state, playerIdx, effect.amount);
+    case 'LOSE_MONEY':
+      return updatePlayerMoney(state, playerIdx, -effect.amount);
+    case 'COLLECT_FROM_EACH': {
+      const otherPlayers = state.players.filter((p, i) => i !== playerIdx && !p.isBankrupt);
+      const totalCollected = otherPlayers.length * effect.amount;
+      let players = state.players.map((p, i) => {
+        if (i === playerIdx) return { ...p, money: p.money + totalCollected };
+        if (!p.isBankrupt) return { ...p, money: p.money - effect.amount };
         return p;
       });
-
+      return { ...state, players };
+    }
+    case 'MOVE_FORWARD': {
+      const newPos = (player.position + effect.spaces) % TOTAL_TILES;
+      const passedGo = newPos < player.position;
       return {
         ...state,
-        players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
+        players: updatePlayerInList(state.players, playerIdx, (p) => ({
+          ...p,
+          position: newPos,
+          money: passedGo ? p.money + GO_SALARY : p.money,
+        })),
       };
     }
-
-    case 'TAX': {
-      if (!event || event.taxAmount == null) {
-        return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
-      }
-
-      const discount = isCorrect ? GAME_CONSTANTS.TAX_DISCOUNT_PERCENT / 100 : 0;
-      const finalTax = Math.round(event.taxAmount * (1 - discount));
-
-      const updatedPlayers = state.players.map((p, idx) => {
-        if (idx !== state.currentPlayerIndex) return p;
-        return { ...p, money: p.money - finalTax };
+    case 'MOVE_BACKWARD': {
+      let newPos = player.position - effect.spaces;
+      if (newPos < 0) newPos += TOTAL_TILES;
+      return {
+        ...state,
+        players: updatePlayerInList(state.players, playerIdx, (p) => ({
+          ...p,
+          position: newPos,
+        })),
+      };
+    }
+    case 'GO_TO_JAIL':
+      return sendToJail(state, playerIdx);
+    case 'FREE_LEVEL_UP_TOKEN':
+      return {
+        ...state,
+        players: updatePlayerInList(state.players, playerIdx, (p) => ({
+          ...p,
+          hasLevelUpToken: true,
+        })),
+      };
+    case 'RENT_SHIELD':
+      return {
+        ...state,
+        players: updatePlayerInList(state.players, playerIdx, (p) => ({
+          ...p,
+          hasRentShield: true,
+        })),
+      };
+    case 'DISCOUNT_TOKEN':
+      return {
+        ...state,
+        players: updatePlayerInList(state.players, playerIdx, (p) => ({
+          ...p,
+          hasDiscountToken: true,
+        })),
+      };
+    case 'STEAL_FROM_RICHEST': {
+      const richest = state.players
+        .filter((p, i) => i !== playerIdx && !p.isBankrupt)
+        .sort((a, b) => b.money - a.money)[0];
+      if (!richest) return state;
+      const richestIdx = state.players.findIndex((p) => p.id === richest.id);
+      const stealAmount = Math.min(effect.amount, richest.money);
+      let players = state.players.map((p, i) => {
+        if (i === playerIdx) return { ...p, money: p.money + stealAmount };
+        if (i === richestIdx) return { ...p, money: p.money - stealAmount };
+        return p;
       });
-
-      return {
-        ...state,
-        players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
-      };
+      return { ...state, players };
     }
-
-    case 'CHANCE_CARD':
-    case 'COMMUNITY_CHEST': {
-      if (!event?.card) {
-        return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
-      }
-
-      const effect = event.card.effect;
-      const effectMultiplier = isCorrect ? 1 : 0.5; // Wrong = half benefit
-
-      let updatedState = { ...state };
-
-      switch (effect.type) {
-        case 'GAIN_MONEY': {
-          const amount = Math.round(effect.amount * effectMultiplier);
-          updatedState = applyMoney(updatedState, state.currentPlayerIndex, amount);
-          break;
-        }
-        case 'LOSE_MONEY': {
-          // Never lose money for wrong answers on cards
-          if (isCorrect) {
-            // Correct = don't lose money (you solved the problem!)
-          } else {
-            updatedState = applyMoney(updatedState, state.currentPlayerIndex, -effect.amount);
-          }
-          break;
-        }
-        case 'MOVE_FORWARD': {
-          const spaces = Math.round(effect.spaces * effectMultiplier);
-          const newPos = (player.position + spaces) % GAME_CONSTANTS.TOTAL_TILES;
-          updatedState = {
-            ...updatedState,
-            players: updatedState.players.map((p, idx) => {
-              if (idx !== state.currentPlayerIndex) return p;
-              return { ...p, position: newPos };
-            }),
-          };
-          break;
-        }
-        case 'COLLECT_FROM_EACH': {
-          const amount = Math.round(effect.amount * effectMultiplier);
-          updatedState = {
-            ...updatedState,
-            players: updatedState.players.map((p, idx) => {
-              if (idx === state.currentPlayerIndex) {
-                return { ...p, money: p.money + amount * (state.players.length - 1) };
-              }
-              return { ...p, money: p.money - amount };
-            }),
-          };
-          break;
-        }
-        case 'GO_TO_JAIL': {
-          if (!isCorrect) {
-            updatedState = sendToJail(updatedState, state.currentPlayerIndex);
-          }
-          // If correct, avoid jail!
-          break;
-        }
-        default:
-          break;
-      }
-
-      return {
-        ...updatedState,
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
-      };
-    }
-
-    case 'JAIL_ESCAPE': {
-      if (isCorrect) {
-        // Escape jail!
-        const updatedPlayers = state.players.map((p, idx) => {
-          if (idx !== state.currentPlayerIndex) return p;
-          return {
-            ...p,
-            isInJail: false,
-            jailTurns: 0,
-            money: p.money + 25, // "Redeemed" bonus
-          };
-        });
-        return {
-          ...state,
-          players: updatedPlayers,
-          turnPhase: 'ROLL',
-          pendingTileEvent: null,
-        };
-      } else {
-        // Stay in jail
-        if (event?.type === 'GO_TO_JAIL') {
-          // Coming from Go To Jail tile — send to jail with standard sentence
-          return {
-            ...sendToJail(state, state.currentPlayerIndex),
-            turnPhase: 'END',
-            pendingTileEvent: null,
-          };
-        }
-        // Already in jail — increment turns
-        const updatedPlayers = state.players.map((p, idx) => {
-          if (idx !== state.currentPlayerIndex) return p;
-          return { ...p, jailTurns: p.jailTurns + 1 };
-        });
-        return {
-          ...state,
-          players: updatedPlayers,
-          turnPhase: 'END',
-          pendingTileEvent: null,
-        };
-      }
-    }
-
-    case 'FREE_PARKING': {
-      // Each correct answer = $30, handled by the reward system
-      return {
-        ...state,
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
-      };
-    }
-
-    case 'BUILD_HOUSE':
-    case 'BUILD_HOTEL': {
-      if (!event) return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
-
-      const tile = BOARD_TILES[event.tileIndex];
-      const discount = isCorrect ? GAME_CONSTANTS.BUILD_DISCOUNT_PERCENT / 100 : 0;
-      const finalCost = Math.round(tile.houseCost * (1 - discount));
-
-      const updatedPlayers = state.players.map((p, idx) => {
-        if (idx !== state.currentPlayerIndex) return p;
-        return { ...p, money: p.money - finalCost };
-      });
-
-      const updatedProperties = state.properties.map((prop) => {
-        if (prop.tileIndex !== event.tileIndex) return prop;
-        if (context === 'BUILD_HOTEL') {
-          return { ...prop, houses: 0, hasHotel: true };
-        }
-        return { ...prop, houses: prop.houses + 1 };
-      });
-
-      return {
-        ...state,
-        players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-        properties: updatedProperties,
-        turnPhase: 'ACTION',
-        pendingTileEvent: null,
-      };
-    }
-
+    case 'NOTHING':
+      return state;
     default:
-      return { ...state, turnPhase: 'ACTION', pendingTileEvent: null };
+      return state;
   }
 }
 
-// ============================================
-// BUILDING
-// ============================================
-
-/**
- * Attempt to build a house on a property
- * Returns a MathChallenge that determines discount
- */
-export function startBuildHouse(state: GameState, tileIndex: number): GameState | null {
-  const player = getCurrentPlayer(state);
-  const tile = BOARD_TILES[tileIndex];
-  const property = state.properties.find((p) => p.tileIndex === tileIndex);
-
-  if (!tile || !property) return null;
-  if (property.ownerId !== player.id) return null;
-  if (property.houses >= GAME_CONSTANTS.MAX_HOUSES) return null;
-  if (property.hasHotel) return null;
-  if (player.isInDebt) return null;
-
-  // Must own full color group
-  if (!tile.colorGroup || !ownsFullColorGroup(player.properties, tile.colorGroup)) return null;
-
-  // Must afford at least the discounted price
-  const minCost = Math.round(tile.houseCost * (1 - GAME_CONSTANTS.BUILD_DISCOUNT_PERCENT / 100));
-  if (player.money < minCost) return null;
-
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'BUILD_HOUSE',
-    consecutiveFailures: getConsecutiveFailures(player),
-    recentlySeenSkills: [],
-    houseCost: tile.houseCost,
-    numHouses: 1,
-  });
-
-  return {
-    ...state,
-    turnPhase: 'MATH_CHALLENGE',
-    currentChallenge: challenge,
-    pendingTileEvent: {
-      type: 'PROPERTY',
-      tileIndex,
-      tileName: tile.name,
-    },
-  };
+function describeEffect(effect: CardEffect): string {
+  switch (effect.type) {
+    case 'GAIN_MONEY': return `Gained ${formatRM(effect.amount)}!`;
+    case 'LOSE_MONEY': return `Lost ${formatRM(effect.amount)}.`;
+    case 'MOVE_FORWARD': return `Move forward ${effect.spaces} spaces!`;
+    case 'MOVE_BACKWARD': return `Move back ${effect.spaces} spaces.`;
+    case 'GO_TO_JAIL': return 'Go to Jail!';
+    case 'COLLECT_FROM_EACH': return `Collected ${formatRM(effect.amount)} from each player!`;
+    case 'FREE_LEVEL_UP_TOKEN': return 'Free Level Up token!';
+    case 'RENT_SHIELD': return 'Rent Shield activated!';
+    case 'DISCOUNT_TOKEN': return `${effect.percent}% discount on next purchase!`;
+    case 'STEAL_FROM_RICHEST': return `Stole ${formatRM(effect.amount)} from the richest player!`;
+    case 'NOTHING': return 'Nothing happened.';
+    default: return '';
+  }
 }
 
-// ============================================
-// PAY BAIL
-// ============================================
+// ---- LUCKY BREAK ----
 
-/**
- * Player pays bail to leave jail (no math required)
- */
-export function payBail(state: GameState): GameState {
-  const updatedPlayers = state.players.map((p, idx) => {
-    if (idx !== state.currentPlayerIndex) return p;
-    return {
+function resolveLuckyBreak(state: GameState, player: PlayerState): GameState {
+  let reward: LuckyBreakReward;
+
+  if (Math.random() < LUCKY_BREAK_TOKEN_CHANCE) {
+    reward = { type: 'levelUpToken' };
+  } else {
+    const amount = LUCKY_BREAK_CASH_OPTIONS[Math.floor(Math.random() * LUCKY_BREAK_CASH_OPTIONS.length)];
+    reward = { type: 'cash', amount };
+  }
+
+  let updatedPlayers: PlayerState[];
+  if (reward.type === 'cash') {
+    updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
       ...p,
-      isInJail: false,
-      jailTurns: 0,
-      money: p.money - GAME_CONSTANTS.BAIL_COST,
-    };
-  });
-
-  return {
-    ...state,
-    players: applyDebtCheck(updatedPlayers, state.currentPlayerIndex),
-    turnPhase: 'ROLL',
-    pendingTileEvent: null,
-    currentChallenge: null,
-  };
-}
-
-// ============================================
-// END TURN
-// ============================================
-
-/**
- * End the current turn and advance to the next player
- */
-export function endTurn(state: GameState): GameState {
-  const nextPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
-  const isNewRound = nextPlayerIndex === 0;
-  const newRound = isNewRound ? state.round + 1 : state.round;
-
-  // Check if game is over
-  if (newRound > state.maxRounds) {
-    return {
-      ...state,
-      phase: 'FINISHED',
-      turnPhase: 'END',
-      round: state.maxRounds,
-    };
-  }
-
-  // Recovery challenge for players in debt
-  let updatedPlayers = state.players;
-  if (updatedPlayers[nextPlayerIndex].isInDebt) {
-    // Recovery bonus applied when they answer during their turn
+      money: p.money + reward.amount!,
+    }));
+  } else {
+    updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+      ...p,
+      hasLevelUpToken: true,
+    }));
   }
 
   return {
     ...state,
     players: updatedPlayers,
-    currentPlayerIndex: nextPlayerIndex,
-    round: newRound,
-    turnPhase: 'ROLL',
-    diceValues: [1, 1],
-    movementBonus: 0,
-    currentChallenge: null,
-    pendingTileEvent: null,
-    auctionState: null,
+    turnPhase: 'END_TURN',
+    pendingTileEvent: {
+      type: 'LUCKY_BREAK',
+      tileIndex: player.position,
+      tileName: 'Lucky Break',
+      luckyBreakReward: reward,
+    },
   };
 }
 
-// ============================================
-// SCORING
-// ============================================
+// ---- JAIL ----
 
-/**
- * Calculate final scores for all players
- */
-export function calculateFinalScores(state: GameState): FinalScore[] {
-  const scores: FinalScore[] = state.players.map((player) => {
-    // Property value
-    const propertyValue = calculatePropertyValue(player.properties);
+function resolveGoToJail(state: GameState, player: PlayerState): GameState {
+  return {
+    ...sendToJail(state, state.currentPlayerIndex),
+    turnPhase: 'JAIL_DECISION',
+  };
+}
 
-    // Building value
-    const playerProperties = state.properties.filter((p) => p.ownerId === player.id);
-    const buildingValue = calculateBuildingValue(
-      playerProperties.map((p) => ({
-        tileIndex: p.tileIndex,
-        houses: p.houses,
-        hasHotel: p.hasHotel,
-      }))
-    );
+function sendToJail(state: GameState, playerIdx: number): GameState {
+  const jailTileIdx = BOARD_TILES.findIndex((t) => t.type === 'JAIL');
 
-    // Net worth
-    const netWorth = Math.max(0, player.money) + propertyValue + buildingValue;
+  return {
+    ...state,
+    players: updatePlayerInList(state.players, playerIdx, (p) => ({
+      ...p,
+      position: jailTileIdx >= 0 ? jailTileIdx : 5,
+      isInJail: true,
+      jailTurns: 0,
+    })),
+  };
+}
 
-    // Average mastery
-    const masteryValues = Object.values(player.masteryStates);
-    const averageMastery = masteryValues.length > 0
-      ? masteryValues.reduce((sum, v) => sum + v, 0) / masteryValues.length
-      : 0.1;
+/** Player attempts math escape from jail */
+export function startJailMathEscape(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
 
-    // Mastery multiplier: 0.5 + averageMastery (range 0.6–1.5)
-    const masteryMultiplier = 0.5 + averageMastery;
+  const challenge = selectChallenge({
+    masteryStates: player.masteryStates,
+    context: 'JAIL_ESCAPE',
+    consecutiveFailures: player.consecutiveFailures,
+  });
 
-    // Math bonus: $10 per correct answer
-    const mathBonus = player.totalCorrect * GAME_CONSTANTS.CORRECT_ANSWER_XP;
+  return {
+    ...state,
+    turnPhase: 'JAIL_CHALLENGE',
+    currentChallenge: challenge,
+  };
+}
 
-    // Final score
-    const finalScore = Math.round((netWorth * masteryMultiplier) + mathBonus);
+/** Process jail escape answer */
+export function processJailEscapeAnswer(
+  state: GameState,
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
+  const player = getCurrentPlayer(state);
+  const challenge = state.currentChallenge!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
+
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
+
+  const reward: RewardResult = isCorrect
+    ? { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' }
+    : { type: 'NONE', value: 0, description: 'Still in jail. Better luck next turn!' };
+
+  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+
+  if (isCorrect) {
+    // Freed! Player gets a normal turn
+    updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
+      ...p,
+      isInJail: false,
+      jailTurns: 0,
+    }));
+
+    // Re-roll dice for the freed player
+    const die1 = Math.floor(Math.random() * 6) + 1;
+    const die2 = Math.floor(Math.random() * 6) + 1;
 
     return {
-      playerId: player.id,
-      playerName: player.name,
-      color: player.color,
-      cash: player.money,
+      newState: {
+        ...state,
+        players: updatedPlayers,
+        diceValues: [die1, die2],
+        turnPhase: 'MOVING',
+        currentChallenge: null,
+      },
+      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    };
+  } else {
+    // Stay jailed, increment jail turns
+    updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
+      ...p,
+      jailTurns: p.jailTurns + 1,
+    }));
+
+    return {
+      newState: {
+        ...state,
+        players: updatedPlayers,
+        turnPhase: 'END_TURN',
+        currentChallenge: null,
+      },
+      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    };
+  }
+}
+
+/** Player pays bail */
+export function payBail(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  if (player.money < BAIL_COST) return state;
+
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    money: p.money - BAIL_COST,
+    isInJail: false,
+    jailTurns: 0,
+  }));
+
+  // Re-roll for freed player
+  const die1 = Math.floor(Math.random() * 6) + 1;
+  const die2 = Math.floor(Math.random() * 6) + 1;
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    diceValues: [die1, die2],
+    turnPhase: 'MOVING',
+  };
+}
+
+/** Player waits in jail */
+export function waitInJail(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  const newJailTurns = player.jailTurns + 1;
+
+  // Auto-release after MAX_JAIL_TURNS
+  if (newJailTurns >= MAX_JAIL_TURNS) {
+    const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+      ...p,
+      isInJail: false,
+      jailTurns: 0,
+    }));
+
+    const die1 = Math.floor(Math.random() * 6) + 1;
+    const die2 = Math.floor(Math.random() * 6) + 1;
+
+    return {
+      ...state,
+      players: updatedPlayers,
+      diceValues: [die1, die2],
+      turnPhase: 'MOVING',
+    };
+  }
+
+  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    jailTurns: newJailTurns,
+  }));
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    turnPhase: 'END_TURN',
+  };
+}
+
+// ---- D. LEVEL UP ----
+
+/** Check if player is eligible for Level Up at end of turn */
+export function checkLevelUpEligibility(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+
+  // Find a property the player can level up:
+  // Must own both in the color set, and at least one is not leveled
+  for (const propIdx of player.properties) {
+    const tile = BOARD_TILES[propIdx];
+    if (!tile || !tile.colorGroup) continue;
+
+    const hasMonopoly = ownsFullColorGroup(player.properties, tile.colorGroup);
+    if (!hasMonopoly) continue;
+
+    const prop = state.properties.find((p) => p.tileIndex === propIdx);
+    if (!prop || prop.isLeveledUp) continue;
+
+    const cost = getLevelUpCost(tile);
+    // Player must be able to afford it (or have a free token)
+    if (player.money >= cost || player.hasLevelUpToken) {
+      return {
+        ...state,
+        turnPhase: 'LEVEL_UP_OFFER',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: propIdx,
+          tileName: tile.name,
+          propertyPrice: cost,
+        },
+      };
+    }
+  }
+
+  // No eligible property → skip
+  return state;
+}
+
+/** Player accepts Level Up challenge */
+export function startLevelUpChallenge(state: GameState): GameState {
+  const player = getCurrentPlayer(state);
+  const event = state.pendingTileEvent!;
+  const tile = BOARD_TILES[event.tileIndex];
+
+  const challenge = selectChallenge({
+    masteryStates: player.masteryStates,
+    context: 'LEVEL_UP',
+    consecutiveFailures: player.consecutiveFailures,
+    propertySkillTheme: tile?.skillTheme as SkillName | undefined,
+  });
+
+  return {
+    ...state,
+    turnPhase: 'LEVEL_UP_CHALLENGE',
+    currentChallenge: challenge,
+  };
+}
+
+/** Process Level Up answer */
+export function processLevelUpAnswer(
+  state: GameState,
+  selectedIndex: number,
+  timeMs: number
+): { newState: GameState; result: AnswerResult } {
+  const player = getCurrentPlayer(state);
+  const challenge = state.currentChallenge!;
+  const event = state.pendingTileEvent!;
+  const isCorrect = selectedIndex === challenge.correctIndex;
+
+  const { newMastery, previousMastery } = updatePlayerMastery(
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+  );
+
+  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  let updatedProperties = state.properties;
+
+  const reward: RewardResult = isCorrect
+    ? { type: 'LEVEL_UP', value: 0, description: `${event.tileName} leveled up! ⭐ Rent increased!` }
+    : { type: 'NONE', value: 0, description: 'Level Up failed. Try again next turn!' };
+
+  if (isCorrect) {
+    const cost = event.propertyPrice!;
+    const useToken = player.hasLevelUpToken;
+
+    updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
+      ...p,
+      money: useToken ? p.money : p.money - cost,
+      hasLevelUpToken: useToken ? false : p.hasLevelUpToken,
+    }));
+
+    updatedProperties = state.properties.map((prop) =>
+      prop.tileIndex === event.tileIndex ? { ...prop, isLeveledUp: true } : prop
+    );
+  }
+
+  return {
+    newState: {
+      ...state,
+      players: updatedPlayers,
+      properties: updatedProperties,
+      turnPhase: 'END_TURN',
+      currentChallenge: null,
+      pendingTileEvent: null,
+    },
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+  };
+}
+
+/** Player declines Level Up */
+export function declineLevelUp(state: GameState): GameState {
+  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+}
+
+// ---- E. END TURN ----
+
+export function endTurn(state: GameState): GameState {
+  // Check Level Up eligibility before truly ending
+  if (state.turnPhase !== 'LEVEL_UP_OFFER' && state.turnPhase !== 'LEVEL_UP_CHALLENGE') {
+    const levelUpState = checkLevelUpEligibility(state);
+    if (levelUpState.turnPhase === 'LEVEL_UP_OFFER') {
+      return levelUpState;
+    }
+  }
+
+  // Check bankruptcy
+  let updatedState = checkBankruptcy(state);
+
+  // Check game end conditions
+  const gameEnd = checkGameEnd(updatedState);
+  if (gameEnd) return gameEnd;
+
+  // Advance to next active player
+  let nextIdx = (updatedState.currentPlayerIndex + 1) % updatedState.players.length;
+  let nextRound = updatedState.round;
+
+  // Skip bankrupt players
+  let safety = 0;
+  while (updatedState.players[nextIdx].isBankrupt && safety < updatedState.players.length) {
+    nextIdx = (nextIdx + 1) % updatedState.players.length;
+    safety++;
+  }
+
+  // New round if we've wrapped around
+  if (nextIdx <= updatedState.currentPlayerIndex) {
+    nextRound++;
+  }
+
+  return {
+    ...updatedState,
+    currentPlayerIndex: nextIdx,
+    round: nextRound,
+    turnPhase: 'ROLL_PHASE',
+    pendingTileEvent: null,
+    currentChallenge: null,
+  };
+}
+
+// ---- BANKRUPTCY & GAME END ----
+
+function checkBankruptcy(state: GameState): GameState {
+  const updatedPlayers = state.players.map((p) => {
+    if (p.isBankrupt) return p;
+    if (p.money < 0 && p.properties.length === 0) {
+      return { ...p, isBankrupt: true };
+    }
+    // Auto-sell cheapest property if negative money
+    if (p.money < 0 && p.properties.length > 0) {
+      const sortedProps = [...p.properties].sort((a, b) => {
+        const tileA = BOARD_TILES[a];
+        const tileB = BOARD_TILES[b];
+        return (tileA?.price ?? 0) - (tileB?.price ?? 0);
+      });
+      const sellIdx = sortedProps[0];
+      const sellTile = BOARD_TILES[sellIdx];
+      const sellPrice = Math.floor((sellTile?.price ?? 0) * 0.5);
+      return {
+        ...p,
+        money: p.money + sellPrice,
+        properties: p.properties.filter((idx) => idx !== sellIdx),
+      };
+    }
+    return p;
+  });
+
+  // Update property ownership for sold properties
+  const ownedByPlayers = new Set(updatedPlayers.flatMap((p) => p.properties));
+  const updatedProperties = state.properties.map((prop) => {
+    if (prop.ownerId && !ownedByPlayers.has(prop.tileIndex)) {
+      return { ...prop, ownerId: null, isLeveledUp: false };
+    }
+    return prop;
+  });
+
+  return { ...state, players: updatedPlayers, properties: updatedProperties };
+}
+
+function checkGameEnd(state: GameState): GameState | null {
+  const activePlayers = getActivePlayers(state);
+
+  // Last player standing
+  if (activePlayers.length <= 1) {
+    return { ...state, phase: 'FINISHED' };
+  }
+
+  // Round cap
+  if (state.round > state.maxRounds) {
+    return { ...state, phase: 'FINISHED' };
+  }
+
+  // Clock cap
+  const elapsedMs = Date.now() - state.gameStartTime;
+  const elapsedMinutes = elapsedMs / (1000 * 60);
+  if (elapsedMinutes >= CLOCK_CAP_MINUTES && !state.isFinalRound) {
+    return { ...state, isFinalRound: true };
+  }
+
+  // Final round complete
+  if (state.isFinalRound && state.currentPlayerIndex === state.players.length - 1) {
+    return { ...state, phase: 'FINISHED' };
+  }
+
+  return null;
+}
+
+// ---- SCORING ----
+
+export function calculateFinalScores(state: GameState): FinalScore[] {
+  const scores: FinalScore[] = state.players.map((p) => {
+    const propertyValue = calculatePropertyValue(p.properties);
+    const levelUpValue = calculateLevelUpValue(p.properties, state.properties);
+    const netWorth = p.money + propertyValue + levelUpValue;
+
+    return {
+      playerId: p.id,
+      playerName: p.name,
+      color: p.color,
+      isBot: p.isBot,
+      cash: p.money,
       propertyValue,
-      buildingValue,
+      levelUpValue,
       netWorth,
-      averageMastery: Math.round(averageMastery * 100) / 100,
-      masteryMultiplier: Math.round(masteryMultiplier * 100) / 100,
-      totalCorrect: player.totalCorrect,
-      mathBonus,
-      finalScore,
-      rank: 0, // Will be set below
+      totalCorrect: p.totalCorrect,
+      totalQuestions: p.totalQuestions,
+      rank: 0,
     };
   });
 
-  // Assign ranks
-  scores.sort((a, b) => b.finalScore - a.finalScore);
-  scores.forEach((score, idx) => {
-    score.rank = idx + 1;
-  });
+  // Rank by net worth (highest first)
+  scores.sort((a, b) => b.netWorth - a.netWorth);
+  scores.forEach((s, i) => { s.rank = i + 1; });
 
   return scores;
 }
 
-// ============================================
-// REWARDS
-// ============================================
+export function generateMasteryReport(player: PlayerState): MasteryReport {
+  const skills = SKILL_NAMES.map((s) => ({
+    skillName: s,
+    mastery: player.masteryStates[s] ?? INITIAL_MASTERY,
+    totalAttempts: 0, // Would need per-skill tracking; approximate from overall
+    totalCorrect: 0,
+  }));
 
-function calculateReward(
-  isCorrect: boolean,
-  context: ChallengeContext,
-  state: GameState,
-  streak: number
-): RewardResult {
-  if (!isCorrect) {
-    return { type: 'NONE', value: 0, description: '' };
-  }
+  const sortedSkills = [...skills].sort((a, b) => b.mastery - a.mastery);
 
-  let reward: RewardResult;
-
-  switch (context) {
-    case 'ROLL_DICE':
-      reward = {
-        type: 'MOVEMENT',
-        value: 1,
-        description: '🎯 Correct! +1 movement bonus!',
-      };
-      break;
-    case 'BUY_PROPERTY':
-      reward = {
-        type: 'DISCOUNT',
-        value: GAME_CONSTANTS.MATH_DISCOUNT_PERCENT,
-        description: `🎯 Correct! ${GAME_CONSTANTS.MATH_DISCOUNT_PERCENT}% discount on this property!`,
-      };
-      break;
-    case 'PAY_RENT':
-      reward = {
-        type: 'RENT_SHIELD',
-        value: GAME_CONSTANTS.RENT_DISCOUNT_PERCENT,
-        description: `🎯 Correct! Pay only ${100 - GAME_CONSTANTS.RENT_DISCOUNT_PERCENT}% of the rent!`,
-      };
-      break;
-    case 'BUILD_HOUSE':
-    case 'BUILD_HOTEL':
-      reward = {
-        type: 'DISCOUNT',
-        value: GAME_CONSTANTS.BUILD_DISCOUNT_PERCENT,
-        description: `🎯 Correct! ${GAME_CONSTANTS.BUILD_DISCOUNT_PERCENT}% off building costs!`,
-      };
-      break;
-    case 'TAX':
-      reward = {
-        type: 'TAX_RELIEF',
-        value: GAME_CONSTANTS.TAX_DISCOUNT_PERCENT,
-        description: `🎯 Correct! Pay only ${100 - GAME_CONSTANTS.TAX_DISCOUNT_PERCENT}% of the tax!`,
-      };
-      break;
-    case 'JAIL_ESCAPE':
-      reward = {
-        type: 'JAIL_BREAK',
-        value: 25,
-        description: '🎯 Correct! You escaped jail + $25 Redeemed bonus!',
-      };
-      break;
-    case 'FREE_PARKING':
-      reward = {
-        type: 'BONUS_CASH',
-        value: GAME_CONSTANTS.FREE_PARKING_PER_CORRECT,
-        description: `🎯 Correct! +$${GAME_CONSTANTS.FREE_PARKING_PER_CORRECT} Knowledge Boost bonus!`,
-      };
-      break;
-    case 'CHANCE_CARD':
-    case 'COMMUNITY_CHEST':
-      reward = {
-        type: 'BONUS_CASH',
-        value: 0, // Handled by card effect
-        description: '🎯 Correct! Full card benefit unlocked!',
-      };
-      break;
-    default:
-      reward = {
-        type: 'BONUS_CASH',
-        value: 0,
-        description: '🎯 Correct!',
-      };
-  }
-
-  // Streak bonuses
-  if (streak === 3) {
-    reward.description += ` 🔥 3-streak! +$${GAME_CONSTANTS.STREAK_BONUS_3}!`;
-    reward.value += GAME_CONSTANTS.STREAK_BONUS_3;
-  } else if (streak === 5) {
-    reward.description += ` 🔥🔥 5-streak! +$${GAME_CONSTANTS.STREAK_BONUS_5}!`;
-    reward.value += GAME_CONSTANTS.STREAK_BONUS_5;
-  } else if (streak === 10) {
-    reward.description += ` 🔥🔥🔥 10-streak! +$${GAME_CONSTANTS.STREAK_BONUS_10}!`;
-    reward.value += GAME_CONSTANTS.STREAK_BONUS_10;
-  }
-
-  return reward;
+  return {
+    playerId: player.id,
+    playerName: player.name,
+    skills,
+    bestSkill: sortedSkills[0].skillName,
+    weakestSkill: sortedSkills[sortedSkills.length - 1].skillName,
+    overallAccuracy: player.totalQuestions > 0 ? player.totalCorrect / player.totalQuestions : 0,
+  };
 }
 
 // ============================================
-// PENALTIES
+// HELPER FUNCTIONS
 // ============================================
 
-function calculatePenalty(
-  context: ChallengeContext,
-  state: GameState
-): PenaltyResult {
-  switch (context) {
-    case 'ROLL_DICE':
-      return {
-        type: 'REDUCED_MOVEMENT',
-        value: 1,
-        description: '❌ Wrong answer. -1 to your dice roll (min 2 movement).',
-      };
-    case 'BUY_PROPERTY':
-      return {
-        type: 'NO_DISCOUNT',
-        value: 0,
-        description: '❌ Wrong answer. No discount — you pay full price.',
-      };
-    case 'PAY_RENT':
-      return {
-        type: 'FULL_RENT',
-        value: 0,
-        description: '❌ Wrong answer. Full rent — no math discount.',
-      };
-    case 'BUILD_HOUSE':
-    case 'BUILD_HOTEL':
-      return {
-        type: 'NO_DISCOUNT',
-        value: 0,
-        description: '❌ Wrong answer. No building discount.',
-      };
-    case 'TAX':
-      return {
-        type: 'FULL_TAX',
-        value: 0,
-        description: '❌ Wrong answer. Full tax payment required.',
-      };
-    case 'JAIL_ESCAPE':
-      return {
-        type: 'STAY_IN_JAIL',
-        value: 1,
-        description: '❌ Wrong answer. Stay in jail one more turn.',
-      };
-    case 'CHANCE_CARD':
-    case 'COMMUNITY_CHEST':
-      return {
-        type: 'REDUCED_BENEFIT',
-        value: 50, // 50% of benefit
-        description: '❌ Wrong answer. You receive only half the card benefit.',
-      };
-    default:
-      return {
-        type: 'NO_DISCOUNT',
-        value: 0,
-        description: '❌ Wrong answer.',
-      };
-  }
+function updatePlayerInList(
+  players: PlayerState[],
+  index: number,
+  updater: (p: PlayerState) => PlayerState
+): PlayerState[] {
+  return players.map((p, i) => (i === index ? updater(p) : p));
 }
 
-// ============================================
-// MILESTONES
-// ============================================
-
-function checkMilestones(
-  previousMastery: number,
-  newMastery: number,
-  skillName: string
-): MilestoneResult[] {
-  const milestones: MilestoneResult[] = [];
-  const thresholds = [
-    { value: 0.5, label: 'Apprentice', cash: 50, badge: '🥉' },
-    { value: 0.7, label: 'Journeyman', cash: 100, badge: '🥈' },
-    { value: 0.9, label: 'Master', cash: 200, badge: '🥇' },
-  ];
-
-  for (const threshold of thresholds) {
-    if (previousMastery < threshold.value && newMastery >= threshold.value) {
-      milestones.push({
-        skillName,
-        threshold: threshold.value,
-        label: `${threshold.label} ${skillName}`,
-        cashBonus: threshold.cash,
-        badge: `${threshold.badge} ${threshold.label} ${skillName}`,
-      });
-    }
-  }
-
-  return milestones;
-}
-
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-function getGoSalary(player: PlayerState): number {
-  const masteryValues = Object.values(player.masteryStates);
-  const avgMastery = masteryValues.reduce((s, v) => s + v, 0) / masteryValues.length;
-
-  if (avgMastery > 0.9) return GAME_CONSTANTS.MASTERY_GO_SALARY;
-  if (avgMastery > GAME_CONSTANTS.GO_MASTERY_THRESHOLD) return GAME_CONSTANTS.BONUS_GO_SALARY;
-  return GAME_CONSTANTS.BASE_GO_SALARY;
-}
-
-function getConsecutiveFailures(player: PlayerState): Record<string, number> {
-  // In a production system, this would track per-skill consecutive failures
-  // For now, derive from streak (streak=0 means at least 1 recent failure)
-  const failures: Record<string, number> = {};
-  for (const skill of Object.keys(player.masteryStates)) {
-    // Players with low mastery and broken streaks likely have failures
-    failures[skill] = player.streak === 0 && player.masteryStates[skill] < 0.3 ? 2 : 0;
-  }
-  return failures;
-}
-
-function applyMoney(state: GameState, playerIndex: number, amount: number): GameState {
-  const updatedPlayers = state.players.map((p, idx) => {
-    if (idx !== playerIndex) return p;
-    return { ...p, money: p.money + amount };
-  });
-  return { ...state, players: applyDebtCheck(updatedPlayers, playerIndex) };
-}
-
-function applyMoneyChange(
-  currentMoney: number,
-  reward: RewardResult,
-  penalty: PenaltyResult | null
-): number {
-  let money = currentMoney;
-
-  // Apply reward cash bonuses
-  if (reward.type === 'BONUS_CASH') {
-    money += reward.value;
-  }
-
-  // Streak bonuses are included in reward.value for BONUS_CASH types
-  // For other types (DISCOUNT, etc.), the money change is handled in resolvePostAnswer
-
-  return money;
-}
-
-/**
- * Check if a player has entered debt mode
- */
-function applyDebtCheck(players: PlayerState[], playerIndex: number): PlayerState[] {
-  return players.map((p, idx) => {
-    if (idx !== playerIndex) return p;
-    if (p.money < 0) {
-      // Enter debt mode
-      if (p.money < GAME_CONSTANTS.MAX_DEBT) {
-        // Force liquidation: sell cheapest property
-        const cheapest = p.properties
-          .map((tileIdx) => ({ tileIdx, price: BOARD_TILES[tileIdx]?.price ?? 0 }))
-          .sort((a, b) => a.price - b.price)[0];
-
-        if (cheapest) {
-          return {
-            ...p,
-            isInDebt: true,
-            money: p.money + Math.round(cheapest.price * 0.5),
-            properties: p.properties.filter((idx) => idx !== cheapest.tileIdx),
-          };
-        }
-      }
-      return { ...p, isInDebt: true };
-    }
-    // If money is positive again, exit debt
-    if (p.isInDebt && p.money >= 0) {
-      return { ...p, isInDebt: false };
-    }
-    return p;
-  });
-}
-
-function sendToJail(state: GameState, playerIndex: number): GameState {
-  const updatedPlayers = state.players.map((p, idx) => {
-    if (idx !== playerIndex) return p;
-    return {
+function updatePlayerMoney(state: GameState, playerIdx: number, amount: number): GameState {
+  return {
+    ...state,
+    players: updatePlayerInList(state.players, playerIdx, (p) => ({
       ...p,
-      position: 7, // Jail tile index
-      isInJail: true,
-      jailTurns: 0,
-    };
-  });
-  return { ...state, players: updatedPlayers };
+      money: p.money + amount,
+    })),
+  };
 }
 
-// ============================================
-// CARD EFFECTS (Chance & Community Chest)
-// ============================================
+function updatePlayerMastery(
+  player: PlayerState,
+  skill: SkillName,
+  isCorrect: boolean,
+  difficulty: 1 | 2 | 3
+): { newMastery: number; previousMastery: number } {
+  const previousMastery = player.masteryStates[skill] ?? INITIAL_MASTERY;
+  const params = getAdjustedParams(difficulty);
+  const newMastery = updateMastery(previousMastery, isCorrect, params);
+  return { newMastery, previousMastery };
+}
 
-const CHANCE_EFFECTS = [
-  { title: 'Bank Error', description: 'The bank made an error in your favour!', effect: { type: 'GAIN_MONEY' as const, amount: 100 } },
-  { title: 'Move Forward', description: 'Advance 3 spaces!', effect: { type: 'MOVE_FORWARD' as const, spaces: 3 } },
-  { title: 'Treasure Found', description: 'You found a hidden treasure!', effect: { type: 'GAIN_MONEY' as const, amount: 150 } },
-  { title: 'Street Repairs', description: 'Pay for street repairs!', effect: { type: 'LOSE_MONEY' as const, amount: 75 } },
-  { title: 'Birthday Gift', description: 'Collect $25 from each player!', effect: { type: 'COLLECT_FROM_EACH' as const, amount: 25 } },
-  { title: 'Scholarship', description: 'You won a math scholarship!', effect: { type: 'GAIN_MONEY' as const, amount: 200 } },
-  { title: 'Go To Jail', description: 'Uh oh! Solve to avoid jail!', effect: { type: 'GO_TO_JAIL' as const } },
-  { title: 'Tax Refund', description: 'You got a tax refund!', effect: { type: 'GAIN_MONEY' as const, amount: 80 } },
-  { title: 'Lucky Find', description: 'Found money on the ground!', effect: { type: 'GAIN_MONEY' as const, amount: 50 } },
-  { title: 'Speed Bonus', description: 'Move forward 5 spaces!', effect: { type: 'MOVE_FORWARD' as const, spaces: 5 } },
-];
+function updatePlayerAfterAnswer(
+  state: GameState,
+  isCorrect: boolean,
+  challenge: { skillName: string },
+  newMastery: number
+): PlayerState[] {
+  return updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+    ...p,
+    totalQuestions: p.totalQuestions + 1,
+    totalCorrect: isCorrect ? p.totalCorrect + 1 : p.totalCorrect,
+    streak: isCorrect ? p.streak + 1 : 0,
+    masteryStates: { ...p.masteryStates, [challenge.skillName]: newMastery },
+    consecutiveFailures: {
+      ...p.consecutiveFailures,
+      [challenge.skillName]: isCorrect ? 0 : (p.consecutiveFailures[challenge.skillName] ?? 0) + 1,
+    },
+  }));
+}
 
-const COMMUNITY_CHEST_EFFECTS = [
-  { title: 'Community Fund', description: 'The community rewards you!', effect: { type: 'GAIN_MONEY' as const, amount: 100 } },
-  { title: 'School Prize', description: 'You won a school math prize!', effect: { type: 'GAIN_MONEY' as const, amount: 75 } },
-  { title: 'Helping Hands', description: 'Everyone chips in $15!', effect: { type: 'COLLECT_FROM_EACH' as const, amount: 15 } },
-  { title: 'Library Bonus', description: 'Extra study paid off!', effect: { type: 'GAIN_MONEY' as const, amount: 60 } },
-  { title: 'Doctor Bill', description: 'Small doctor bill to pay.', effect: { type: 'LOSE_MONEY' as const, amount: 50 } },
-  { title: 'Savings Reward', description: 'Your savings earned interest!', effect: { type: 'GAIN_MONEY' as const, amount: 40 } },
-  { title: 'Class Winner', description: 'You won the class competition!', effect: { type: 'GAIN_MONEY' as const, amount: 120 } },
-  { title: 'Charity', description: 'You helped the community!', effect: { type: 'GAIN_MONEY' as const, amount: 30 } },
-  { title: 'Good Citizen', description: 'Awarded for being a good citizen!', effect: { type: 'GAIN_MONEY' as const, amount: 90 } },
-  { title: 'Lucky Day', description: 'Today is your lucky day!', effect: { type: 'GAIN_MONEY' as const, amount: 55 } },
-];
+function buildAnswerResult(
+  isCorrect: boolean,
+  challenge: { options: string[]; correctIndex: number; skillName: string },
+  newMastery: number,
+  previousMastery: number,
+  reward: RewardResult,
+  player: PlayerState
+): AnswerResult {
+  return {
+    isCorrect,
+    correctAnswer: challenge.options[challenge.correctIndex],
+    newMastery,
+    previousMastery,
+    reward,
+    streakCount: isCorrect ? player.streak + 1 : 0,
+    streakBroken: !isCorrect && player.streak > 0,
+    showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
+  };
+}

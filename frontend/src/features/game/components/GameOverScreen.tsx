@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FinalScore, Player } from '../types/game.types';
-import { Trophy, Medal, Award, LogOut, RotateCcw } from 'lucide-react';
+import { FinalScore, MasteryReport, Player, SKILL_NAMES, formatRM } from '../types/game.types';
+import { Trophy, Medal, Award, LogOut, RotateCcw, BarChart3 } from 'lucide-react';
 import './GameOverScreen.css';
 
 interface GameOverScreenProps {
   scores: FinalScore[];
   players: Player[];
+  masteryReports?: MasteryReport[] | null;
   onPlayAgain?: () => void;
   onExit?: () => void;
 }
@@ -16,9 +17,9 @@ const RANK_CONFIG: Record<number, { icon: React.ReactNode; className: string }> 
   3: { icon: <Award size={18} />, className: 'rank--bronze' },
 };
 
-export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOverScreenProps) {
+export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, onExit }: GameOverScreenProps) {
   const [revealStage, setRevealStage] = useState(0);
-  // Stages: 0=nothing, 1=header, 2=score table, 3=winner
+  const [showMastery, setShowMastery] = useState(false);
 
   useEffect(() => {
     const timers = [
@@ -31,8 +32,6 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
 
   const winner = scores[0];
   const sortedScores = [...scores].sort((a, b) => a.rank - b.rank);
-
-
 
   return (
     <div className="gameover-overlay">
@@ -53,10 +52,9 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
                 <tr>
                   <th>#</th>
                   <th>Player</th>
+                  <th>Cash</th>
+                  <th>Properties</th>
                   <th>Net Worth</th>
-
-                  <th>+ Math</th>
-                  <th>Final</th>
                 </tr>
               </thead>
               <tbody>
@@ -83,15 +81,17 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
                             className="score-player__avatar"
                             style={{ backgroundColor: score.color }}
                           >
-                            {score.playerName.charAt(0)}
+                            {score.isBot ? '🤖' : score.playerName.charAt(0)}
                           </div>
-                          <span>{score.playerName}</span>
+                          <span>
+                            {score.playerName}
+                            {score.isBot && <span className="bot-label"> (Bot)</span>}
+                          </span>
                         </div>
                       </td>
-                      <td className="score-value">${score.netWorth.toLocaleString()}</td>
-
-                      <td className="score-math">+${score.mathBonus}</td>
-                      <td className="score-final">${score.finalScore.toLocaleString()}</td>
+                      <td className="score-value">{formatRM(score.cash)}</td>
+                      <td className="score-value">{formatRM(score.propertyValue + score.levelUpValue)}</td>
+                      <td className="score-final">{formatRM(score.netWorth)}</td>
                     </tr>
                   );
                 })}
@@ -106,16 +106,55 @@ export function GameOverScreen({ scores, players, onPlayAgain, onExit }: GameOve
             <div className="winner-card surface-2">
               <span className="winner-trophy"><Trophy size={32} /></span>
               <h2 className="heading-display winner-name">{winner.playerName} Wins!</h2>
-              <p className="winner-score">Final Score: ${winner.finalScore.toLocaleString()}</p>
+              <p className="winner-score">Net Worth: {formatRM(winner.netWorth)}</p>
               <div className="winner-breakdown">
-                <span>Net Worth: ${winner.netWorth.toLocaleString()}</span>
+                <span>Cash: {formatRM(winner.cash)}</span>
                 <span>Correct: {winner.totalCorrect} answers</span>
               </div>
-
             </div>
           </div>
         )}
 
+        {/* Mastery Report Toggle */}
+        {revealStage >= 3 && masteryReports && masteryReports.length > 0 && (
+          <div className="gameover-mastery gameover-reveal">
+            <button
+              className="mastery-toggle"
+              onClick={() => setShowMastery(!showMastery)}
+            >
+              <BarChart3 size={16} />
+              {showMastery ? 'Hide' : 'Show'} Learning Report
+            </button>
+
+            {showMastery && (
+              <div className="mastery-reports">
+                {masteryReports.map((report) => (
+                  <div key={report.playerId} className="mastery-card">
+                    <h4 className="mastery-player">{report.playerName}</h4>
+                    <div className="mastery-skills">
+                      {report.skills.map((skill) => (
+                        <div key={skill.skillName} className="mastery-bar">
+                          <span className="mastery-label">{skill.skillName}</span>
+                          <div className="mastery-track">
+                            <div
+                              className="mastery-fill"
+                              style={{ width: `${Math.round(skill.mastery * 100)}%` }}
+                            />
+                          </div>
+                          <span className="mastery-pct">{Math.round(skill.mastery * 100)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mastery-summary">
+                      Best: {report.bestSkill} · Needs work: {report.weakestSkill} · 
+                      Accuracy: {Math.round(report.overallAccuracy * 100)}%
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Action Buttons */}
         {revealStage >= 3 && (

@@ -340,3 +340,89 @@
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ---- Bot Section ---- */
+
+.add-bot-section {
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.add-bot-controls {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.bot-difficulty-select {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.bot-difficulty-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.btn-add-bot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-add-bot:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.player-slot.is-bot {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.bot-difficulty-badge {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  font-weight: 600;
+  text-transform: capitalize;
+  margin-left: 0.3rem;
+}
+
+.remove-bot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 50%;
+  color: #ef4444;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-left: auto;
+}
+
+.remove-bot-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+}

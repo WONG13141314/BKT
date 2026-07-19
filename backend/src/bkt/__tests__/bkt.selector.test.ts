@@ -5,24 +5,20 @@ describe('BKT Question Selector', () => {
   const defaultMastery: Record<string, number> = {
     Addition: 0.3,
     Subtraction: 0.5,
-    Multiplication: 0.1,
-    Division: 0.2,
-    Fractions: 0.4,
-    Decimals: 0.6,
+    PlaceValue: 0.1,
+    Money: 0.2,
   };
 
   const noFailures: Record<string, number> = {
-    Addition: 0, Subtraction: 0, Multiplication: 0,
-    Division: 0, Fractions: 0, Decimals: 0,
+    Addition: 0, Subtraction: 0, PlaceValue: 0, Money: 0,
   };
 
   describe('selectChallenge', () => {
-    it('should return a valid MathChallenge for ROLL_DICE context', () => {
+    it('should return a valid MathChallenge for DICE_CHALLENGE context', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
-        context: 'ROLL_DICE',
+        context: 'DICE_CHALLENGE',
         consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
       });
 
       expect(challenge.id).toBeTruthy();
@@ -30,52 +26,34 @@ describe('BKT Question Selector', () => {
       expect(challenge.options.length).toBe(4);
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
-      expect(challenge.context).toBe('ROLL_DICE');
+      expect(challenge.context).toBe('DICE_CHALLENGE');
       expect(challenge.timeLimit).toBeGreaterThan(0);
     });
 
-    it('should pick the weakest skill for ROLL_DICE', () => {
+    it('should pick the weakest skill for DICE_CHALLENGE', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
-        context: 'ROLL_DICE',
+        context: 'DICE_CHALLENGE',
         consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
       });
 
-      // Multiplication has lowest mastery (0.1)
-      expect(challenge.skillName).toBe('Multiplication');
+      // PlaceValue has lowest mastery (0.1)
+      expect(challenge.skillName).toBe('PlaceValue');
     });
 
-    it('should use contextual skills for BUY_PROPERTY', () => {
+    it('should use contextual skills for SMART_BUY', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
-        context: 'BUY_PROPERTY',
+        context: 'SMART_BUY',
         consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
-        playerMoney: 500,
         propertyPrice: 200,
       });
 
-      // BUY_PROPERTY maps to Subtraction, Addition
+      // SMART_BUY maps to Subtraction, Addition
       expect(['Subtraction', 'Addition']).toContain(challenge.skillName);
-      expect(challenge.text).toContain('$');
-    });
-
-    it('should use contextual skills for TAX', () => {
-      const challenge = selectChallenge({
-        masteryStates: defaultMastery,
-        context: 'TAX',
-        consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
-        taxTotalAssets: 1200,
-        taxType: 'INCOME',
-      });
-
-      expect(['Decimals', 'Division']).toContain(challenge.skillName);
     });
 
     it('should reduce difficulty for JAIL_ESCAPE', () => {
-      // Set all mastery high so base difficulty would be 3
       const highMastery: Record<string, number> = {};
       for (const s of SKILL_NAMES) highMastery[s] = 0.8;
 
@@ -83,7 +61,6 @@ describe('BKT Question Selector', () => {
         masteryStates: highMastery,
         context: 'JAIL_ESCAPE',
         consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
       });
 
       // Difficulty should be reduced by 1 from 3 → 2
@@ -96,9 +73,8 @@ describe('BKT Question Selector', () => {
 
       const challenge = selectChallenge({
         masteryStates: easyMastery,
-        context: 'ROLL_DICE',
+        context: 'DICE_CHALLENGE',
         consecutiveFailures: noFailures,
-        recentlySeenSkills: [],
       });
 
       // Difficulty 1 → 20 seconds
@@ -137,20 +113,20 @@ describe('BKT Question Selector', () => {
     });
 
     it('should return level 1 hint for 2 consecutive failures', () => {
-      const hint = determineHint(2, 0.3, 'Multiplication');
+      const hint = determineHint(2, 0.3, 'Subtraction');
       expect(hint.level).toBe(1);
       expect(hint.content).toBeTruthy();
     });
 
     it('should return level 2 hint for 3+ consecutive failures', () => {
-      const hint = determineHint(3, 0.3, 'Division');
+      const hint = determineHint(3, 0.3, 'PlaceValue');
       expect(hint.level).toBe(2);
     });
 
     it('should return level 3 hint when mastery is critically low', () => {
-      const hint = determineHint(1, 0.1, 'Fractions');
+      const hint = determineHint(1, 0.1, 'Money');
       expect(hint.level).toBe(3);
-      expect(hint.content).toContain('Fractions');
+      expect(hint.content).toContain('Money');
     });
   });
 });

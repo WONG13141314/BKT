@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MathChallenge, AnswerResult, ChallengeContext } from '../../game/types/game.types';
 import {
-  Dices, Home, Banknote, Hammer, Building, HelpCircle, Gift, Coins,
-  KeyRound, Rocket, Brain, Handshake, Megaphone, Star, Swords, HeartPulse,
-  CheckCircle2, XCircle, Flame, Trophy, ArrowRight, Lightbulb
+  Dices, ShieldCheck, Zap, Star, KeyRound, Brain,
+  CheckCircle2, XCircle, Flame, ArrowRight, Lightbulb, DollarSign
 } from 'lucide-react';
 import './QuestionPopup.css';
 
@@ -14,24 +13,14 @@ interface QuestionPopupProps {
   onContinue: () => void;
 }
 
-// Context-to-config mapping
+// Context-to-config mapping — redesigned contexts
 const CONTEXT_CONFIG: Record<ChallengeContext, { icon: React.ReactNode; label: string }> = {
-  ROLL_DICE: { icon: <Dices size={16} />, label: 'Dice Power-Up' },
-  BUY_PROPERTY: { icon: <Home size={16} />, label: 'Purchase Challenge' },
-  PAY_RENT: { icon: <Banknote size={16} />, label: 'Rent Calculation' },
-  BUILD_HOUSE: { icon: <Hammer size={16} />, label: 'Building Permit' },
-  BUILD_HOTEL: { icon: <Building size={16} />, label: 'Hotel Upgrade' },
-  CHANCE_CARD: { icon: <HelpCircle size={16} />, label: 'Chance Challenge' },
-  COMMUNITY_CHEST: { icon: <Gift size={16} />, label: 'Community Challenge' },
-  TAX: { icon: <Coins size={16} />, label: 'Tax Calculation' },
+  DICE_CHALLENGE: { icon: <Dices size={16} />, label: 'Dice Challenge' },
+  SMART_BUY: { icon: <DollarSign size={16} />, label: 'Smart Buy' },
+  RENT_DEFENSE: { icon: <ShieldCheck size={16} />, label: 'Rent Defense' },
+  CHALLENGE_CARD: { icon: <Zap size={16} />, label: 'Challenge Card' },
   JAIL_ESCAPE: { icon: <KeyRound size={16} />, label: 'Jail Escape' },
-  PASSING_GO: { icon: <Rocket size={16} />, label: 'Salary Bonus' },
-  FREE_PARKING: { icon: <Brain size={16} />, label: 'Knowledge Boost' },
-  TRADE: { icon: <Handshake size={16} />, label: 'Trade Verification' },
-  AUCTION: { icon: <Megaphone size={16} />, label: 'Auction Speed' },
-  SPECIAL_EVENT: { icon: <Star size={16} />, label: 'Special Event' },
-  MATH_DUEL: { icon: <Swords size={16} />, label: 'Math Duel' },
-  RECOVERY: { icon: <HeartPulse size={16} />, label: 'Recovery Round' },
+  LEVEL_UP: { icon: <Star size={16} />, label: 'Level Up' },
 };
 
 export function QuestionPopup({
@@ -52,7 +41,6 @@ export function QuestionPopup({
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          // Auto-submit as wrong when time runs out
           clearInterval(interval);
           handleAutoTimeout();
           return 0;
@@ -67,7 +55,7 @@ export function QuestionPopup({
   const handleAutoTimeout = useCallback(() => {
     if (!isAnswered) {
       setIsAnswered(true);
-      onAnswer(-1, challenge.timeLimit * 1000); // -1 = timeout
+      onAnswer(-1, challenge.timeLimit * 1000);
     }
   }, [isAnswered, onAnswer, challenge.timeLimit]);
 
@@ -81,12 +69,11 @@ export function QuestionPopup({
 
   const contextConfig = CONTEXT_CONFIG[challenge.context] || { icon: <Brain size={16} />, label: 'Math Challenge' };
 
-  // Difficulty as graduated dots
   const difficultyLevel = challenge.difficulty;
 
-  // Timer ring calculation
+  // Timer ring
   const timerPercent = timeLeft / challenge.timeLimit;
-  const circumference = 2 * Math.PI * 18; // radius=18
+  const circumference = 2 * Math.PI * 18;
   const strokeDashoffset = circumference * (1 - timerPercent);
   const timerColor = timeLeft > 5 ? 'var(--color-success)' : 'var(--color-danger)';
 
@@ -100,7 +87,6 @@ export function QuestionPopup({
             <span>{contextConfig.label}</span>
           </div>
           <div className="quiz-meta">
-            {/* Difficulty dots */}
             <div className="quiz-difficulty" title={`Difficulty ${difficultyLevel}/3`}>
               {[1, 2, 3].map((level) => (
                 <span
@@ -196,12 +182,9 @@ export function QuestionPopup({
               )}
             </div>
 
-            {/* Game consequence (reward or penalty) */}
+            {/* Game consequence (reward) */}
             {answerResult.isCorrect && answerResult.reward.description && (
               <p className="quiz-result__reward">{answerResult.reward.description}</p>
-            )}
-            {!answerResult.isCorrect && answerResult.penalty && (
-              <p className="quiz-result__penalty">{answerResult.penalty.description}</p>
             )}
 
             {/* Correct answer shown on wrong */}
@@ -222,13 +205,6 @@ export function QuestionPopup({
                 Streak ended. Keep going!
               </p>
             )}
-
-            {/* Milestones */}
-            {answerResult.milestones.map((m, i) => (
-              <p key={i} className="quiz-result__milestone">
-                <Trophy size={14} /> {m.badge} — +${m.cashBonus}!
-              </p>
-            ))}
 
             {/* Continue button */}
             <button className="quiz-continue-btn" onClick={onContinue}>

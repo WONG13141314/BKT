@@ -6,13 +6,33 @@ import { PlayerPanel } from '../components/PlayerPanel';
 import { TurnIndicator } from '../components/TurnIndicator';
 import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
-import { PropertyCard } from '../components/PropertyCard';
-import { QuestionPopup } from '../../questions/components/QuestionPopup';
+import { ColumnQuestion } from '../components/ColumnQuestion';
+import { McqQuestion } from '../components/McqQuestion';
+import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { BOARD_TILES } from '../config/board.config';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
-import { MathChallenge, AnswerResult, Player } from '../types/game.types';
-import { ArrowRight, Banknote, Loader2, AlertCircle, Hourglass } from 'lucide-react';
+import {
+  MathChallenge,
+  AnswerResult,
+  FinalScore,
+  MasteryReport,
+  TileEvent,
+  formatRM,
+} from '../types/game.types';
+import {
+  ArrowRight,
+  Banknote,
+  Loader2,
+  AlertCircle,
+  Hourglass,
+  ShieldCheck,
+  Zap,
+  Star,
+  Lock,
+  DollarSign,
+  SkipForward,
+} from 'lucide-react';
 import './GamePage.css';
 
 export function GamePage() {
@@ -21,7 +41,6 @@ export function GamePage() {
   const roomCode = searchParams.get('code');
   const gameId = roomCode ? `game_${roomCode}` : null;
 
-  // Extract my user ID from token
   const myUserId = (() => {
     try {
       const token = localStorage.getItem('token');
@@ -47,70 +66,47 @@ export function GamePage() {
     dismissNotification,
   } = useGameState(myUserId);
 
-  // We maintain a local copy of the challenge so the popup stays open when the server clears it
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
-  const [selectedPropertyTile, setSelectedPropertyTile] = useState<number | null>(null);
+  const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
+  const [botActionMessage, setBotActionMessage] = useState<string | null>(null);
+  const challengeStartTime = useRef<number>(Date.now());
 
-  const [showChallengePopup, setShowChallengePopup] = useState(false);
-  const prevPhaseRef = useRef<string | null>(null);
-  const prevChallengeIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!gameState) return;
-
-    const prevPhase = prevPhaseRef.current;
-    const prevChallengeId = prevChallengeIdRef.current;
-    const currentChallengeId = activeChallenge?.id ?? null;
-
-    if (gameState.turnPhase === 'MATH_CHALLENGE') {
-      // Back-to-back MATH_CHALLENGE (e.g. dice question → tile question):
-      // The challenge ID changed but the phase stayed the same.
-      // Insert a delay so the player sees the dice result + token movement first.
-      const isChallengeSwitch = prevPhase === 'MATH_CHALLENGE'
-        && currentChallengeId !== null
-        && prevChallengeId !== null
-        && currentChallengeId !== prevChallengeId;
-
-      if (isChallengeSwitch) {
-        // Hide popup, wait for movement animation, then show new challenge
-        setShowChallengePopup(false);
-        const timer = setTimeout(() => setShowChallengePopup(true), 2000);
-        return () => clearTimeout(timer);
-      } else if (prevPhase && prevPhase !== 'MATH_CHALLENGE') {
-        // Transitioning from a non-challenge phase (e.g. ROLL → MATH_CHALLENGE)
-        // Show immediately since this is the dice question at the start of the turn
-        setShowChallengePopup(true);
-      } else if (!prevPhase) {
-        // First mount / reconnect — show immediately
-        setShowChallengePopup(true);
-      }
-      // If prevPhase === 'MATH_CHALLENGE' but same challenge ID, keep current state
-    } else {
-      setShowChallengePopup(false);
-    }
-
-    prevPhaseRef.current = gameState.turnPhase;
-    prevChallengeIdRef.current = currentChallengeId;
-  }, [gameState?.turnPhase, activeChallenge?.id]);
-
-  const { emitRoll, emitAnswer, emitBuild, emitBail, emitEndTurn } = useGameSocket(gameId, {
+  const {
+    emitRoll,
+    emitDiceAnswer,
+    emitBuyFull,
+    emitSmartBuy,
+    emitSmartBuyAnswer,
+    emitSkipBuy,
+    emitPayRent,
+    emitRentDefense,
+    emitRentDefenseAnswer,
+    emitCardAck,
+    emitCardAnswer,
+    emitJailMath,
+    emitJailAnswer,
+    emitJailBail,
+    emitJailWait,
+    emitLevelUp,
+    emitLevelUpAnswer,
+    emitLevelUpDecline,
+    emitEndTurn,
+  } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
       setGameState(state);
-      // If the server still has a challenge, keep it synced. 
-      // If the server cleared it, we keep our local copy until handleContinue runs.
       if (state.currentChallenge) {
         setActiveChallenge(state.currentChallenge);
-      } else if (state.turnPhase !== 'MATH_CHALLENGE') {
-        // Challenge resolved — clear waiting state for other players
+        challengeStartTime.current = Date.now();
+      } else if (!isChallengePhase(state.turnPhase)) {
         setChallengePlayerId(null);
       }
     },
     onChallenge: (data) => {
-      // Only show the popup if this client is the active player
       setChallengePlayerId(data.playerId);
       setActiveChallenge(data.challenge);
       setAnswerResult(null);
+      challengeStartTime.current = Date.now();
     },
     onChallengeStarted: (data) => {
       setChallengePlayerId(data.playerId);
@@ -119,27 +115,71 @@ export function GamePage() {
       setAnswerResult(data.result);
       if (data.result.isCorrect) {
         addNotification('reward', data.result.reward.description);
-      } else if (data.result.penalty) {
-        addNotification('penalty', data.result.penalty.description);
       }
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
+      setMasteryReports(data.masteryReports ?? null);
+    },
+    onBotAction: (data) => {
+      const actionLabels: Record<string, string> = {
+        roll: 'rolling dice',
+        dice_answer: 'answering dice challenge',
+        move: 'moving',
+        resolve: 'resolving tile',
+        smart_buy_start: 'trying Smart Buy',
+        smart_buy_answer: 'answering',
+        buy_full: 'buying property',
+        skip_buy: 'skipping purchase',
+        rent_defense_start: 'defending rent',
+        rent_defense_answer: 'answering',
+        pay_rent: 'paying rent',
+        card_ack: 'reading card',
+        card_answer: 'answering card challenge',
+        jail_math_start: 'attempting jail escape',
+        jail_bail: 'paying bail',
+        jail_wait: 'waiting in jail',
+        jail_answer: 'answering',
+        level_up_start: 'attempting Level Up',
+        level_up_answer: 'answering',
+        level_up_decline: 'skipping Level Up',
+        end_turn: 'ending turn',
+      };
+      const label = actionLabels[data.action] || data.action;
+      setBotActionMessage(`🤖 ${data.botName} is ${label}...`);
+      setTimeout(() => setBotActionMessage(null), 2000);
     },
     onError: (data) => {
       addNotification('info', data.message);
     },
   });
 
-  // ---- Interaction Handlers ----
+  // ---- Answer Handler ----
+  const handleAnswer = useCallback((selectedIndex: number) => {
+    const timeMs = Date.now() - challengeStartTime.current;
+    if (!gameState) return;
 
-  const handleRollClick = useCallback(() => {
-    emitRoll();
-  }, [emitRoll]);
-
-  const handleAnswer = useCallback((selectedIndex: number, timeMs: number) => {
-    emitAnswer(selectedIndex, timeMs);
-  }, [emitAnswer]);
+    switch (gameState.turnPhase) {
+      case 'DICE_CHALLENGE':
+        emitDiceAnswer(selectedIndex, timeMs);
+        break;
+      case 'SMART_BUY_CHALLENGE':
+        emitSmartBuyAnswer(selectedIndex, timeMs);
+        break;
+      case 'RENT_CHALLENGE':
+        emitRentDefenseAnswer(selectedIndex, timeMs);
+        break;
+      case 'CARD_MATH_CHALLENGE':
+        emitCardAnswer(selectedIndex, timeMs);
+        break;
+      case 'JAIL_CHALLENGE':
+        emitJailAnswer(selectedIndex, timeMs);
+        break;
+      case 'LEVEL_UP_CHALLENGE':
+        emitLevelUpAnswer(selectedIndex, timeMs);
+        break;
+    }
+  }, [gameState?.turnPhase, emitDiceAnswer, emitSmartBuyAnswer, emitRentDefenseAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
 
   const handleContinue = useCallback(() => {
     setActiveChallenge(null);
@@ -147,28 +187,48 @@ export function GamePage() {
     setChallengePlayerId(null);
   }, []);
 
-  const handleEndTurn = useCallback(() => {
-    emitEndTurn();
-  }, [emitEndTurn]);
+  // ---- Render helpers ----
+  function isChallengePhase(phase: string): boolean {
+    return ['DICE_CHALLENGE', 'SMART_BUY_CHALLENGE', 'RENT_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE', 'LEVEL_UP_CHALLENGE'].includes(phase);
+  }
 
-  const handleTileClick = useCallback((tileIndex: number) => {
-    const tile = BOARD_TILES[tileIndex];
-    if (tile?.type === 'PROPERTY') {
-      setSelectedPropertyTile(tileIndex);
+  function renderQuestion() {
+    if (!activeChallenge) return null;
+
+    const questionData = activeChallenge.questionData;
+    if (questionData.type === 'column') {
+      return (
+        <ColumnQuestion
+          question={questionData}
+          options={activeChallenge.options}
+          onAnswer={handleAnswer}
+          disabled={!!answerResult}
+          timeLimit={activeChallenge.timeLimit}
+          hintContent={activeChallenge.hintContent}
+        />
+      );
+    } else {
+      return (
+        <McqQuestion
+          question={questionData}
+          options={activeChallenge.options}
+          onAnswer={handleAnswer}
+          disabled={!!answerResult}
+          timeLimit={activeChallenge.timeLimit}
+          hintContent={activeChallenge.hintContent}
+        />
+      );
     }
-  }, []);
+  }
 
-  // ---- Render ----
-
+  // ---- Loading / Error states ----
   if (!roomCode) {
     return (
       <div className="game-page game-page--center">
         <div className="game-page__message surface-2">
           <AlertCircle size={24} />
           <h2>No Game Room specified.</h2>
-          <button className="action-btn action-btn--primary" onClick={() => navigate('/join')}>
-            Go Back
-          </button>
+          <button className="action-btn action-btn--primary" onClick={() => navigate('/join')}>Go Back</button>
         </div>
       </div>
     );
@@ -185,19 +245,24 @@ export function GamePage() {
     );
   }
 
-  // Game Over
+  // ---- Game Over ----
   if (gameState.phase === 'FINISHED' && finalScores) {
     return (
       <GameOverScreen
         scores={finalScores}
         players={gameState.players}
+        masteryReports={masteryReports}
         onExit={() => navigate('/join')}
       />
     );
   }
 
+  const showChallenge = isChallengePhase(gameState.turnPhase) && activeChallenge && isMyTurn;
+  const showCardDraw = gameState.turnPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
+  const isBotTurn = currentPlayer?.isBot;
+
   return (
-    <div className={`game-page ${showChallengePopup ? 'game-page--quiz-active' : ''}`}>
+    <div className={`game-page ${showChallenge ? 'game-page--quiz-active' : ''}`}>
       {/* Turn Indicator */}
       <TurnIndicator
         currentPlayer={currentPlayer}
@@ -220,40 +285,113 @@ export function GamePage() {
 
         {/* Center: Board */}
         <Board
-          players={gameState.players}
-          properties={gameState.properties}
-          currentPlayerIndex={gameState.currentPlayerIndex}
-          onTileClick={handleTileClick}
+          gameState={gameState}
+          currentPlayerId={myUserId}
         />
 
         {/* Right Panel: Dice + Actions */}
         <div className="game-sidebar">
           <DiceRoller
             diceValues={gameState.diceValues}
-            movementBonus={gameState.movementBonus}
             isMyTurn={isMyTurn}
             turnPhase={gameState.turnPhase}
-            onRollClick={handleRollClick}
+            onRollClick={emitRoll}
           />
 
-          {/* Action Buttons */}
-          {gameState.turnPhase === 'ACTION' && isMyTurn && (
+          {/* Bot action overlay */}
+          {botActionMessage && (
+            <div className="bot-action-banner">
+              {botActionMessage}
+            </div>
+          )}
+
+          {/* === DECISION UIs (only for active human player) === */}
+
+          {/* ROLL_PHASE: Roll button */}
+          {gameState.turnPhase === 'ROLL_PHASE' && isMyTurn && !isBotTurn && (
             <div className="game-actions">
-              <button className="action-btn action-btn--end" onClick={handleEndTurn}>
-                End Turn
-                <ArrowRight size={16} />
+              <button className="action-btn action-btn--primary" onClick={emitRoll}>
+                🎲 Roll Dice
               </button>
             </div>
           )}
-          
-          {/* Pay Bail Button */}
-          {gameState.turnPhase === 'ACTION' && isMyTurn && currentPlayer?.isInJail && (
-             <div className="game-actions">
-               <button className="action-btn action-btn--build" onClick={() => emitBail()}>
-                 <Banknote size={16} />
-                 Pay Bail ($50)
-               </button>
-             </div>
+
+          {/* BUY_DECISION: Buy / Smart Buy / Skip */}
+          {gameState.turnPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
+            <div className="game-actions decision-panel">
+              <h3 className="decision-title">
+                {gameState.pendingTileEvent.tileName} — {formatRM(gameState.pendingTileEvent.propertyPrice!)}
+              </h3>
+              <button className="action-btn action-btn--primary" onClick={emitSmartBuy}>
+                <Zap size={16} /> Smart Buy (20% off)
+              </button>
+              <button className="action-btn action-btn--secondary" onClick={emitBuyFull}>
+                <DollarSign size={16} /> Buy Full Price
+              </button>
+              <button className="action-btn action-btn--ghost" onClick={emitSkipBuy}>
+                <SkipForward size={16} /> Skip
+              </button>
+            </div>
+          )}
+
+          {/* RENT_PAYMENT: Pay / Defend */}
+          {gameState.turnPhase === 'RENT_PAYMENT' && isMyTurn && gameState.pendingTileEvent && (
+            <div className="game-actions decision-panel">
+              <h3 className="decision-title">
+                Rent: {formatRM(gameState.pendingTileEvent.rentAmount!)}
+              </h3>
+              <button className="action-btn action-btn--primary" onClick={emitRentDefense}>
+                <ShieldCheck size={16} /> Rent Defense (half rent)
+              </button>
+              <button className="action-btn action-btn--secondary" onClick={emitPayRent}>
+                <Banknote size={16} /> Pay Full Rent
+              </button>
+            </div>
+          )}
+
+          {/* JAIL_DECISION: Math / Bail / Wait */}
+          {gameState.turnPhase === 'JAIL_DECISION' && isMyTurn && (
+            <div className="game-actions decision-panel">
+              <h3 className="decision-title">
+                <Lock size={16} /> You're in Jail!
+              </h3>
+              <button className="action-btn action-btn--primary" onClick={emitJailMath}>
+                🧮 Math Escape
+              </button>
+              <button className="action-btn action-btn--secondary" onClick={emitJailBail}>
+                <Banknote size={16} /> Pay Bail ({formatRM(50)})
+              </button>
+              <button className="action-btn action-btn--ghost" onClick={emitJailWait}>
+                <Hourglass size={16} /> Wait
+              </button>
+            </div>
+          )}
+
+          {/* LEVEL_UP_OFFER: Accept / Decline */}
+          {gameState.turnPhase === 'LEVEL_UP_OFFER' && isMyTurn && gameState.pendingTileEvent && (
+            <div className="game-actions decision-panel">
+              <h3 className="decision-title">
+                <Star size={16} /> Level Up: {gameState.pendingTileEvent.tileName}
+              </h3>
+              <p className="decision-subtitle">
+                Cost: {currentPlayer?.hasLevelUpToken ? 'FREE (token)' : formatRM(gameState.pendingTileEvent.propertyPrice!)}
+              </p>
+              <button className="action-btn action-btn--primary" onClick={emitLevelUp}>
+                <Star size={16} /> Accept Challenge
+              </button>
+              <button className="action-btn action-btn--ghost" onClick={emitLevelUpDecline}>
+                <SkipForward size={16} /> Decline
+              </button>
+            </div>
+          )}
+
+          {/* END_TURN */}
+          {gameState.turnPhase === 'END_TURN' && isMyTurn && (
+            <div className="game-actions">
+              <button className="action-btn action-btn--end" onClick={emitEndTurn}>
+                End Turn <ArrowRight size={16} />
+              </button>
+            </div>
           )}
 
           {/* Current Player Quick Stats */}
@@ -262,13 +400,13 @@ export function GamePage() {
               <div className="quick-stat">
                 <span className="quick-stat__label">Money</span>
                 <span className={`quick-stat__value ${currentPlayer.money < 0 ? 'money--negative' : ''}`}>
-                  ${currentPlayer.money.toLocaleString()}
+                  {formatRM(currentPlayer.money)}
                 </span>
               </div>
               <div className="quick-stat">
                 <span className="quick-stat__label">Streak</span>
                 <span className="quick-stat__value">
-                  {currentPlayer.streak > 0 ? currentPlayer.streak : '—'}
+                  {currentPlayer.streak > 0 ? `🔥 ${currentPlayer.streak}` : '—'}
                 </span>
               </div>
               <div className="quick-stat">
@@ -282,49 +420,44 @@ export function GamePage() {
         </div>
       </div>
 
-      {/* Math Challenge Side Panel */}
-      {showChallengePopup && activeChallenge && isMyTurn && (
-        <QuestionPopup
-          key={activeChallenge.id}
-          challenge={activeChallenge}
-          onAnswer={handleAnswer}
-          answerResult={answerResult}
-          onContinue={handleContinue}
-        />
-      )}
-      
-      {/* Waiting indicator for other players */}
-      {showChallengePopup && challengePlayerId && !isMyTurn && (
-        <div className="challenge-waiting-overlay">
-          <div className="challenge-waiting surface-2">
-            <Hourglass size={32} className="waiting-icon" />
-            <p>{gameState?.players.find(p => p.id === challengePlayerId)?.name} is answering a question...</p>
+      {/* Math Challenge Panel */}
+      {showChallenge && (
+        <div className="challenge-overlay">
+          <div className="challenge-panel surface-2">
+            <div className="challenge-header">
+              <span className="challenge-context">{formatContext(activeChallenge!.context)}</span>
+              <span className="challenge-skill">{activeChallenge!.skillName}</span>
+            </div>
+            {renderQuestion()}
+            {answerResult && (
+              <div className={`challenge-result ${answerResult.isCorrect ? 'correct' : 'incorrect'}`}>
+                <p>{answerResult.isCorrect ? '✅ Correct!' : `❌ Answer: ${answerResult.correctAnswer}`}</p>
+                <p className="result-reward">{answerResult.reward.description}</p>
+                <button className="action-btn action-btn--primary" onClick={handleContinue}>
+                  Continue
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Property Card Modal */}
-      {selectedPropertyTile !== null && currentPlayer && (
-        <PropertyCard
-          tile={BOARD_TILES[selectedPropertyTile]}
-          property={gameState.properties.find((p) => p.tileIndex === selectedPropertyTile) || {
-            tileIndex: selectedPropertyTile, ownerId: null, houses: 0, hasHotel: false,
-          }}
-          owner={(() => {
-            const prop = gameState.properties.find((p) => p.tileIndex === selectedPropertyTile);
-            return prop?.ownerId ? gameState.players.find((p) => p.id === prop.ownerId) || null : null;
-          })()}
-          currentPlayer={currentPlayer}
-          mode="INFO"
-          onClose={() => setSelectedPropertyTile(null)}
-          onBuild={() => {
-            emitBuild(selectedPropertyTile);
-            setSelectedPropertyTile(null);
-          }}
-          canBuild={isMyTurn && gameState.turnPhase === 'ACTION' && 
-            gameState.properties.find((p) => p.tileIndex === selectedPropertyTile)?.ownerId === currentPlayer?.id
-          }
+      {/* Challenge Card Modal */}
+      {showCardDraw && gameState.pendingTileEvent?.card && (
+        <ChallengeCardModal
+          card={gameState.pendingTileEvent.card}
+          onClose={emitCardAck}
         />
+      )}
+
+      {/* Waiting indicator for other players */}
+      {isChallengePhase(gameState.turnPhase) && challengePlayerId && !isMyTurn && (
+        <div className="challenge-waiting-overlay">
+          <div className="challenge-waiting surface-2">
+            <Hourglass size={32} className="waiting-icon" />
+            <p>{gameState.players.find(p => p.id === challengePlayerId)?.name} is answering...</p>
+          </div>
+        </div>
       )}
 
       {/* Notifications */}
@@ -334,4 +467,16 @@ export function GamePage() {
       />
     </div>
   );
+}
+
+function formatContext(context: string): string {
+  const labels: Record<string, string> = {
+    DICE_CHALLENGE: '🎲 Dice Challenge',
+    SMART_BUY: '🏷️ Smart Buy',
+    RENT_DEFENSE: '🛡️ Rent Defense',
+    CHALLENGE_CARD: '⚡ Challenge Card',
+    JAIL_ESCAPE: '🔓 Jail Escape',
+    LEVEL_UP: '⭐ Level Up',
+  };
+  return labels[context] || context;
 }

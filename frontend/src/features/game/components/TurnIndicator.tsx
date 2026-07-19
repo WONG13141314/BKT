@@ -1,22 +1,30 @@
+import { Player } from '../types/game.types';
 import './TurnIndicator.css';
-import { TurnPhase, Player } from '../types/game.types';
-import { Dices, Brain, Footprints, MapPin, Zap, SkipForward } from 'lucide-react';
 
 interface TurnIndicatorProps {
   currentPlayer: Player | null;
   isMyTurn: boolean;
-  turnPhase: TurnPhase;
+  turnPhase: string;
   round: number;
   maxRounds: number;
 }
 
-const PHASE_CONFIG: Record<TurnPhase, { icon: React.ReactNode; label: string }> = {
-  ROLL: { icon: <Dices size={13} />, label: 'Roll' },
-  MATH_CHALLENGE: { icon: <Brain size={13} />, label: 'Challenge' },
-  MOVING: { icon: <Footprints size={13} />, label: 'Moving' },
-  TILE_EVENT: { icon: <MapPin size={13} />, label: 'Event' },
-  ACTION: { icon: <Zap size={13} />, label: 'Action' },
-  END: { icon: <SkipForward size={13} />, label: 'Ending' },
+const PHASE_LABELS: Record<string, string> = {
+  ROLL_PHASE: '🎲 Roll Phase',
+  DICE_CHALLENGE: '⚡ Dice Challenge!',
+  MOVING: '🏃 Moving...',
+  RESOLVE_TILE: '📍 Resolving...',
+  BUY_DECISION: '🏠 Buy Decision',
+  SMART_BUY_CHALLENGE: '🏷️ Smart Buy Challenge',
+  RENT_PAYMENT: '💰 Rent Due',
+  RENT_CHALLENGE: '🛡️ Rent Defense',
+  CARD_DRAW: '🃏 Challenge Card!',
+  CARD_MATH_CHALLENGE: '🧮 Card Challenge',
+  JAIL_DECISION: '🔒 Jail Decision',
+  JAIL_CHALLENGE: '🔓 Jail Escape',
+  LEVEL_UP_OFFER: '⭐ Level Up!',
+  LEVEL_UP_CHALLENGE: '⭐ Level Up Challenge',
+  END_TURN: '✅ End Turn',
 };
 
 export function TurnIndicator({
@@ -26,31 +34,29 @@ export function TurnIndicator({
   round,
   maxRounds,
 }: TurnIndicatorProps) {
-  const phase = PHASE_CONFIG[turnPhase] || { icon: null, label: turnPhase };
+  if (!currentPlayer) return null;
+
+  const phaseLabel = PHASE_LABELS[turnPhase] || turnPhase;
 
   return (
-    <div className={`turn-indicator-container ${isMyTurn ? 'my-turn' : ''}`}>
-      <div className="turn-indicator glass-panel">
-        <div className={`turn-dot ${isMyTurn ? 'turn-dot--active' : ''}`} />
-        <div className="turn-text">
-          {isMyTurn ? (
-            <span className="turn-text--mine heading-display">Your Turn</span>
-          ) : (
-            <span>
-              Waiting for{' '}
-              <strong style={{ color: currentPlayer?.color }}>
-                {currentPlayer?.name || '...'}
-              </strong>
-            </span>
-          )}
+    <div className={`turn-indicator ${isMyTurn ? 'turn-indicator--my-turn' : ''}`}>
+      <div className="turn-indicator__left">
+        <div
+          className="turn-indicator__avatar"
+          style={{ backgroundColor: currentPlayer.color }}
+        >
+          {currentPlayer.isBot ? '🤖' : currentPlayer.name.charAt(0)}
         </div>
-        <div className="turn-phase-label">
-          {phase.icon}
-          {phase.label}
+        <div className="turn-indicator__info">
+          <span className="turn-indicator__name">
+            {isMyTurn ? 'Your Turn' : `${currentPlayer.name}'s Turn`}
+            {currentPlayer.isBot && !isMyTurn && ' 🤖'}
+          </span>
+          <span className="turn-indicator__phase">{phaseLabel}</span>
         </div>
-        <div className="turn-round">
-          R{round}/{maxRounds}
-        </div>
+      </div>
+      <div className="turn-indicator__round">
+        Round {round}/{maxRounds}
       </div>
     </div>
   );

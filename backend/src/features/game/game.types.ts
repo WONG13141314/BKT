@@ -1,16 +1,22 @@
 // ============================================
-// Game Engine Types — Shared between game logic modules
+// Game Engine Types — MathOpoly Redesign
+// 20-tile board, 4 skills (Std 1 KSSR), RM currency
 // ============================================
+
+import { SKILL_NAMES, type SkillName } from './game.constants';
+
+// Re-export for convenience
+export { SKILL_NAMES, type SkillName };
 
 // ---- Board & Tiles ----
 
 export type TileType =
   | 'GO'
   | 'PROPERTY'
-  | 'COMMUNITY_CHEST'
+  | 'CHALLENGE_CARD'
   | 'TAX'
-  | 'CHANCE'
-  | 'FREE_PARKING'
+  | 'LUCKY_BREAK'
+  | 'REST'
   | 'JAIL'
   | 'GO_TO_JAIL';
 
@@ -18,76 +24,206 @@ export interface TileConfig {
   index: number;
   type: TileType;
   name: string;
-  colorGroup: string | null;  // e.g. 'brown', 'lightblue', null for non-properties
-  price: number;              // Purchase price (0 for non-properties)
-  baseRent: number;           // Base rent without houses (0 for non-properties)
-  houseCost: number;          // Cost to build one house (0 for non-properties)
+  colorGroup: string | null;   // e.g. 'blue', 'orange', null for non-properties
+  skillTheme: SkillName | null; // Which skill this property tests
+  price: number;                // Purchase price in RM (0 for non-properties)
+  baseRent: number;             // Base rent in RM (0 for non-properties)
+  leveledRent: number;          // Rent after Level Up (0 for non-properties)
 }
 
 export interface PropertyState {
   tileIndex: number;
-  ownerId: string | null;     // GamePlayer id
-  houses: number;             // 0–4
-  hasHotel: boolean;
+  ownerId: string | null;       // Player id
+  isLeveledUp: boolean;         // Single level-up replaces houses/hotels
 }
 
 // ---- Color Groups ----
 
 export interface ColorGroup {
   name: string;
-  color: string;              // CSS color for the board
-  tileIndices: number[];      // Which tile indices belong to this group
-  houseCost: number;
+  color: string;                // CSS hex color
+  tileIndices: number[];        // Which tile indices belong to this group
+  skillTheme: SkillName;        // Primary skill for this color set
 }
 
 // ---- Players ----
 
 export interface PlayerState {
-  id: string;                 // GamePlayer id
+  id: string;
   userId: string;
   name: string;
-  position: number;           // Tile index (0–27)
-  money: number;
-  color: string;
-  properties: number[];       // Tile indices owned
+  position: number;             // Tile index (0–19)
+  money: number;                // In RM
+  color: string;                // CSS color
+  properties: number[];         // Tile indices owned
   isInJail: boolean;
-  jailTurns: number;          // 0–3
-  isInDebt: boolean;
-  streak: number;             // Consecutive correct answers
+  jailTurns: number;            // 0–2
+  isBankrupt: boolean;
+  streak: number;               // Consecutive correct answers
   totalCorrect: number;
   totalQuestions: number;
-  movementTokens: number;     // Saved +1 movement bonuses
-  powerCards: PowerCard[];    // Max 3
-  masteryStates: Record<string, number>; // skillName → pMastery
+  hasLevelUpToken: boolean;     // Free token from Lucky Break / challenge card
+  hasRentShield: boolean;       // Skip next rent payment (from challenge card)
+  hasDiscountToken: boolean;    // 30% off next purchase (from challenge card)
+  masteryStates: Record<string, number>; // skillName → pMastery [0.01, 0.99]
+  consecutiveFailures: Record<string, number>; // skillName → consecutive wrong count
+
+  // Bot-specific
+  isBot: boolean;
+  botDifficulty?: 'easy' | 'medium' | 'hard';
 }
 
-// ---- Turn Flow ----
+// ---- Turn Flow (State Machine) ----
 
 export type TurnPhase =
-  | 'ROLL'          // Waiting for player to roll dice
-  | 'MATH_CHALLENGE' // Showing a math question
-  | 'MOVING'        // Token animation in progress
-  | 'TILE_EVENT'    // Processing tile landing event
-  | 'ACTION'        // Player can build/trade (optional)
-  | 'END';          // Turn wrapping up
+  | 'ROLL_PHASE'            // Waiting for player to roll dice
+  | 'DICE_CHALLENGE'        // Optional dice mini-challenge (1-in-3)
+  | 'MOVING'                // Token animation in progress
+  | 'RESOLVE_TILE'          // Processing tile landing
+  | 'BUY_DECISION'          // Player choosing to buy / smart-buy / skip
+  | 'SMART_BUY_CHALLENGE'   // Answering Smart Buy question
+  | 'RENT_PAYMENT'          // Player choosing to defend or pay full
+  | 'RENT_CHALLENGE'        // Answering Rent Defense question
+  | 'CARD_DRAW'             // Challenge Card drawn, showing effect
+  | 'CARD_MATH_CHALLENGE'   // Math challenge card question
+  | 'JAIL_DECISION'         // Player choosing escape method
+  | 'JAIL_CHALLENGE'        // Answering jail escape question
+  | 'LEVEL_UP_OFFER'        // Offering Level Up at end of turn
+  | 'LEVEL_UP_CHALLENGE'    // Answering Level Up question
+  | 'END_TURN';             // Turn wrapping up
 
 export type ChallengeContext =
-  | 'ROLL_DICE'
-  | 'BUY_PROPERTY'
-  | 'PAY_RENT'
-  | 'BUILD_HOUSE'
-  | 'BUILD_HOTEL'
-  | 'CHANCE_CARD'
-  | 'COMMUNITY_CHEST'
-  | 'TAX'
+  | 'DICE_CHALLENGE'
+  | 'SMART_BUY'
+  | 'RENT_DEFENSE'
+  | 'CHALLENGE_CARD'
   | 'JAIL_ESCAPE'
-  | 'PASSING_GO'
-  | 'FREE_PARKING'
-  | 'TRADE'
-  | 'AUCTION'
-  | 'SPECIAL_EVENT'
-  | 'MATH_DUEL'
-  | 'RECOVERY';
+  | 'LEVEL_UP';
+
+// ---- Question Data Models ----
+
+/** Column/vertical method for addition & subtraction */
+export interface ColumnQuestion {
+  type: 'column';
+  operation: '+' | '-';
+  topNumber: number;
+  bottomNumber: number;
+  placeValues: {
+    hundreds?: { top: number | null; bottom: number | null };
+    tens: { top: number; bottom: number };
+    ones: { top: number; bottom: number };
+  };
+  answer: number;
+  hasRegrouping: boolean;
+  answerDigits: {
+    hundreds?: number | null;
+    tens: number;
+    ones: number;
+  };
+}
+
+/** Standard multiple-choice for Place Value & Money */
+export interface McqQuestion {
+  type: 'mcq';
+  text: string;
+}
+
+/** Union type — frontend uses this to decide rendering */
+export type QuestionData = ColumnQuestion | McqQuestion;
+
+// ---- Math Challenge ----
+
+export interface MathChallenge {
+  id: string;
+  skillName: SkillName;
+  difficulty: 1 | 2 | 3;
+  questionData: QuestionData;   // Structured data for rendering
+  text: string;                 // Fallback inline text (e.g. "45 + 23 = ?")
+  options: string[];            // 4 MCQ answer options
+  correctIndex: number;
+  context: ChallengeContext;
+  timeLimit: number;            // Seconds
+  hintLevel: 0 | 1 | 2 | 3;
+  hintContent: string | null;
+}
+
+// ---- Answer Result ----
+
+export interface AnswerResult {
+  isCorrect: boolean;
+  correctAnswer: string;
+  newMastery: number;
+  previousMastery: number;
+  reward: RewardResult;
+  streakCount: number;
+  streakBroken: boolean;
+  showHintNext: boolean;
+}
+
+// ---- Rewards ----
+
+export interface RewardResult {
+  type: RewardType;
+  value: number;
+  description: string;
+}
+
+export type RewardType =
+  | 'DISCOUNT'         // Smart Buy discount
+  | 'BONUS_CASH'       // Dice challenge / card bonus
+  | 'RENT_HALF'        // Rent defense success
+  | 'LEVEL_UP'         // Property leveled up
+  | 'JAIL_BREAK'       // Freed from jail
+  | 'NONE';            // No reward (wrong answer — but never a penalty)
+
+// ---- Tile Events ----
+
+export interface TileEvent {
+  type: TileType;
+  tileIndex: number;
+  tileName: string;
+  propertyPrice?: number;
+  propertyOwner?: string | null;
+  rentAmount?: number;
+  isMonopoly?: boolean;
+  isLeveledUp?: boolean;
+  taxAmount?: number;
+  card?: ChallengeCard;
+  luckyBreakReward?: LuckyBreakReward;
+}
+
+// ---- Challenge Cards ----
+
+export interface ChallengeCard {
+  id: number;
+  name: string;
+  description: string;
+  isMathCard: boolean;
+  effect: CardEffect;
+  // Math card rewards (only if isMathCard)
+  correctReward?: CardEffect;
+  wrongOutcome?: CardEffect;
+}
+
+export type CardEffect =
+  | { type: 'GAIN_MONEY'; amount: number }
+  | { type: 'LOSE_MONEY'; amount: number }
+  | { type: 'MOVE_FORWARD'; spaces: number }
+  | { type: 'MOVE_BACKWARD'; spaces: number }
+  | { type: 'GO_TO_JAIL' }
+  | { type: 'COLLECT_FROM_EACH'; amount: number }
+  | { type: 'FREE_LEVEL_UP_TOKEN' }
+  | { type: 'RENT_SHIELD' }
+  | { type: 'DISCOUNT_TOKEN'; percent: number }
+  | { type: 'STEAL_FROM_RICHEST'; amount: number }
+  | { type: 'NOTHING' };
+
+// ---- Lucky Break ----
+
+export interface LuckyBreakReward {
+  type: 'cash' | 'levelUpToken';
+  amount?: number;  // RM amount if cash
+}
 
 // ---- Game State ----
 
@@ -96,151 +232,32 @@ export interface GameState {
   players: PlayerState[];
   tiles: TileConfig[];
   properties: PropertyState[];
-  currentPlayerIndex: number; // 0–3
+  currentPlayerIndex: number;
   phase: 'LOBBY' | 'PLAYING' | 'FINISHED';
   turnPhase: TurnPhase;
-  round: number;              // 1–20
-  maxRounds: number;          // 20
+  round: number;
+  maxRounds: number;
   diceValues: [number, number];
-  movementBonus: number;      // Modifier from math challenge (+1 or -1 or 0)
   currentChallenge: MathChallenge | null;
   pendingTileEvent: TileEvent | null;
+
+  // Challenge card deck
+  challengeCardDeck: number[];    // Shuffled card IDs
+  challengeCardIndex: number;     // Current position in deck
+
+  // Timing
+  gameStartTime: number;          // Unix timestamp ms
+  isFinalRound: boolean;          // After clock cap triggers
+
+  // Auction (simplified — 10-second bidding)
   auctionState: AuctionState | null;
 }
-
-// ---- Math Challenge ----
-
-export interface MathChallenge {
-  id: string;
-  questionId: string;
-  skillId: string;
-  skillName: string;
-  difficulty: 1 | 2 | 3;
-  text: string;               // "You have $520. Property costs $180. How much left?"
-  options: string[];           // ["$330", "$340", "$360", "$300"]
-  correctIndex: number;
-  context: ChallengeContext;
-  timeLimit: number;           // Seconds (default 15)
-  hintLevel: 0 | 1 | 2 | 3;
-  hintContent: string | null;
-}
-
-export interface AnswerResult {
-  isCorrect: boolean;
-  correctAnswer: string;
-  newMastery: number;
-  previousMastery: number;
-  reward: RewardResult;
-  penalty: PenaltyResult | null;
-  milestones: MilestoneResult[];
-  streakCount: number;
-  streakBroken: boolean;
-  showHintNext: boolean;
-}
-
-// ---- Tile Events ----
-
-export interface TileEvent {
-  type: TileType;
-  tileIndex: number;
-  tileName: string;
-  // Property-specific
-  propertyPrice?: number;
-  propertyOwner?: string | null;
-  rentAmount?: number;
-  // Tax-specific
-  taxAmount?: number;
-  taxType?: 'INCOME' | 'LUXURY';
-  // Card-specific (Chance / Community Chest)
-  card?: GameCard;
-}
-
-export interface GameCard {
-  id: string;
-  title: string;
-  description: string;        // Flavor text shown to player
-  mathContext: string;         // The embedded math scenario
-  effect: CardEffect;
-}
-
-export type CardEffect =
-  | { type: 'GAIN_MONEY'; amount: number }
-  | { type: 'LOSE_MONEY'; amount: number }
-  | { type: 'MOVE_TO'; tileIndex: number }
-  | { type: 'MOVE_FORWARD'; spaces: number }
-  | { type: 'MOVE_BACKWARD'; spaces: number }
-  | { type: 'FREE_HOUSE' }
-  | { type: 'COLLECT_FROM_EACH'; amount: number }
-  | { type: 'PAY_EACH'; amount: number }
-  | { type: 'GO_TO_JAIL' }
-  | { type: 'JAIL_FREE' };
-
-// ---- Rewards ----
-
-export interface RewardResult {
-  type: RewardType;
-  value: number;              // Discount %, cash amount, or movement bonus
-  description: string;        // "10% discount! You pay $162 instead of $180"
-}
-
-export type RewardType =
-  | 'DISCOUNT'
-  | 'BONUS_CASH'
-  | 'MOVEMENT'
-  | 'RENT_SHIELD'
-  | 'TAX_RELIEF'
-  | 'JAIL_BREAK'
-  | 'POWER_CARD'
-  | 'BADGE'
-  | 'NONE';
-
-export interface MilestoneResult {
-  skillName: string;
-  threshold: number;          // 0.5, 0.7, or 0.9
-  label: string;              // "Apprentice Addition"
-  cashBonus: number;
-  badge: string;
-}
-
-// ---- Penalties ----
-
-export interface PenaltyResult {
-  type: PenaltyType;
-  value: number;
-  description: string;        // "No discount — full price of $180"
-}
-
-export type PenaltyType =
-  | 'NO_DISCOUNT'
-  | 'FULL_RENT'
-  | 'FULL_TAX'
-  | 'REDUCED_MOVEMENT'
-  | 'STAY_IN_JAIL'
-  | 'REDUCED_BENEFIT';
-
-// ---- Power Cards ----
-
-export interface PowerCard {
-  type: PowerCardType;
-  name: string;
-  description: string;
-  earnedAtRound: number;
-}
-
-export type PowerCardType =
-  | 'SHIELD'        // Skip one rent payment
-  | 'DOUBLE_ROLL'   // Roll twice, pick higher
-  | 'DISCOUNT'      // 25% off any property
-  | 'RENT_SURGE'    // Double rent on your property once
-  | 'TELEPORT';     // Move to any unowned property
-
-// ---- Auction ----
 
 export interface AuctionState {
   tileIndex: number;
   currentBid: number;
   currentBidderId: string | null;
-  biddingBonuses: Record<string, number>; // playerId → bonus $
+  timeRemaining: number;          // Seconds
   isActive: boolean;
 }
 
@@ -250,58 +267,28 @@ export interface FinalScore {
   playerId: string;
   playerName: string;
   color: string;
+  isBot: boolean;
   cash: number;
-  propertyValue: number;
-  buildingValue: number;
-  netWorth: number;           // cash + propertyValue + buildingValue
-  averageMastery: number;
-  masteryMultiplier: number;  // 0.5 + averageMastery (range: 0.6–1.5)
+  propertyValue: number;         // Sum of purchase prices
+  levelUpValue: number;          // Sum of level-up costs paid
+  netWorth: number;              // cash + propertyValue + levelUpValue
   totalCorrect: number;
-  mathBonus: number;          // totalCorrect × 10
-  finalScore: number;         // (netWorth × masteryMultiplier) + mathBonus
+  totalQuestions: number;
   rank: number;
 }
 
-// ---- Skill Definitions ----
+// ---- Post-Game Mastery Report (human players only) ----
 
-export const SKILL_NAMES = [
-  'Addition',
-  'Subtraction',
-  'Multiplication',
-  'Division',
-  'Fractions',
-  'Decimals',
-] as const;
-
-export type SkillName = typeof SKILL_NAMES[number];
-
-// ---- Constants ----
-
-export const GAME_CONSTANTS = {
-  TOTAL_TILES: 28,
-  MAX_PLAYERS: 4,
-  STARTING_MONEY: 1000,
-  MAX_ROUNDS: 20,
-  BASE_GO_SALARY: 200,
-  BONUS_GO_SALARY: 250,
-  MASTERY_GO_SALARY: 300,
-  GO_MASTERY_THRESHOLD: 0.7,
-  BAIL_COST: 50,
-  MAX_JAIL_TURNS: 3,
-  MAX_HOUSES: 4,
-  MAX_DEBT: -500,
-  RECOVERY_BONUS: 75,
-  MATH_DISCOUNT_PERCENT: 10,
-  RENT_DISCOUNT_PERCENT: 25,
-  BUILD_DISCOUNT_PERCENT: 20,
-  TAX_DISCOUNT_PERCENT: 50,
-  QUESTION_TIME_LIMIT: 15,    // seconds
-  STREAK_BONUS_3: 50,
-  STREAK_BONUS_5: 100,
-  STREAK_BONUS_10: 200,
-  CORRECT_ANSWER_XP: 10,      // $10 math bonus per correct answer
-  MAX_POWER_CARDS: 3,
-  FREE_PARKING_QUESTION_COUNT: 3,
-  FREE_PARKING_PER_CORRECT: 30,
-  FREE_PARKING_COMBO_BONUS: 100,
-} as const;
+export interface MasteryReport {
+  playerId: string;
+  playerName: string;
+  skills: {
+    skillName: SkillName;
+    mastery: number;              // 0.0 – 1.0
+    totalAttempts: number;
+    totalCorrect: number;
+  }[];
+  bestSkill: SkillName;
+  weakestSkill: SkillName;
+  overallAccuracy: number;        // totalCorrect / totalQuestions
+}

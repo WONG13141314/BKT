@@ -7,6 +7,9 @@ export { PropertyCard } from './components/PropertyCard';
 export { TurnIndicator } from './components/TurnIndicator';
 export { GameOverScreen } from './components/GameOverScreen';
 export { GameNotifications } from './components/GameNotification';
+export { ColumnQuestion } from './components/ColumnQuestion';
+export { McqQuestion } from './components/McqQuestion';
+export { ChallengeCardModal } from './components/ChallengeCardModal';
 export { useGameSocket } from './hooks/useGameSocket';
 export { useGameState } from './hooks/useGameState';
 export type {
@@ -18,9 +21,13 @@ export type {
   MathChallenge,
   AnswerResult,
   FinalScore,
+  MasteryReport,
   PropertyState,
   ChallengeContext,
   RewardResult,
-  PenaltyResult,
-  PowerCard,
+  ChallengeCard,
+  TileEvent,
+  ColumnQuestion as ColumnQuestionType,
+  McqQuestion as McqQuestionType,
 } from './types/game.types';
+

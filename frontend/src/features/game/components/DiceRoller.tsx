@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Dices, MoveRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Dices } from 'lucide-react';
 import './DiceRoller.css';
 
 interface DiceRollerProps {
   diceValues: [number, number];
-  movementBonus: number;
   isMyTurn: boolean;
   turnPhase: string;
   onRollClick: () => void;
@@ -36,7 +35,6 @@ function DiceFace({ value, isRolling }: { value: number; isRolling: boolean }) {
 
 export function DiceRoller({
   diceValues,
-  movementBonus,
   isMyTurn,
   turnPhase,
   onRollClick,
@@ -50,7 +48,6 @@ export function DiceRoller({
     if (diceValues[0] === displayValues[0] && diceValues[1] === displayValues[1]) return;
 
     setIsRolling(true);
-    // Quick random animation
     const interval = setInterval(() => {
       setDisplayValues([
         Math.floor(Math.random() * 6) + 1,
@@ -71,7 +68,18 @@ export function DiceRoller({
   }, [diceValues]);
 
   const total = diceValues[0] + diceValues[1];
-  const canRoll = isMyTurn && turnPhase === 'ROLL' && !disabled;
+  const canRoll = isMyTurn && turnPhase === 'ROLL_PHASE' && !disabled;
+
+  // Turn phase labels
+  const getStatusText = () => {
+    if (canRoll) return 'Roll Dice';
+    switch (turnPhase) {
+      case 'MOVING': return 'Moving...';
+      case 'DICE_CHALLENGE': return 'Dice Challenge!';
+      case 'RESOLVE_TILE': return 'Resolving...';
+      default: return 'Wait...';
+    }
+  };
 
   return (
     <div className="dice-roller">
@@ -80,22 +88,9 @@ export function DiceRoller({
         <DiceFace value={displayValues[1]} isRolling={isRolling} />
       </div>
 
-      {/* Total display */}
+      {/* Total display — pure dice, no movement modifier */}
       <div className="dice-total">
         <span className="dice-total__value">{total}</span>
-        {movementBonus !== 0 && (
-          <span className={`dice-total__bonus ${movementBonus > 0 ? 'bonus--positive' : 'bonus--negative'}`}>
-            {movementBonus > 0 ? `+${movementBonus}` : movementBonus}
-          </span>
-        )}
-        {movementBonus !== 0 && (
-          <>
-            <MoveRight size={14} className="dice-total__arrow" />
-            <span className="dice-total__final">
-              {Math.max(2, total + movementBonus)}
-            </span>
-          </>
-        )}
       </div>
 
       {/* Roll button */}
@@ -105,7 +100,7 @@ export function DiceRoller({
         disabled={!canRoll}
       >
         <Dices size={18} />
-        {canRoll ? 'Roll Dice' : turnPhase === 'MOVING' ? 'Moving...' : 'Wait...'}
+        {getStatusText()}
       </button>
     </div>
   );

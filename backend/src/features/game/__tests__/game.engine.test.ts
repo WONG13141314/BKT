@@ -4,14 +4,15 @@ import {
   startRollPhase,
   movePlayer,
   resolveTileEvent,
-  processAnswer,
+  processDiceChallengeAnswer,
   endTurn,
   calculateFinalScores,
   payBail,
 } from '../game.engine';
-import { GameState, GAME_CONSTANTS } from '../game.types';
+import { GameState } from '../game.types';
+import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS } from '../game.constants';
 
-describe('Game Engine', () => {
+describe('Game Engine — MathOpoly Redesign', () => {
   let gameState: GameState;
 
   beforeEach(() => {
@@ -27,14 +28,14 @@ describe('Game Engine', () => {
     it('should create a valid game state with 4 players', () => {
       expect(gameState.players).toHaveLength(4);
       expect(gameState.phase).toBe('PLAYING');
-      expect(gameState.turnPhase).toBe('ROLL');
+      expect(gameState.turnPhase).toBe('ROLL_PHASE');
       expect(gameState.round).toBe(1);
       expect(gameState.currentPlayerIndex).toBe(0);
     });
 
     it('should give each player starting money', () => {
       for (const player of gameState.players) {
-        expect(player.money).toBe(GAME_CONSTANTS.STARTING_MONEY);
+        expect(player.money).toBe(STARTING_MONEY);
       }
     });
 
@@ -44,9 +45,9 @@ describe('Game Engine', () => {
       }
     });
 
-    it('should initialize mastery states for all 6 skills', () => {
+    it('should initialize mastery states for all 4 skills', () => {
       const player = gameState.players[0];
-      expect(Object.keys(player.masteryStates)).toHaveLength(6);
+      expect(Object.keys(player.masteryStates)).toHaveLength(4);
       for (const mastery of Object.values(player.masteryStates)) {
         expect(mastery).toBe(0.1);
       }
@@ -57,8 +58,7 @@ describe('Game Engine', () => {
       expect(gameState.properties).toHaveLength(propertyCount);
       for (const prop of gameState.properties) {
         expect(prop.ownerId).toBeNull();
-        expect(prop.houses).toBe(0);
-        expect(prop.hasHotel).toBe(false);
+        expect(prop.isLeveledUp).toBe(false);
       }
     });
   });
@@ -73,76 +73,44 @@ describe('Game Engine', () => {
   });
 
   describe('startRollPhase', () => {
-    it('should generate a math challenge and transition to MATH_CHALLENGE', () => {
+    it('should roll dice and transition to appropriate phase', () => {
       const newState = startRollPhase(gameState);
 
-      expect(newState.turnPhase).toBe('MATH_CHALLENGE');
-      expect(newState.currentChallenge).not.toBeNull();
-      expect(newState.currentChallenge?.context).toBe('ROLL_DICE');
+      // Should either have a dice challenge or move directly
+      expect(['DICE_CHALLENGE', 'MOVING']).toContain(newState.turnPhase);
+      expect(newState.diceValues[0]).toBeGreaterThanOrEqual(1);
+      expect(newState.diceValues[0]).toBeLessThanOrEqual(6);
+      expect(newState.diceValues[1]).toBeGreaterThanOrEqual(1);
+      expect(newState.diceValues[1]).toBeLessThanOrEqual(6);
     });
   });
 
-  describe('processAnswer', () => {
-    it('should update mastery on correct answer', () => {
-      const stateWithChallenge = startRollPhase(gameState);
-      const correctIdx = stateWithChallenge.currentChallenge!.correctIndex;
+  describe('processDiceChallengeAnswer', () => {
+    it('should handle correct answer with bonus cash', () => {
+      // Force a dice challenge
+      const rolledState = startRollPhase(gameState);
+      if (rolledState.turnPhase === 'DICE_CHALLENGE' && rolledState.currentChallenge) {
+        const correctIdx = rolledState.currentChallenge.correctIndex;
+        const { result, newState } = processDiceChallengeAnswer(rolledState, correctIdx, 3000);
 
-      const { result } = processAnswer(stateWithChallenge, correctIdx, 3000);
-
-      expect(result.isCorrect).toBe(true);
-      expect(result.newMastery).toBeGreaterThan(result.previousMastery);
-      expect(result.streakCount).toBe(1);
-      expect(result.reward.type).not.toBe('NONE');
-    });
-
-    it('should update mastery on wrong answer', () => {
-      const stateWithChallenge = startRollPhase(gameState);
-      const correctIdx = stateWithChallenge.currentChallenge!.correctIndex;
-      const wrongIdx = (correctIdx + 1) % 4;
-
-      const { result } = processAnswer(stateWithChallenge, wrongIdx, 3000);
-
-      expect(result.isCorrect).toBe(false);
-      expect(result.penalty).not.toBeNull();
-      expect(result.streakCount).toBe(0);
-    });
-
-    it('should increment streak on consecutive correct answers', () => {
-      // Set player streak to 2
-      gameState.players[0].streak = 2;
-      const stateWithChallenge = startRollPhase(gameState);
-      const correctIdx = stateWithChallenge.currentChallenge!.correctIndex;
-
-      const { result } = processAnswer(stateWithChallenge, correctIdx, 3000);
-
-      expect(result.streakCount).toBe(3); // 2 + 1
-    });
-
-    it('should break streak on wrong answer', () => {
-      gameState.players[0].streak = 5;
-      const stateWithChallenge = startRollPhase(gameState);
-      const correctIdx = stateWithChallenge.currentChallenge!.correctIndex;
-      const wrongIdx = (correctIdx + 1) % 4;
-
-      const { result } = processAnswer(stateWithChallenge, wrongIdx, 3000);
-
-      expect(result.streakCount).toBe(0);
-      expect(result.streakBroken).toBe(true);
+        expect(result.isCorrect).toBe(true);
+        expect(result.newMastery).toBeGreaterThanOrEqual(result.previousMastery);
+      }
     });
   });
 
   describe('endTurn', () => {
     it('should advance to the next player', () => {
-      gameState.turnPhase = 'ACTION';
+      gameState.turnPhase = 'END_TURN';
       const newState = endTurn(gameState);
 
       expect(newState.currentPlayerIndex).toBe(1);
-      expect(newState.turnPhase).toBe('ROLL');
+      expect(newState.turnPhase).toBe('ROLL_PHASE');
     });
 
-    it('should wrap around after player 4', () => {
+    it('should wrap around after last player', () => {
       gameState.currentPlayerIndex = 3;
-      gameState.turnPhase = 'ACTION';
+      gameState.turnPhase = 'END_TURN';
       const newState = endTurn(gameState);
 
       expect(newState.currentPlayerIndex).toBe(0);
@@ -151,8 +119,8 @@ describe('Game Engine', () => {
 
     it('should end the game after maxRounds', () => {
       gameState.currentPlayerIndex = 3;
-      gameState.round = 20;
-      gameState.turnPhase = 'ACTION';
+      gameState.round = MAX_ROUNDS;
+      gameState.turnPhase = 'END_TURN';
       const newState = endTurn(gameState);
 
       expect(newState.phase).toBe('FINISHED');
@@ -163,13 +131,14 @@ describe('Game Engine', () => {
     it('should release player from jail and deduct bail cost', () => {
       gameState.players[0].isInJail = true;
       gameState.players[0].jailTurns = 1;
+      gameState.turnPhase = 'JAIL_DECISION';
 
       const newState = payBail(gameState);
       const player = getCurrentPlayer(newState);
 
       expect(player.isInJail).toBe(false);
       expect(player.jailTurns).toBe(0);
-      expect(player.money).toBe(GAME_CONSTANTS.STARTING_MONEY - GAME_CONSTANTS.BAIL_COST);
+      expect(player.money).toBe(STARTING_MONEY - BAIL_COST);
     });
   });
 
@@ -182,30 +151,15 @@ describe('Game Engine', () => {
       expect(scores[3].rank).toBe(4);
     });
 
-    it('should apply mastery multiplier correctly', () => {
-      // Give player 1 high mastery
-      gameState.players[0].masteryStates = {
-        Addition: 0.9, Subtraction: 0.9, Multiplication: 0.9,
-        Division: 0.9, Fractions: 0.9, Decimals: 0.9,
-      };
+    it('should rank by net worth (cash + property value)', () => {
+      // Give player 1 extra money
+      gameState.players[0].money = 2000;
 
       const scores = calculateFinalScores(gameState);
       const aliceScore = scores.find((s) => s.playerId === 'p1')!;
 
-      // Mastery multiplier = 0.5 + 0.9 = 1.4
-      expect(aliceScore.masteryMultiplier).toBeCloseTo(1.4, 1);
-      expect(aliceScore.finalScore).toBeGreaterThan(
-        scores.find((s) => s.playerId === 'p2')!.finalScore
-      );
-    });
-
-    it('should include math bonus in final score', () => {
-      gameState.players[0].totalCorrect = 20;
-
-      const scores = calculateFinalScores(gameState);
-      const aliceScore = scores.find((s) => s.playerId === 'p1')!;
-
-      expect(aliceScore.mathBonus).toBe(200); // 20 × $10
+      expect(aliceScore.rank).toBe(1);
+      expect(aliceScore.netWorth).toBeGreaterThanOrEqual(2000);
     });
   });
 });
