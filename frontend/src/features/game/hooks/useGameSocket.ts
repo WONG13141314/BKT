@@ -100,17 +100,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   // End Turn
   const emitEndTurn = useCallback(() => emit('game:end-turn'), [emit]);
 
-  // Lobby Bot Controls
-  const emitAddBot = useCallback((difficulty?: 'easy' | 'medium' | 'hard') => {
-    if (!socket) return;
-    socket.emit('room:add-bot', { difficulty: difficulty ?? 'medium' });
-  }, [socket]);
-
-  const emitRemoveBot = useCallback((botId: string) => {
-    if (!socket) return;
-    socket.emit('room:remove-bot', { botId });
-  }, [socket]);
-
   return {
     emitRoll,
     emitDiceAnswer,
@@ -131,7 +120,5 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitLevelUpAnswer,
     emitLevelUpDecline,
     emitEndTurn,
-    emitAddBot,
-    emitRemoveBot,
   };
 }

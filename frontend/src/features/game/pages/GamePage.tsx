@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { DiceRoller } from '../components/DiceRoller';
@@ -14,10 +14,7 @@ import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import {
   MathChallenge,
-  AnswerResult,
-  FinalScore,
   MasteryReport,
-  TileEvent,
   formatRM,
 } from '../types/game.types';
 import {
@@ -259,7 +256,7 @@ export function GamePage() {
 
   const showChallenge = isChallengePhase(gameState.turnPhase) && activeChallenge && isMyTurn;
   const showCardDraw = gameState.turnPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
-  const isBotTurn = currentPlayer?.isBot;
+
 
   return (
     <div className={`game-page ${showChallenge ? 'game-page--quiz-active' : ''}`}>
@@ -306,15 +303,6 @@ export function GamePage() {
           )}
 
           {/* === DECISION UIs (only for active human player) === */}
-
-          {/* ROLL_PHASE: Roll button */}
-          {gameState.turnPhase === 'ROLL_PHASE' && isMyTurn && !isBotTurn && (
-            <div className="game-actions">
-              <button className="action-btn action-btn--primary" onClick={emitRoll}>
-                🎲 Roll Dice
-              </button>
-            </div>
-          )}
 
           {/* BUY_DECISION: Buy / Smart Buy / Skip */}
           {gameState.turnPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (

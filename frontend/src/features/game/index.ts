@@ -3,7 +3,6 @@ export { GamePage } from './pages/GamePage';
 export { GameLobby } from './components/GameLobby';
 export { DiceRoller } from './components/DiceRoller';
 export { PlayerPanel } from './components/PlayerPanel';
-export { PropertyCard } from './components/PropertyCard';
 export { TurnIndicator } from './components/TurnIndicator';
 export { GameOverScreen } from './components/GameOverScreen';
 export { GameNotifications } from './components/GameNotification';
@@ -30,4 +29,3 @@ export type {
   ColumnQuestion as ColumnQuestionType,
   McqQuestion as McqQuestionType,
 } from './types/game.types';
-

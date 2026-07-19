@@ -60,35 +60,6 @@
   color: var(--text-primary);
 }
 
-.dice-total__bonus {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-}
-
-.bonus--positive {
-  color: var(--color-success);
-  background: var(--color-success-soft);
-}
-
-.bonus--negative {
-  color: var(--color-danger);
-  background: var(--color-danger-soft);
-}
-
-.dice-total__arrow {
-  color: var(--text-muted);
-}
-
-.dice-total__final {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-accent);
-}
-
 /* ---- Roll Button ---- */
 
 .dice-roll-btn {
