@@ -5,8 +5,6 @@ interface TurnIndicatorProps {
   currentPlayer: Player | null;
   isMyTurn: boolean;
   turnPhase: string;
-  round: number;
-  maxRounds: number;
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -31,32 +29,20 @@ export function TurnIndicator({
   currentPlayer,
   isMyTurn,
   turnPhase,
-  round,
-  maxRounds,
 }: TurnIndicatorProps) {
   if (!currentPlayer) return null;
 
   const phaseLabel = PHASE_LABELS[turnPhase] || turnPhase;
 
   return (
-    <div className={`turn-indicator ${isMyTurn ? 'turn-indicator--my-turn' : ''}`}>
-      <div className="turn-indicator__left">
-        <div
-          className="turn-indicator__avatar"
-          style={{ backgroundColor: currentPlayer.color }}
-        >
-          {currentPlayer.isBot ? '🤖' : currentPlayer.name.charAt(0)}
+    <div className="turn-indicator-container">
+      <div className={`turn-indicator ${isMyTurn ? 'my-turn' : ''}`}>
+        <div className={`turn-dot ${isMyTurn ? 'turn-dot--active' : ''}`} />
+        <div className={`turn-text ${isMyTurn ? 'turn-text--mine' : ''}`}>
+          {isMyTurn ? 'Your Turn' : `${currentPlayer.name}'s Turn`}
+          {currentPlayer.isBot && !isMyTurn && ' 🤖'}
         </div>
-        <div className="turn-indicator__info">
-          <span className="turn-indicator__name">
-            {isMyTurn ? 'Your Turn' : `${currentPlayer.name}'s Turn`}
-            {currentPlayer.isBot && !isMyTurn && ' 🤖'}
-          </span>
-          <span className="turn-indicator__phase">{phaseLabel}</span>
-        </div>
-      </div>
-      <div className="turn-indicator__round">
-        Round {round}/{maxRounds}
+        <div className="turn-phase-label">{phaseLabel}</div>
       </div>
     </div>
   );

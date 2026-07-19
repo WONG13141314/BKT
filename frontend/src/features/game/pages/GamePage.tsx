@@ -265,8 +265,6 @@ export function GamePage() {
         currentPlayer={currentPlayer}
         isMyTurn={isMyTurn}
         turnPhase={gameState.turnPhase}
-        round={gameState.round}
-        maxRounds={gameState.maxRounds}
       />
 
       {/* Main Layout */}

@@ -19,9 +19,12 @@
   position: relative;
   min-width: 280px;
   justify-content: center;
+  background: var(--surface-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
 }
 
-.my-turn .turn-indicator {
+.my-turn {
   border-color: hsla(220, 65%, 54%, 0.35);
   box-shadow: var(--shadow-glow-primary);
 }
