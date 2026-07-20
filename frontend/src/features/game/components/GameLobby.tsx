@@ -121,7 +121,7 @@ export function GameLobby() {
   if (!room && !error) {
     return (
       <div className="lobby-container">
-        <div className="lobby-card surface-2">
+        <div className="lobby-card">
           <div className="lobby-loading">
             <div className="spinner"></div>
             <p>{action === 'host' ? 'Creating room...' : 'Joining room...'}</p>
@@ -134,7 +134,7 @@ export function GameLobby() {
   if (!room && error) {
     return (
       <div className="lobby-container">
-        <div className="lobby-card surface-2">
+        <div className="lobby-card">
           <div className="lobby-error-state">
             <AlertCircle size={40} className="error-icon" />
             <p className="error-message">{error}</p>
@@ -147,7 +147,7 @@ export function GameLobby() {
 
   return (
     <div className="lobby-container">
-      <div className="lobby-card surface-2">
+      <div className="lobby-card">
         {/* Header */}
         <div className="lobby-header">
           <h1 className="heading-display lobby-title">Waiting Room</h1>

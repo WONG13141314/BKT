@@ -67,7 +67,7 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-bg-pattern" aria-hidden="true" />
-      <div className="login-card surface-2">
+      <div className="login-card">
         <div className="login-header">
           <div className="login-logo">
             <Dices size={32} strokeWidth={1.5} />

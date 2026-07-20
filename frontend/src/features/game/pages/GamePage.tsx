@@ -251,7 +251,7 @@ export function GamePage() {
   if (!roomCode) {
     return (
       <div className="game-page game-page--center">
-        <div className="game-page__message surface-2">
+        <div className="game-page__message">
           <AlertCircle size={24} />
           <h2>No Game Room specified.</h2>
           <button className="action-btn action-btn--primary" onClick={() => navigate('/join')}>Go Back</button>
@@ -263,7 +263,7 @@ export function GamePage() {
   if (!gameState) {
     return (
       <div className="game-page game-page--center">
-        <div className="game-page__message surface-2">
+        <div className="game-page__message">
           <Loader2 size={28} className="icon-spin" />
           <h2>Loading Game...</h2>
         </div>
@@ -412,7 +412,7 @@ export function GamePage() {
 
           {/* Current Player Quick Stats */}
           {currentPlayer && (
-            <div className="game-quick-stats surface-2">
+            <div className="game-quick-stats">
               <div className="quick-stat">
                 <span className="quick-stat__label"><Banknote size={16} /> Money</span>
                 <span className={`quick-stat__value ${currentPlayer.money < 0 ? 'money--negative' : 'money--positive'}`}>
@@ -439,7 +439,7 @@ export function GamePage() {
       {/* Math Challenge Panel */}
       {showChallenge && (
         <div className="challenge-overlay">
-          <div className="challenge-panel surface-2">
+          <div className="challenge-panel">
             <div className="challenge-header">
               <span className="challenge-context">{formatContext(activeChallenge!.context)}</span>
               <span className="challenge-skill">{activeChallenge!.skillName}</span>
@@ -469,7 +469,7 @@ export function GamePage() {
       {/* Waiting indicator for other players */}
       {isChallengePhase(gameState.turnPhase) && challengePlayerId && !isMyTurn && (
         <div className="challenge-waiting-overlay">
-          <div className="challenge-waiting surface-2">
+          <div className="challenge-waiting">
             <Hourglass size={32} className="waiting-icon" />
             <p>{gameState.players.find(p => p.id === challengePlayerId)?.name} is answering...</p>
           </div>
