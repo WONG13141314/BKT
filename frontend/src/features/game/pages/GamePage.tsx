@@ -414,19 +414,19 @@ export function GamePage() {
           {currentPlayer && (
             <div className="game-quick-stats surface-2">
               <div className="quick-stat">
-                <span className="quick-stat__label">Money</span>
-                <span className={`quick-stat__value ${currentPlayer.money < 0 ? 'money--negative' : ''}`}>
+                <span className="quick-stat__label"><Banknote size={16} /> Money</span>
+                <span className={`quick-stat__value ${currentPlayer.money < 0 ? 'money--negative' : 'money--positive'}`}>
                   {formatRM(currentPlayer.money)}
                 </span>
               </div>
               <div className="quick-stat">
-                <span className="quick-stat__label">Streak</span>
+                <span className="quick-stat__label"><Zap size={16} /> Streak</span>
                 <span className="quick-stat__value">
                   {currentPlayer.streak > 0 ? `🔥 ${currentPlayer.streak}` : '—'}
                 </span>
               </div>
               <div className="quick-stat">
-                <span className="quick-stat__label">Position</span>
+                <span className="quick-stat__label"><Star size={16} /> Position</span>
                 <span className="quick-stat__value">
                   {BOARD_TILES[currentPlayer.position]?.name || `Tile ${currentPlayer.position}`}
                 </span>

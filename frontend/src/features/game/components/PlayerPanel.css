@@ -7,8 +7,6 @@
   flex-direction: column;
   gap: var(--space-md);
   width: 260px;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
   flex-shrink: 0;
 }
 
@@ -30,8 +28,8 @@
   color: #000;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: 800;
-  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  font-family: 'Arial Narrow', sans-serif;
 }
 
 .panel-round__value {
@@ -123,14 +121,14 @@
 
 .panel-player__name {
   font-size: var(--text-sm);
-  font-weight: 900;
+  font-weight: 800;
   color: #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   text-transform: uppercase;
-  font-family: 'Impact', 'Arial Narrow', sans-serif;
-  letter-spacing: 0.5px;
+  font-family: 'Arial Black', sans-serif;
+  letter-spacing: 0px;
 }
 
 .panel-player__you {

@@ -37,17 +37,20 @@
 /* ---- Main Layout ---- */
 
 .game-layout {
-  display: grid;
-  grid-template-columns: 220px 1fr 260px;
-  gap: 0.75rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2rem;
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
   flex: 1;
-  min-height: 0;
 }
 
 @media (max-width: 900px) {
   .game-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
+    flex-direction: column;
+    align-items: center;
   }
 }
 
@@ -154,19 +157,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.75rem;
+  padding: 1rem;
   border-radius: 4px;
   background: #fff;
-  border: 2px solid #000;
-  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.4);
 }
 
 .quick-stat {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px dashed #ccc;
-  padding-bottom: 0.25rem;
+  border-bottom: 2px dashed #000;
+  padding-bottom: 0.5rem;
 }
 .quick-stat:last-child {
   border-bottom: none;
@@ -174,21 +177,38 @@
 }
 
 .quick-stat__label {
-  font-size: 0.75rem;
-  color: #495057;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #000;
+  font-weight: 800;
   text-transform: uppercase;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.5px;
 }
 
 .quick-stat__value {
-  font-size: 1rem;
-  font-weight: 800;
+  font-size: 1.2rem;
+  font-weight: 900;
   color: #000;
   font-family: 'Courier New', Courier, monospace;
 }
 
+.money--positive {
+  color: #2a9d8f;
+  background: #d8f3dc;
+  padding: 0.1rem 0.4rem;
+  border: 2px solid #000;
+  border-radius: 2px;
+}
+
 .money--negative {
   color: #e63946;
+  background: #ffe5d9;
+  padding: 0.1rem 0.4rem;
+  border: 2px solid #000;
+  border-radius: 2px;
 }
 
 /* ---- Challenge Overlay ---- */
