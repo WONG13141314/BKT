@@ -103,7 +103,7 @@ export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, o
         {/* Stage 3: Winner Announcement */}
         {revealStage >= 3 && winner && (
           <div className="gameover-winner gameover-reveal">
-            <div className="winner-card surface-2">
+            <div className="winner-card">
               <span className="winner-trophy"><Trophy size={32} /></span>
               <h2 className="heading-display winner-name">{winner.playerName} Wins!</h2>
               <p className="winner-score">Net Worth: {formatRM(winner.netWorth)}</p>

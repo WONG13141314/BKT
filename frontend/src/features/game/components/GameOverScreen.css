@@ -1,16 +1,17 @@
 /* ============================================
-   Game Over Screen — Dark Data-Forward
+   Game Over Screen — Classic Monopoly Theme
    ============================================ */
 
 .gameover-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
-  background: var(--surface-0);
-  overflow-y: auto;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: var(--space-2xl);
+  padding: 2rem;
+  overflow-y: auto;
 }
 
 .gameover-container {
@@ -18,65 +19,84 @@
   max-width: 800px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2xl);
-  padding-bottom: var(--space-3xl);
+  gap: 1.5rem;
+  margin: auto;
 }
 
-/* ---- Reveal animation class ---- */
+/* ---- Reveal Animations ---- */
 
 .gameover-reveal {
-  animation: fadeInUp 0.5s var(--ease-out) both;
+  animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ---- Header ---- */
 
 .gameover-header {
   text-align: center;
+  margin-bottom: 1rem;
 }
 
 .gameover-title {
-  font-family: var(--font-display);
-  font-size: var(--text-3xl);
-  color: var(--text-primary);
-  letter-spacing: -0.03em;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-size: 3.5rem;
+  color: #ffb703;
+  text-shadow: 3px 3px 0px #000;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .gameover-subtitle {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  margin-top: var(--space-xs);
+  font-size: 1.25rem;
+  color: #fff;
+  font-weight: 800;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 /* ---- Score Table ---- */
 
 .gameover-scores {
-  overflow-x: auto;
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 10px 10px 0px rgba(0,0,0,0.4);
 }
 
 .score-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-sm);
 }
 
 .score-table th {
-  text-align: left;
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  background: #2a9d8f;
+  color: #fff;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: var(--weight-semibold);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 4px solid #000;
+  border-right: 2px solid #000;
+  letter-spacing: 1px;
+}
+.score-table th:last-child {
+  border-right: none;
 }
 
 .score-row {
-  animation: fadeInUp 0.4s var(--ease-out) both;
-}
-
-.score-row td {
-  padding: var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
 

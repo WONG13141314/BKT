@@ -1,78 +1,84 @@
 /* ============================================
-   Game Notifications — Toast Stack
-   Dark Data-Forward
+   Game Notifications — Classic Monopoly Theme
    ============================================ */
 
 .game-notifications {
   position: fixed;
-  bottom: var(--space-xl);
-  right: var(--space-xl);
-  z-index: var(--z-toast);
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 2500;
   display: flex;
   flex-direction: column-reverse;
-  gap: var(--space-sm);
-  max-width: 340px;
+  gap: 1rem;
+  max-width: 360px;
 }
 
 .notification-toast {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  border-radius: var(--radius-md);
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-lg);
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 4px;
+  background: #fff;
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.4);
   cursor: pointer;
-  animation: slideInRight 0.3s var(--ease-out);
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .notification-toast--exit {
   opacity: 0;
-  transform: translateX(24px);
+  transform: translateX(50px);
 }
 
-/* ---- Type Variants ---- */
+/* ---- Type Variants (Styled like Monopoly cards) ---- */
 
 .notification-toast--reward {
-  border-left: 3px solid var(--color-success);
+  background: #d8f3dc;
 }
-
 .notification-toast--reward .notification-toast__icon {
-  color: var(--color-success);
+  color: #2a9d8f;
 }
 
 .notification-toast--penalty {
-  border-left: 3px solid var(--color-danger);
+  background: #ffe5d9;
 }
-
 .notification-toast--penalty .notification-toast__icon {
-  color: var(--color-danger);
+  color: #e63946;
 }
 
 .notification-toast--milestone {
-  border-left: 3px solid var(--color-accent);
+  background: #ffb703;
 }
-
 .notification-toast--milestone .notification-toast__icon {
-  color: var(--color-accent);
+  color: #000;
 }
 
 .notification-toast--streak {
-  border-left: 3px solid hsl(25, 90%, 55%);
+  background: #fff;
+  border-color: #ffb703;
 }
-
 .notification-toast--streak .notification-toast__icon {
-  color: hsl(25, 90%, 55%);
+  color: #ffb703;
 }
 
 .notification-toast--info {
-  border-left: 3px solid var(--color-primary);
+  background: #e9ecef;
 }
-
 .notification-toast--info .notification-toast__icon {
-  color: var(--color-primary-light);
+  color: #000;
 }
 
 /* ---- Content ---- */
@@ -80,11 +86,22 @@
 .notification-toast__icon {
   display: flex;
   flex-shrink: 0;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 50%;
+  padding: 0.4rem;
+  box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+}
+
+.notification-toast__icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .notification-toast__message {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-primary);
-  line-height: var(--leading-normal);
+  font-size: 1rem;
+  font-weight: 800;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.4;
 }
