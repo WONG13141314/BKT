@@ -144,11 +144,41 @@ export function GamePage() {
       };
       const label = actionLabels[data.action] || data.action;
       setBotActionMessage(`🤖 ${data.botName} is ${label}...`);
-      setTimeout(() => setBotActionMessage(null), 2000);
+      // Keep bot action banner slightly longer for readability
+      setTimeout(() => setBotActionMessage(null), 2500); 
     },
     onError: (data) => {
       addNotification('info', data.message);
     },
+  });
+
+  // ---- Pacing Logic (Delaying UI for animations) ----
+  const [activePhase, setActivePhase] = useState<string | null>(null);
+  const prevPhaseRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!gameState) return;
+    
+    const currentPhase = gameState.turnPhase;
+    const prevPhase = prevPhaseRef.current;
+    
+    if (currentPhase !== prevPhase) {
+      prevPhaseRef.current = currentPhase;
+      
+      // If we are transitioning FROM a roll, we delay showing the next phase's UI
+      // to allow the dice roll (600ms) and token movement (~400ms) animations to finish.
+      if (prevPhase === 'ROLL_PHASE') {
+        const timer = setTimeout(() => {
+          setActivePhase(currentPhase);
+        }, 1200);
+        return () => clearTimeout(timer);
+      } else {
+        // Otherwise, apply phase immediately (e.g., smart buy clicked -> smart buy challenge)
+        setActivePhase(currentPhase);
+      }
+    }
+  }, [gameState?.turnPhase]);
+
   });
 
   // ---- Answer Handler ----
@@ -254,8 +284,9 @@ export function GamePage() {
     );
   }
 
-  const showChallenge = isChallengePhase(gameState.turnPhase) && activeChallenge && isMyTurn;
-  const showCardDraw = gameState.turnPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
+  const renderPhase = activePhase || gameState.turnPhase;
+  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn;
+  const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
 
 
   return (
@@ -303,7 +334,7 @@ export function GamePage() {
           {/* === DECISION UIs (only for active human player) === */}
 
           {/* BUY_DECISION: Buy / Smart Buy / Skip */}
-          {gameState.turnPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 {gameState.pendingTileEvent.tileName} — {formatRM(gameState.pendingTileEvent.propertyPrice!)}
@@ -321,7 +352,7 @@ export function GamePage() {
           )}
 
           {/* RENT_PAYMENT: Pay / Defend */}
-          {gameState.turnPhase === 'RENT_PAYMENT' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'RENT_PAYMENT' && isMyTurn && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 Rent: {formatRM(gameState.pendingTileEvent.rentAmount!)}
@@ -336,7 +367,7 @@ export function GamePage() {
           )}
 
           {/* JAIL_DECISION: Math / Bail / Wait */}
-          {gameState.turnPhase === 'JAIL_DECISION' && isMyTurn && (
+          {renderPhase === 'JAIL_DECISION' && isMyTurn && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 <Lock size={16} /> You're in Jail!
@@ -354,7 +385,7 @@ export function GamePage() {
           )}
 
           {/* LEVEL_UP_OFFER: Accept / Decline */}
-          {gameState.turnPhase === 'LEVEL_UP_OFFER' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'LEVEL_UP_OFFER' && isMyTurn && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 <Star size={16} /> Level Up: {gameState.pendingTileEvent.tileName}
@@ -372,7 +403,7 @@ export function GamePage() {
           )}
 
           {/* END_TURN */}
-          {gameState.turnPhase === 'END_TURN' && isMyTurn && (
+          {renderPhase === 'END_TURN' && isMyTurn && (
             <div className="game-actions">
               <button className="action-btn action-btn--end" onClick={emitEndTurn}>
                 End Turn <ArrowRight size={16} />

@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { GameState, Player, PropertyState, formatRM } from '../types/game.types';
 import { BOARD_TILES, COLOR_GROUPS, getGridPosition } from '../config/board.config';
 import './Board.css';
@@ -20,6 +21,59 @@ const TILE_ICONS: Record<string, string> = {
 
 export function Board({ gameState, currentPlayerId }: Props) {
   const { players, properties } = gameState;
+  
+  // Track visual positions for animations
+  const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {};
+    players.forEach(p => { initial[p.id] = p.position; });
+    return initial;
+  });
+
+  // Target positions ref so we can update without triggering useEffect re-runs
+  const targetPositions = useRef<Record<string, number>>({});
+  
+  useEffect(() => {
+    // Update target positions from game state
+    players.forEach(p => {
+      targetPositions.current[p.id] = p.position;
+      // Initialize if new player joins mid-game
+      setVisualPositions(prev => {
+        if (prev[p.id] === undefined) return { ...prev, [p.id]: p.position };
+        return prev;
+      });
+    });
+  }, [players]);
+
+  // Animation loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisualPositions(prev => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const [id, targetPos] of Object.entries(targetPositions.current)) {
+          const currentPos = next[id];
+          if (currentPos !== undefined && currentPos !== targetPos) {
+            // Calculate distance forward
+            const distForward = (targetPos - currentPos + BOARD_TILES.length) % BOARD_TILES.length;
+            
+            // If distance > 12, it's a teleport (e.g., Go To Jail), so jump instantly.
+            // Max dice roll is 12.
+            if (distForward > 12) {
+              next[id] = targetPos;
+            } else {
+              // Move 1 step forward
+              next[id] = (currentPos + 1) % BOARD_TILES.length;
+            }
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 200); // 200ms per tile step
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="board-grid">
@@ -30,7 +84,9 @@ export function Board({ gameState, currentPlayerId }: Props) {
         const owner = property?.ownerId
           ? players.find((p) => p.id === property.ownerId)
           : null;
-        const playersOnTile = players.filter((p) => p.position === tile.index && !p.isBankrupt);
+          
+        // Use visualPositions instead of p.position
+        const playersOnTile = players.filter((p) => visualPositions[p.id] === tile.index && !p.isBankrupt);
 
         return (
           <div
