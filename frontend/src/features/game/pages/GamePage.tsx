@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { DiceRoller } from '../components/DiceRoller';
@@ -179,7 +179,6 @@ export function GamePage() {
     }
   }, [gameState?.turnPhase]);
 
-  });
 
   // ---- Answer Handler ----
   const handleAnswer = useCallback((selectedIndex: number) => {
