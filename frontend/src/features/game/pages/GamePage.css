@@ -1,11 +1,12 @@
 /* ============================================ */
 /* GamePage — Full layout + decision panels     */
-/* Dark theme, glassmorphism                    */
+/* Classic Monopoly Theme                       */
 /* ============================================ */
 
 .game-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+  background: #1b4332;
+  background-image: radial-gradient(circle at center, #2d6a4f 0%, #081c15 100%);
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
@@ -21,7 +22,7 @@
 .game-page__message {
   text-align: center;
   padding: 2rem;
-  border-radius: 16px;
+  border-radius: 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -30,7 +31,7 @@
 
 .game-page__message h2 {
   margin: 0;
-  color: #e2e8f0;
+  color: #000;
 }
 
 /* ---- Main Layout ---- */
@@ -61,30 +62,35 @@
 /* ---- Decision Panel ---- */
 
 .decision-panel {
-  background: rgba(30, 27, 75, 0.8);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 16px;
+  background: #f8f9fa;
+  border: 2px solid #000;
+  border-radius: 4px;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  backdrop-filter: blur(8px);
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  color: #000;
 }
 
 .decision-title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #e2e8f0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #000;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .decision-subtitle {
   margin: 0;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: #495057;
+  font-weight: bold;
 }
 
 /* ---- Action Buttons ---- */
@@ -102,55 +108,44 @@
   gap: 0.5rem;
   padding: 0.7rem 1rem;
   font-size: 0.9rem;
-  font-weight: 600;
-  border: none;
-  border-radius: 12px;
+  font-weight: 700;
+  border: 2px solid #000;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.1s ease;
   font-family: 'Outfit', 'Inter', sans-serif;
+  box-shadow: 2px 2px 0px #000;
+}
+
+.action-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000;
 }
 
 .action-btn--primary {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: #e63946;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-.action-btn--primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
 }
 
 .action-btn--secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.action-btn--secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: #a8dadc;
+  color: #000;
 }
 
 .action-btn--ghost {
   background: transparent;
-  color: #94a3b8;
-  border: 1px dashed rgba(255, 255, 255, 0.1);
+  color: #000;
+  border: 2px dashed #000;
+  box-shadow: none;
 }
 
-.action-btn--ghost:hover {
-  color: #e2e8f0;
-  border-color: rgba(255, 255, 255, 0.2);
+.action-btn--ghost:active {
+  transform: scale(0.98);
 }
 
 .action-btn--end {
-  background: linear-gradient(135deg, #059669, #10b981);
+  background: #2a9d8f;
   color: #fff;
-}
-
-.action-btn--end:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 /* ---- Quick Stats ---- */
@@ -160,29 +155,40 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem;
-  border-radius: 12px;
+  border-radius: 4px;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
 }
 
 .quick-stat {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px dashed #ccc;
+  padding-bottom: 0.25rem;
+}
+.quick-stat:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .quick-stat__label {
   font-size: 0.75rem;
-  color: #94a3b8;
-  font-weight: 500;
+  color: #495057;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .quick-stat__value {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #e2e8f0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 .money--negative {
-  color: #ef4444;
+  color: #e63946;
 }
 
 /* ---- Challenge Overlay ---- */
@@ -195,20 +201,22 @@
   align-items: center;
   justify-content: center;
   z-index: 100;
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .challenge-panel {
   max-width: 420px;
   width: 90%;
-  border-radius: 20px;
+  border-radius: 8px;
   overflow: hidden;
-  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #fff;
+  border: 4px solid #000;
+  box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(30px); }
+  from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -222,22 +230,28 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 3px solid #000;
+  background: #ffb703;
 }
 
 .challenge-context {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #a5b4fc;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #000;
+  text-transform: uppercase;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.5px;
 }
 
 .challenge-skill {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  border-radius: 20px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
-  font-weight: 500;
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+  font-weight: 800;
+  border: 2px solid #000;
+  text-transform: uppercase;
 }
 
 /* ---- Challenge Result ---- */
@@ -245,28 +259,28 @@
 .challenge-result {
   padding: 1rem;
   text-align: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid #000;
   animation: fadeIn 0.3s ease;
 }
 
 .challenge-result.correct {
-  background: rgba(16, 185, 129, 0.1);
+  background: #d8f3dc;
 }
 
 .challenge-result.incorrect {
-  background: rgba(239, 68, 68, 0.1);
+  background: #ffe5d9;
 }
 
 .challenge-result p {
   margin: 0 0 0.5rem;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-weight: 800;
+  color: #000;
 }
 
 .result-reward {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  font-weight: 400 !important;
+  font-size: 0.9rem;
+  color: #495057 !important;
+  font-weight: 600 !important;
 }
 
 /* ---- Waiting Overlay ---- */
@@ -280,12 +294,16 @@
 
 .challenge-waiting {
   padding: 1rem 1.5rem;
-  border-radius: 16px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  font-weight: 700;
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
 }
 
@@ -302,22 +320,25 @@
 
 .bot-action-banner {
   padding: 0.6rem 1rem;
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 10px;
-  color: #fbbf24;
-  font-size: 0.85rem;
-  font-weight: 500;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: 4px;
+  color: #000;
+  font-size: 0.9rem;
+  font-weight: 800;
   text-align: center;
-  animation: fadeIn 0.3s ease;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.2s ease;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 /* ---- Surface ---- */
 
 .surface-2 {
-  background: rgba(30, 27, 75, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.2);
+  color: #000;
 }
 
 /* ---- Utilities ---- */
@@ -329,34 +350,36 @@
 /* ---- Player Panel Badge extras ---- */
 
 .badge--token {
-  background: rgba(251, 191, 36, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: #ffb703;
+  color: #000;
+  border: 2px solid #000;
 }
 
 .badge--shield {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #2a9d8f;
+  color: #fff;
+  border: 2px solid #000;
 }
 
 .badge--discount {
-  background: rgba(139, 92, 246, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: #a78bfa;
+  color: #000;
+  border: 2px solid #000;
 }
 
 .badge--bankrupt {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: #e63946;
+  color: #fff;
+  border: 2px solid #000;
 }
 
 .panel-player__bot-tag {
-  font-size: 0.65rem;
-  color: #fbbf24;
+  font-size: 0.75rem;
+  color: #000;
+  font-weight: 800;
 }
 
 .panel-player--bankrupt {
-  opacity: 0.5;
+  opacity: 0.6;
+  filter: grayscale(100%);
 }

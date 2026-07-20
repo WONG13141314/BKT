@@ -1,21 +1,22 @@
 /* ============================================ */
 /* Board — 20-tile, 6×6 CSS Grid               */
-/* Dark theme with glassmorphism                */
+/* Classic Monopoly Theme                       */
 /* ============================================ */
 
 .board-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   grid-template-rows: repeat(6, 1fr);
-  gap: 3px;
+  gap: 0px;
   width: 100%;
   max-width: 600px;
   aspect-ratio: 1;
   margin: 0 auto;
-  padding: 0.25rem;
-  background: rgba(15, 15, 35, 0.6);
-  border-radius: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.08);
+  padding: 0;
+  background: #000; /* Gaps will show as black borders if we use gap: 2px, but let's use borders on tiles */
+  border: 4px solid #000;
+  border-radius: 4px;
+  box-shadow: 8px 8px 0px rgba(0,0,0,0.3);
 }
 
 /* ---- Tile Base ---- */
@@ -25,24 +26,31 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: rgba(30, 27, 75, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  justify-content: flex-start;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 0;
   overflow: hidden;
   transition: all 0.3s ease;
   min-height: 0;
   padding: 2px;
+  transform-origin: center;
 }
 
+/* Rotations for authentic layout (color strips face inward) */
+.tile-rotate-bottom { transform: rotate(0deg); }
+.tile-rotate-left   { transform: rotate(90deg); }
+.tile-rotate-top    { transform: rotate(180deg); }
+.tile-rotate-right  { transform: rotate(-90deg); }
+
 .board-tile:hover {
-  border-color: rgba(255, 255, 255, 0.25);
   z-index: 2;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 
 .board-tile.current-tile {
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+  border: 2px solid #e63946;
+  box-shadow: inset 0 0 8px rgba(230, 57, 70, 0.4);
 }
 
 /* ---- Color Strip ---- */
@@ -52,8 +60,8 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 5px;
-  border-radius: 4px 4px 0 0;
+  height: 25%;
+  border-bottom: 2px solid #000;
 }
 
 /* ---- Tile Content ---- */
@@ -65,6 +73,7 @@
   gap: 1px;
   text-align: center;
   z-index: 1;
+  margin-top: 28%; /* Push below color strip */
 }
 
 .tile-icon {
@@ -74,49 +83,80 @@
 
 .tile-name {
   font-size: 0.55rem;
-  font-weight: 600;
-  color: #cbd5e1;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  font-weight: 800;
+  color: #000;
+  line-height: 1.1;
+  text-transform: uppercase;
+  font-family: 'Arial Narrow', 'Impact', sans-serif;
 }
 
 .tile-price {
+  position: absolute;
+  bottom: 2px;
   font-size: 0.5rem;
-  color: #94a3b8;
-  font-weight: 500;
+  color: #000;
+  font-weight: 800;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+/* Corner styles (No color strip, so reset margin) */
+.tile-go .tile-content,
+.tile-jail .tile-content,
+.tile-go-to-jail .tile-content,
+.tile-lucky-break .tile-content {
+  margin-top: 10%;
+}
+.tile-go .tile-name,
+.tile-jail .tile-name,
+.tile-go-to-jail .tile-name,
+.tile-lucky-break .tile-name {
+  font-size: 0.7rem;
 }
 
 /* ---- Owner Indicator ---- */
 
 .tile-owner {
   position: absolute;
-  bottom: 2px;
+  bottom: 12px;
   right: 2px;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.45rem;
-  font-weight: 700;
+  font-size: 0.4rem;
+  font-weight: 800;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid #000;
   z-index: 2;
+  box-shadow: 1px 1px 0px rgba(0,0,0,0.5);
 }
 
 /* ---- Player Tokens ---- */
 
+/* To ensure tokens stay upright relative to the screen, we reverse the rotation */
+.tile-rotate-bottom .tile-players { transform: rotate(0deg); }
+.tile-rotate-left   .tile-players { transform: rotate(-90deg); }
+.tile-rotate-top    .tile-players { transform: rotate(-180deg); }
+.tile-rotate-right  .tile-players { transform: rotate(90deg); }
+
 .tile-players {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centered by default */
   display: flex;
-  gap: 1px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
   z-index: 3;
 }
+.tile-rotate-bottom .tile-players { transform: translate(-50%, -50%) rotate(0deg); }
+.tile-rotate-left   .tile-players { transform: translate(-50%, -50%) rotate(-90deg); }
+.tile-rotate-top    .tile-players { transform: translate(-50%, -50%) rotate(-180deg); }
+.tile-rotate-right  .tile-players { transform: translate(-50%, -50%) rotate(90deg); }
+
 
 .player-token {
   width: 16px;
@@ -126,46 +166,32 @@
   align-items: center;
   justify-content: center;
   font-size: 0.5rem;
-  font-weight: 700;
+  font-weight: 800;
   color: #fff;
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  border: 1px solid #000;
+  /* Make them look like 3D plastic pieces */
+  box-shadow: inset -3px -3px 6px rgba(0, 0, 0, 0.4), 
+              inset 2px 2px 4px rgba(255, 255, 255, 0.4),
+              2px 2px 3px rgba(0, 0, 0, 0.4);
 }
 
 .player-token.my-token {
-  border-color: #fbbf24;
-  box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  border: 2px solid #fff;
+  box-shadow: inset -3px -3px 6px rgba(0, 0, 0, 0.4), 
+              inset 2px 2px 4px rgba(255, 255, 255, 0.4),
+              0 0 0 2px #000, 
+              2px 2px 5px rgba(0, 0, 0, 0.6);
 }
 
-/* ---- Special Tile Types ---- */
+/* ---- Special Tile Backgrounds (Subtle tints) ---- */
 
-.tile-go {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 78, 59, 0.3));
-}
-
-.tile-jail {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(127, 29, 29, 0.2));
-}
-
-.tile-go-to-jail {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(127, 29, 29, 0.3));
-}
-
-.tile-lucky-break {
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(120, 113, 35, 0.2));
-}
-
-.tile-tax {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(153, 27, 27, 0.15));
-}
-
-.tile-challenge-card {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(76, 29, 149, 0.2));
-}
-
-.tile-rest {
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), rgba(30, 64, 175, 0.15));
-}
+.tile-go { background: #d8f3dc; }
+.tile-jail { background: #ffe5d9; }
+.tile-go-to-jail { background: #ffcad4; }
+.tile-lucky-break { background: #fff3b0; }
+.tile-tax { background: #f8f9fa; }
+.tile-challenge-card { background: #e0aaff; }
+.tile-rest { background: #caf0f8; }
 
 /* ---- Center Area ---- */
 
@@ -176,27 +202,32 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, rgba(99, 102, 241, 0.08), transparent);
-  border-radius: 12px;
+  background: #dcedc8; /* Classic pale green */
+  border: 2px solid #000;
 }
 
 .board-title {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #6366f1, #a78bfa, #f59e0b);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-family: 'Outfit', 'Inter', sans-serif;
-  letter-spacing: -0.02em;
+  font-size: 2rem;
+  font-weight: 900;
+  background: #e63946;
+  color: #fff;
+  padding: 0.25rem 1rem;
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.2);
+  transform: rotate(-10deg);
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  -webkit-text-fill-color: #fff;
 }
 
 .board-subtitle {
-  margin: 0.25rem 0 0;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-weight: 500;
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  color: #000;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 /* ---- Responsive ---- */
@@ -204,11 +235,11 @@
 @media (max-width: 480px) {
   .board-grid {
     max-width: 360px;
-    gap: 2px;
+    border-width: 2px;
   }
 
   .tile-name {
-    font-size: 0.45rem;
+    font-size: 0.4rem;
   }
 
   .tile-price {
@@ -216,16 +247,18 @@
   }
 
   .tile-icon {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
 
   .board-title {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
+    border-width: 2px;
+    box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
   }
 
   .player-token {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
     font-size: 0.4rem;
   }
 }

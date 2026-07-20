@@ -88,10 +88,17 @@ export function Board({ gameState, currentPlayerId }: Props) {
         // Use visualPositions instead of p.position
         const playersOnTile = players.filter((p) => visualPositions[p.id] === tile.index && !p.isBankrupt);
 
+        // Determine rotation class based on position
+        let rotationClass = '';
+        if (tile.index >= 0 && tile.index <= 5) rotationClass = 'tile-rotate-bottom';
+        else if (tile.index >= 6 && tile.index <= 9) rotationClass = 'tile-rotate-left';
+        else if (tile.index >= 10 && tile.index <= 15) rotationClass = 'tile-rotate-top';
+        else if (tile.index >= 16 && tile.index <= 19) rotationClass = 'tile-rotate-right';
+
         return (
           <div
             key={tile.index}
-            className={`board-tile tile-${tile.type.toLowerCase().replace('_', '-')} ${
+            className={`board-tile tile-${tile.type.toLowerCase().replace('_', '-')} ${rotationClass} ${
               tile.index === players.find((p) => p.id === currentPlayerId)?.position
                 ? 'current-tile'
                 : ''

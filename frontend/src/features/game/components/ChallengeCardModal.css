@@ -7,7 +7,6 @@
   justify-content: center;
   z-index: 1000;
   animation: fadeIn 0.3s ease;
-  backdrop-filter: blur(4px);
 }
 
 @keyframes fadeIn {
@@ -16,16 +15,16 @@
 }
 
 .card-modal {
-  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%);
-  border: 2px solid rgba(139, 92, 246, 0.4);
-  border-radius: 20px;
+  background: #ffb703;
+  border: 4px solid #000;
+  border-radius: 4px;
   width: 90%;
   max-width: 380px;
   overflow: hidden;
-  box-shadow: 
-    0 25px 50px rgba(0, 0, 0, 0.5),
-    0 0 40px rgba(139, 92, 246, 0.2);
-  animation: cardSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.4);
+  animation: cardSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes cardSlideUp {
@@ -40,23 +39,16 @@
 }
 
 .card-modal-header {
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.card-modal-header.luck-card {
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
-}
-
-.card-modal-header.math-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1));
+  border-bottom: 3px solid #000;
+  background: #ffb703;
 }
 
 .card-modal-icon {
-  font-size: 2rem;
+  font-size: 2.5rem;
   animation: bounceIcon 0.6s ease 0.3s both;
 }
 
@@ -68,10 +60,12 @@
 
 .card-modal-title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #e2e8f0;
-  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #000;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .card-modal-body {
@@ -80,14 +74,18 @@
   flex-direction: column;
   align-items: center;
   gap: 1.25rem;
+  background: #fff;
+  flex: 1;
 }
 
 .card-modal-description {
   margin: 0;
-  font-size: 1rem;
-  color: #cbd5e1;
+  font-size: 1.2rem;
+  color: #000;
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.4;
+  font-weight: 800;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 .card-modal-challenge {
@@ -96,31 +94,29 @@
 
 .card-modal-ok {
   padding: 0.75rem 2.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  font-size: 1.1rem;
+  font-weight: 800;
+  border: 2px solid #000;
+  border-radius: 4px;
+  background: #e63946;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: 'Outfit', 'Inter', sans-serif;
-}
-
-.card-modal-ok:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+  transition: all 0.1s ease;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  box-shadow: 3px 3px 0px #000;
 }
 
 .card-modal-ok:active {
-  transform: translateY(0);
+  transform: translate(3px, 3px);
+  box-shadow: 0px 0px 0px #000;
 }
 
 /* MCQ text styling (used by McqQuestion inside column-question) */
 .mcq-text {
   font-size: 1.1rem;
-  font-weight: 500;
-  color: #e2e8f0;
+  font-weight: 800;
+  color: #000;
   text-align: center;
   line-height: 1.6;
   max-width: 320px;
