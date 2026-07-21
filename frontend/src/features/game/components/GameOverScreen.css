@@ -97,15 +97,16 @@
 }
 
 .score-row {
-  color: var(--text-secondary);
+  color: #000;
+  font-weight: 800;
 }
 
 .score-row--winner {
-  background: hsla(220, 65%, 54%, 0.04);
+  background: #ffb703;
 }
 
 .score-row--winner td {
-  color: var(--text-primary);
+  color: #000;
 }
 
 .score-rank {
@@ -121,9 +122,9 @@
 .rank--bronze { color: hsl(25, 60%, 50%); }
 
 .rank-number {
-  font-family: var(--font-mono);
-  font-weight: var(--weight-bold);
-  color: var(--text-muted);
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 900;
+  color: #000;
 }
 
 .score-player {
@@ -147,19 +148,20 @@
 
 .score-value,
 .score-math {
-  font-family: var(--font-mono);
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 900;
 }
 
 .score-multiplier {
-  font-family: var(--font-mono);
-  color: var(--color-accent) !important;
+  font-family: 'Courier New', Courier, monospace;
+  color: #e63946 !important;
 }
 
 .score-final {
-  font-family: var(--font-display);
-  font-weight: var(--weight-bold) !important;
-  color: var(--text-primary) !important;
-  font-size: var(--text-md) !important;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-weight: 900 !important;
+  color: #2a9d8f !important;
+  font-size: 1.1rem !important;
 }
 
 /* ---- Winner Announcement ---- */
@@ -171,13 +173,17 @@
 
 .winner-card {
   text-align: center;
-  padding: var(--space-2xl);
+  padding: 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-md);
+  gap: 1rem;
   max-width: 400px;
   width: 100%;
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 8px;
+  box-shadow: 10px 10px 0px rgba(0,0,0,0.4);
 }
 
 .winner-trophy {
@@ -186,47 +192,54 @@
 }
 
 .winner-name {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-size: 2.5rem;
+  color: #000;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
 }
 
 .winner-score {
-  font-family: var(--font-mono);
-  font-size: var(--text-md);
-  color: var(--text-secondary);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #2a9d8f;
+  margin: 0;
 }
 
 .winner-breakdown {
   display: flex;
-  gap: var(--space-lg);
+  gap: 1.5rem;
   flex-wrap: wrap;
   justify-content: center;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  font-size: 1rem;
+  color: #000;
+  font-weight: 800;
 }
 
 .winner-highlight {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  font-size: var(--text-sm);
-  color: var(--color-secondary);
-  font-weight: var(--weight-medium);
-  padding: var(--space-xs) var(--space-md);
-  background: var(--color-secondary-soft);
-  border-radius: var(--radius-full);
-  margin-top: var(--space-xs);
+  gap: 0.25rem;
+  font-size: 1rem;
+  color: #fff;
+  font-weight: 800;
+  padding: 0.25rem 0.75rem;
+  background: #e63946;
+  border-radius: 4px;
+  border: 2px solid #000;
+  margin-top: 0.25rem;
 }
 
 /* ---- Mastery Summary ---- */
 
 .mastery-title {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  color: var(--text-primary);
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  font-size: 2rem;
+  color: #000;
   text-align: center;
+  text-transform: uppercase;
 }
 
 .mastery-grid {
@@ -308,34 +321,36 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-md) var(--space-2xl);
-  border-radius: var(--radius-md);
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-base);
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 1.1rem;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all var(--transition-base);
-  border: none;
+  transition: all 0.2s ease;
+  border: 4px solid #000;
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.4);
 }
 
 .gameover-btn--primary {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: #2a9d8f;
   color: white;
 }
 
 .gameover-btn--primary:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-glow-primary);
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0px rgba(0,0,0,0.4);
 }
 
 .gameover-btn--secondary {
-  background: var(--surface-3);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-default);
+  background: #fff;
+  color: #000;
 }
 
 .gameover-btn--secondary:hover {
-  background: var(--surface-4);
-  color: var(--text-primary);
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0px rgba(0,0,0,0.4);
 }
 
 /* ---- Bot Label ---- */
@@ -359,20 +374,23 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-xl);
-  background: var(--surface-3);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  padding: 0.75rem 1.5rem;
+  background: #fff;
+  color: #000;
+  border: 3px solid #000;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 800;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  text-transform: uppercase;
   cursor: pointer;
+  box-shadow: 4px 4px 0px rgba(0,0,0,0.4);
   transition: all var(--transition-base);
 }
 
 .mastery-toggle:hover {
-  color: var(--text-primary);
-  border-color: var(--color-primary);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.4);
 }
 
 .mastery-reports {
@@ -384,64 +402,70 @@
 }
 
 .mastery-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 8px;
   padding: var(--space-lg);
+  box-shadow: 8px 8px 0px rgba(0,0,0,0.4);
 }
 
 .mastery-player {
   margin: 0 0 var(--space-md);
-  font-size: var(--text-base);
-  font-weight: var(--weight-bold);
-  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #000;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  text-transform: uppercase;
 }
 
 .mastery-skills {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .mastery-bar {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .mastery-label {
-  width: 90px;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
+  width: 100px;
+  font-size: 1rem;
+  color: #000;
+  font-weight: 800;
 }
 
 .mastery-track {
   flex: 1;
-  height: 8px;
-  background: var(--surface-4);
+  height: 16px;
+  background: #fff;
+  border: 3px solid #000;
   border-radius: 4px;
   overflow: hidden;
 }
 
 .mastery-fill {
   height: 100%;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  border-radius: 0;
+  border-right: 3px solid #000;
+  background: #ffb703;
   transition: width 1s ease;
 }
 
 .mastery-pct {
-  width: 40px;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  width: 45px;
+  font-size: 1rem;
+  color: #000;
   text-align: right;
-  font-weight: var(--weight-semibold);
+  font-weight: 800;
 }
 
 .mastery-summary {
   margin: var(--space-md) 0 0;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  font-size: 0.9rem;
+  color: #000;
+  font-weight: 700;
 }
 
