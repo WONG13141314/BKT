@@ -22,29 +22,52 @@ export function LongDivisionQuestion({ question, options, onAnswer, disabled, ti
     onAnswer(index);
   };
 
+  const dividendStr = String(question.dividend);
+  const quotientStr = String(question.quotient).padStart(dividendStr.length, ' ');
+  const dividendDigits = dividendStr.split('');
+  const quotientDigits = quotientStr.split('');
+
   const isQuotientMissing = question.missingTarget === 'quotient_digit';
+  const targetQuotientIdx = quotientDigits.length - 1;
+
   const isBroughtDownMissing = question.missingTarget === 'brought_down_digit';
   const isSubtractionMissing = question.missingTarget === 'subtraction_result';
   const isRemainderMissing = question.missingTarget === 'remainder';
 
   return (
     <div className="long-division-question">
+      {/* Question Prompt Header */}
+      <div className="division-header-title">
+        {question.dividend} ÷ {question.divisor} = ?
+      </div>
+
       {/* Long Division Box */}
       <div className="division-container">
         {/* Quotient Header Row */}
-        <div className="division-quotient-row">
-          <span className="divisor-space" />
-          <span className="bracket-space" />
-          <span className={`quotient-display ${isQuotientMissing && !answered ? 'target-box' : ''}`}>
-            {isQuotientMissing && !answered ? '?' : question.quotient}
-          </span>
+        <div className="division-row division-quotient-row">
+          <span className="div-cell cell-empty" /> {/* Divisor space */}
+          <span className="div-cell cell-empty" /> {/* Bracket space */}
+          <div className="digits-grid">
+            {quotientDigits.map((qChar, idx) => {
+              const isTargetDigit = isQuotientMissing && !answered && idx === targetQuotientIdx;
+              return (
+                <span key={idx} className={`div-cell ${isTargetDigit ? 'div-target' : ''}`}>
+                  {isTargetDigit ? '?' : qChar === ' ' ? '' : qChar}
+                </span>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Bracket & Dividend Row */}
-        <div className="division-main-row">
-          <span className="divisor-val">{question.divisor}</span>
-          <span className="division-bracket">)</span>
-          <span className="dividend-val">{question.dividend}</span>
+        {/* Divisor + Bracket + Dividend Row */}
+        <div className="division-row division-main-row">
+          <span className="div-cell divisor-val">{question.divisor}</span>
+          <span className="div-cell division-bracket">)</span>
+          <div className="digits-grid dividend-bar">
+            {dividendDigits.map((dChar, idx) => (
+              <span key={idx} className="div-cell dividend-val">{dChar}</span>
+            ))}
+          </div>
         </div>
 
         {/* Step-by-Step Subtractions */}
@@ -61,11 +84,11 @@ export function LongDivisionQuestion({ question, options, onAnswer, disabled, ti
                 </div>
                 <div className="step-line" />
                 <div className="step-result-row">
-                  <span className={`step-result ${showSubTarget ? 'target-box' : ''}`}>
+                  <span className={`step-result ${showSubTarget ? 'div-target' : ''}`}>
                     {showSubTarget ? '?' : step.subtractionResult}
                   </span>
                   {step.broughtDownDigit !== null && (
-                    <span className={`brought-down ${showBroughtDownTarget ? 'target-box' : ''}`}>
+                    <span className={`brought-down ${showBroughtDownTarget ? 'div-target' : ''}`}>
                       {showBroughtDownTarget ? '?' : step.broughtDownDigit}
                     </span>
                   )}
@@ -74,11 +97,11 @@ export function LongDivisionQuestion({ question, options, onAnswer, disabled, ti
             );
           })}
 
-          {/* Remainder Row if remainder exists */}
-          {question.remainder >= 0 && (
+          {/* Remainder Row */}
+          {(question.remainder > 0 || isRemainderMissing) && (
             <div className="remainder-row">
               <span className="remainder-label">Remainder:</span>
-              <span className={`remainder-val ${isRemainderMissing && !answered ? 'target-box' : ''}`}>
+              <span className={`remainder-val ${isRemainderMissing && !answered ? 'div-target' : ''}`}>
                 {isRemainderMissing && !answered ? '?' : question.remainder}
               </span>
             </div>

@@ -85,17 +85,12 @@
 }
 
 .digit-target {
-  background: #fff3cd;
-  border: 3px solid #ffb703;
+  background: #ffb703;
+  border: 2px solid #000;
   border-radius: 4px;
-  color: #d97706;
+  color: #000;
   font-weight: 900;
-  animation: pulse-target 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-target {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0px #ffb703; }
-  50% { transform: scale(1.05); box-shadow: 0 0 6px #ffb703; }
+  box-shadow: 2px 2px 0px #000;
 }
 
 .column-line {

@@ -2,8 +2,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   padding: 0.75rem 1rem;
+}
+
+.division-header-title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
+  text-align: center;
 }
 
 .division-container {
@@ -15,55 +23,71 @@
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
-  min-width: 210px;
+  min-width: 220px;
   box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
   font-family: 'Courier New', Courier, monospace;
 }
 
-.division-quotient-row {
+.division-row {
   display: flex;
   align-items: center;
-  font-size: 1.8rem;
-  font-weight: 900;
-  color: #000;
 }
 
-.divisor-space {
-  width: 32px;
-}
-
-.bracket-space {
-  width: 12px;
-}
-
-.quotient-display {
-  padding: 0 0.4rem;
-}
-
-.division-main-row {
+.digits-grid {
   display: flex;
   align-items: center;
-  font-size: 2rem;
-  font-weight: 900;
-  color: #000;
+}
+
+.dividend-bar {
   border-top: 3px solid #000;
+  padding-top: 2px;
+}
+
+.div-cell {
+  width: 32px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #000;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.cell-empty {
+  width: 28px;
 }
 
 .divisor-val {
-  width: 32px;
-  text-align: right;
-  padding-right: 3px;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #000;
 }
 
 .division-bracket {
-  font-size: 2.2rem;
-  padding-right: 6px;
-  line-height: 1;
+  font-size: 1.9rem;
+  font-weight: 900;
+  color: #000;
+  margin-right: 4px;
 }
 
 .dividend-val {
-  letter-spacing: 3px;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #000;
 }
+
+.div-target {
+  background: #ffb703;
+  border: 2px solid #000;
+  border-radius: 4px;
+  color: #000;
+  font-weight: 900;
+  box-shadow: 2px 2px 0px #000;
+}
+
+/* ---- Step-by-Step Subtractions ---- */
 
 .division-steps {
   display: flex;
@@ -78,54 +102,62 @@
   flex-direction: column;
   align-items: flex-end;
   width: 100%;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.2rem;
 }
 
 .step-sub-row {
   display: flex;
+  align-items: center;
   gap: 6px;
   font-size: 1.5rem;
   font-weight: 900;
+  color: #000;
 }
 
 .step-minus {
-  color: #d97706;
+  color: #000;
+  font-weight: 900;
+}
+
+.step-val {
+  color: #000;
+  font-weight: 900;
 }
 
 .step-line {
-  width: 75%;
+  width: 80%;
   height: 2px;
   background: #000;
-  margin: 1px 0;
+  margin: 2px 0;
 }
 
 .step-result-row {
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 4px;
   font-size: 1.5rem;
   font-weight: 900;
+  color: #000;
 }
 
-.target-box {
-  background: #fff3cd;
-  border: 3px solid #ffb703;
-  border-radius: 4px;
-  color: #d97706;
-  padding: 0 5px;
-  animation: pulse-div-target 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-div-target {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0px #ffb703; }
-  50% { transform: scale(1.05); box-shadow: 0 0 6px #ffb703; }
+.step-result, .brought-down {
+  color: #000;
+  font-weight: 900;
 }
 
 .remainder-row {
   margin-top: 0.35rem;
   font-size: 1.1rem;
   font-weight: 900;
+  color: #000;
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+
+.remainder-label, .remainder-val {
+  color: #000;
+  font-weight: 900;
 }
 
 .division-hint {
