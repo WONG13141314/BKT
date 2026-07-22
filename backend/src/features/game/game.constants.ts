@@ -62,8 +62,8 @@ export const LUCKY_BREAK_TOKEN_CHANCE = 0.33; // 1 in 3 chance of free Level Up 
 export const SKILL_NAMES = [
   'Addition',
   'Subtraction',
-  'PlaceValue',
-  'Money',
+  'Multiplication',
+  'Division',
 ] as const;
 
 export type SkillName = typeof SKILL_NAMES[number];

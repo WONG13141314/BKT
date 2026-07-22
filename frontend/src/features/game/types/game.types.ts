@@ -8,8 +8,8 @@
 export const SKILL_NAMES = [
   'Addition',
   'Subtraction',
-  'PlaceValue',
-  'Money',
+  'Multiplication',
+  'Division',
 ] as const;
 
 export type SkillName = typeof SKILL_NAMES[number];
@@ -129,7 +129,7 @@ export type ChallengeContext =
 
 export interface ColumnQuestion {
   type: 'column';
-  operation: '+' | '-';
+  operation: '+' | '-' | '×';
   topNumber: number;
   bottomNumber: number;
   placeValues: {
@@ -144,6 +144,26 @@ export interface ColumnQuestion {
     tens: number;
     ones: number;
   };
+  missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
+  missingDigitPlace?: 'hundreds' | 'tens' | 'ones';
+}
+
+export interface LongDivisionStep {
+  quotientDigit: number;
+  product: number;
+  subtractionResult: number;
+  broughtDownDigit: number | null;
+}
+
+export interface LongDivisionQuestion {
+  type: 'long_division';
+  divisor: number;
+  dividend: number;
+  quotient: number;
+  remainder: number;
+  steps: LongDivisionStep[];
+  missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
+  missingStepIndex?: number;
 }
 
 export interface McqQuestion {
@@ -151,7 +171,7 @@ export interface McqQuestion {
   text: string;
 }
 
-export type QuestionData = ColumnQuestion | McqQuestion;
+export type QuestionData = ColumnQuestion | LongDivisionQuestion | McqQuestion;
 
 // ---- Math Challenge ----
 

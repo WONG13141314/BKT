@@ -1129,6 +1129,10 @@ export function endTurn(state: GameState): GameState {
     nextRound++;
   }
 
+  if (nextRound > updatedState.maxRounds) {
+    return { ...updatedState, phase: 'FINISHED' };
+  }
+
   return {
     ...updatedState,
     currentPlayerIndex: nextIdx,

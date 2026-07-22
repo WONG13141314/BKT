@@ -1,8 +1,8 @@
 import { generateQuestion, generateQuestionBank } from '../question.generator';
 
-describe('Question Generator — Std 1 KSSR', () => {
+describe('Question Generator — Redesigned Math Monopoly', () => {
   describe('generateQuestion', () => {
-    const skills = ['Addition', 'Subtraction', 'PlaceValue', 'Money'];
+    const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'];
     const difficulties: (1 | 2 | 3)[] = [1, 2, 3];
 
     for (const skill of skills) {
@@ -40,14 +40,21 @@ describe('Question Generator — Std 1 KSSR', () => {
       }
     });
 
-    it('should generate mcq questions for PlaceValue', () => {
-      const q = generateQuestion('PlaceValue', 1);
-      expect(q.questionData.type).toBe('mcq');
+    it('should generate column questions for Multiplication', () => {
+      const q = generateQuestion('Multiplication', 1);
+      expect(q.questionData.type).toBe('column');
+      if (q.questionData.type === 'column') {
+        expect(q.questionData.operation).toBe('×');
+      }
     });
 
-    it('should generate mcq questions for Money', () => {
-      const q = generateQuestion('Money', 1);
-      expect(q.questionData.type).toBe('mcq');
+    it('should generate long division questions for Division', () => {
+      const q = generateQuestion('Division', 1);
+      expect(q.questionData.type).toBe('long_division');
+      if (q.questionData.type === 'long_division') {
+        expect(q.questionData.divisor).toBeGreaterThan(0);
+        expect(q.questionData.steps.length).toBeGreaterThan(0);
+      }
     });
   });
 
@@ -57,10 +64,11 @@ describe('Question Generator — Std 1 KSSR', () => {
       expect(bank).toHaveLength(60);
     });
 
-    it('should cover all skills', () => {
+    it('should cover all 4 core skills', () => {
       const bank = generateQuestionBank(2);
       const skills = new Set(bank.map((q) => q.skillName));
       expect(skills.size).toBe(4);
+      expect(skills).toEqual(new Set(['Addition', 'Subtraction', 'Multiplication', 'Division']));
     });
 
     it('should cover all difficulty levels', () => {

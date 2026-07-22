@@ -102,10 +102,10 @@ export type ChallengeContext =
 
 // ---- Question Data Models ----
 
-/** Column/vertical method for addition & subtraction */
+/** Column/vertical method for addition, subtraction & multiplication */
 export interface ColumnQuestion {
   type: 'column';
-  operation: '+' | '-';
+  operation: '+' | '-' | '×';
   topNumber: number;
   bottomNumber: number;
   placeValues: {
@@ -120,16 +120,37 @@ export interface ColumnQuestion {
     tens: number;
     ones: number;
   };
+  missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
+  missingDigitPlace?: 'hundreds' | 'tens' | 'ones';
 }
 
-/** Standard multiple-choice for Place Value & Money */
+/** Vertical Step-by-Step Long Division */
+export interface LongDivisionStep {
+  quotientDigit: number;
+  product: number;
+  subtractionResult: number;
+  broughtDownDigit: number | null;
+}
+
+export interface LongDivisionQuestion {
+  type: 'long_division';
+  divisor: number;
+  dividend: number;
+  quotient: number;
+  remainder: number;
+  steps: LongDivisionStep[];
+  missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
+  missingStepIndex?: number;
+}
+
+/** Standard multiple-choice fallback */
 export interface McqQuestion {
   type: 'mcq';
   text: string;
 }
 
 /** Union type — frontend uses this to decide rendering */
-export type QuestionData = ColumnQuestion | McqQuestion;
+export type QuestionData = ColumnQuestion | LongDivisionQuestion | McqQuestion;
 
 // ---- Math Challenge ----
 

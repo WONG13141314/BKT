@@ -7,6 +7,7 @@ import { TurnIndicator } from '../components/TurnIndicator';
 import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
 import { ColumnQuestion } from '../components/ColumnQuestion';
+import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { BOARD_TILES } from '../config/board.config';
@@ -225,6 +226,17 @@ export function GamePage() {
     if (questionData.type === 'column') {
       return (
         <ColumnQuestion
+          question={questionData}
+          options={activeChallenge.options}
+          onAnswer={handleAnswer}
+          disabled={!!answerResult}
+          timeLimit={activeChallenge.timeLimit}
+          hintContent={activeChallenge.hintContent}
+        />
+      );
+    } else if (questionData.type === 'long_division') {
+      return (
+        <LongDivisionQuestion
           question={questionData}
           options={activeChallenge.options}
           onAnswer={handleAnswer}

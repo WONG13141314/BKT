@@ -18,31 +18,31 @@ export const COLOR_GROUPS: Record<string, ColorGroup> = {
     name: 'blue',
     color: '#4A90D9',
     tileIndices: [1, 2],
-    skillTheme: 'Addition',   // Blue = Addition + Subtraction intro
+    skillTheme: 'Addition',
   },
   orange: {
     name: 'orange',
     color: '#FF8C00',
     tileIndices: [4, 6],
-    skillTheme: 'PlaceValue', // Orange = Place Value (ones & tens)
+    skillTheme: 'Subtraction',
   },
   green: {
     name: 'green',
     color: '#2E8B57',
     tileIndices: [9, 14],
-    skillTheme: 'Addition',   // Green = Addition advanced (within 100)
+    skillTheme: 'Multiplication',
   },
   purple: {
     name: 'purple',
     color: '#8B5CF6',
     tileIndices: [11, 13],
-    skillTheme: 'Money',      // Purple = Money recognition (RM/sen)
+    skillTheme: 'Division',
   },
   red: {
     name: 'red',
     color: '#DC143C',
     tileIndices: [17, 18],
-    skillTheme: 'Subtraction', // Red = Subtraction advanced + Money
+    skillTheme: 'Subtraction',
   },
 };
 
@@ -93,9 +93,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 4,
     type: 'PROPERTY',
-    name: 'Digit Drive',
+    name: 'Tolak Drive',
     colorGroup: 'orange',
-    skillTheme: 'PlaceValue',
+    skillTheme: 'Subtraction',
     price: 120,
     baseRent: 35,
     leveledRent: 80,
@@ -117,9 +117,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 6,
     type: 'PROPERTY',
-    name: 'Nombor Nook',
+    name: 'Tolak Nook',
     colorGroup: 'orange',
-    skillTheme: 'PlaceValue',
+    skillTheme: 'Subtraction',
     price: 120,
     baseRent: 35,
     leveledRent: 80,
@@ -147,9 +147,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 9,
     type: 'PROPERTY',
-    name: 'Tambah Towers',
+    name: 'Darab Towers',
     colorGroup: 'green',
-    skillTheme: 'Addition',
+    skillTheme: 'Multiplication',
     price: 160,
     baseRent: 50,
     leveledRent: 110,
@@ -171,9 +171,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 11,
     type: 'PROPERTY',
-    name: 'Wang Bazaar',
+    name: 'Bahagi Bazaar',
     colorGroup: 'purple',
-    skillTheme: 'Money',
+    skillTheme: 'Division',
     price: 160,
     baseRent: 50,
     leveledRent: 110,
@@ -191,9 +191,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 13,
     type: 'PROPERTY',
-    name: 'Duit Drive',
+    name: 'Bahagi Drive',
     colorGroup: 'purple',
-    skillTheme: 'Money',
+    skillTheme: 'Division',
     price: 200,
     baseRent: 65,
     leveledRent: 140,
@@ -201,9 +201,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 14,
     type: 'PROPERTY',
-    name: 'Kira Corner',
+    name: 'Darab Corner',
     colorGroup: 'green',
-    skillTheme: 'Addition',
+    skillTheme: 'Multiplication',
     price: 200,
     baseRent: 65,
     leveledRent: 140,
@@ -235,9 +235,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 17,
     type: 'PROPERTY',
-    name: 'Ringgit Row',
+    name: 'Tambah Row',
     colorGroup: 'red',
-    skillTheme: 'Money',
+    skillTheme: 'Addition',
     price: 240,
     baseRent: 80,
     leveledRent: 170,

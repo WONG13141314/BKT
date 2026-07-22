@@ -23,6 +23,29 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
   };
 
   const hasHundreds = question.placeValues.hundreds !== undefined;
+  const pos = question.missingPosition || 'answer';
+  const place = question.missingDigitPlace;
+
+  // Helper to render top digit cell
+  const renderTopCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
+    if (pos === 'top_operand' && !answered) return <span className="digit-cell digit-target">?</span>;
+    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-target">?</span>;
+    return <span className="digit-cell">{digit ?? ''}</span>;
+  };
+
+  // Helper to render bottom digit cell
+  const renderBottomCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
+    if (pos === 'bottom_operand' && !answered) return <span className="digit-cell digit-target">?</span>;
+    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-target">?</span>;
+    return <span className="digit-cell">{digit ?? ''}</span>;
+  };
+
+  // Helper to render answer digit cell
+  const renderAnswerCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
+    if (pos === 'answer' && !answered) return <span className="digit-cell digit-answer digit-target">?</span>;
+    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-answer digit-target">?</span>;
+    return <span className="digit-cell digit-answer">{digit ?? ''}</span>;
+  };
 
   return (
     <div className="column-question">
@@ -38,50 +61,34 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
         {/* Top number */}
         <div className="column-row column-top">
           <span className="operation-space" />
-          {hasHundreds && (
-            <span className="digit-cell">
-              {question.placeValues.hundreds?.top ?? ''}
-            </span>
-          )}
-          <span className="digit-cell">{question.placeValues.tens.top}</span>
-          <span className="digit-cell">{question.placeValues.ones.top}</span>
+          {hasHundreds && renderTopCell(question.placeValues.hundreds?.top, 'hundreds')}
+          {renderTopCell(question.placeValues.tens.top, 'tens')}
+          {renderTopCell(question.placeValues.ones.top, 'ones')}
         </div>
 
         {/* Bottom number with operation */}
         <div className="column-row column-bottom">
           <span className="operation-symbol">{question.operation}</span>
-          {hasHundreds && (
-            <span className="digit-cell">
-              {question.placeValues.hundreds?.bottom ?? ''}
-            </span>
-          )}
-          <span className="digit-cell">{question.placeValues.tens.bottom}</span>
-          <span className="digit-cell">{question.placeValues.ones.bottom}</span>
+          {hasHundreds && renderBottomCell(question.placeValues.hundreds?.bottom, 'hundreds')}
+          {renderBottomCell(question.placeValues.tens.bottom, 'tens')}
+          {renderBottomCell(question.placeValues.ones.bottom, 'ones')}
         </div>
 
         {/* Separator line */}
         <div className="column-line" />
 
-        {/* Answer row — shows ? until answered */}
+        {/* Answer row */}
         <div className="column-row column-answer">
           <span className="operation-space" />
-          {hasHundreds && (
-            <span className="digit-cell digit-answer">
-              {answered ? (question.answerDigits.hundreds ?? '') : '?'}
-            </span>
-          )}
-          <span className="digit-cell digit-answer">
-            {answered ? question.answerDigits.tens : '?'}
-          </span>
-          <span className="digit-cell digit-answer">
-            {answered ? question.answerDigits.ones : '?'}
-          </span>
+          {hasHundreds && renderAnswerCell(question.answerDigits.hundreds, 'hundreds')}
+          {renderAnswerCell(question.answerDigits.tens, 'tens')}
+          {renderAnswerCell(question.answerDigits.ones, 'ones')}
         </div>
 
         {/* Regrouping indicator */}
         {question.hasRegrouping && !answered && (
           <div className="regroup-hint">
-            {question.operation === '+' ? '↑ Remember to carry!' : '↓ Remember to borrow!'}
+            {question.operation === '+' ? '↑ Remember to carry!' : question.operation === '-' ? '↓ Remember to borrow!' : '× Multiply digit by digit!'}
           </div>
         )}
       </div>

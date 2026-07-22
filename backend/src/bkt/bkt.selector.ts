@@ -17,8 +17,8 @@ import {
 
 const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
   DICE_CHALLENGE: ['Addition', 'Subtraction'],            // Uses dice values
-  SMART_BUY: ['Subtraction', 'Addition'],                 // Price calculations
-  RENT_DEFENSE: ['Subtraction', 'Money'],                 // Rent halving
+  SMART_BUY: ['Subtraction', 'Multiplication'],           // Price calculations
+  RENT_DEFENSE: ['Subtraction', 'Division'],             // Rent halving
   CHALLENGE_CARD: SKILL_NAMES,                            // All skills eligible
   JAIL_ESCAPE: SKILL_NAMES,                               // All, reduced difficulty
   LEVEL_UP: SKILL_NAMES,                                  // Matched to property skill theme
@@ -27,9 +27,9 @@ const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
 // ---- Difficulty from Mastery ----
 
 function getDifficultyFromMastery(pMastery: number): 1 | 2 | 3 {
-  if (pMastery < 0.35) return 1;   // Easy
-  if (pMastery <= 0.65) return 2;  // Medium
-  return 3;                        // Hard
+  if (pMastery < 0.40) return 1;   // Easy (P(L) < 0.40)
+  if (pMastery < 0.75) return 2;   // Medium (0.40 <= P(L) < 0.75)
+  return 3;                        // Hard (P(L) >= 0.75)
 }
 
 // ---- BKT Parameters by Difficulty ----

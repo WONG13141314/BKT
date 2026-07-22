@@ -78,6 +78,20 @@
   transition: all 0.3s ease;
 }
 
+.digit-target {
+  background: #fff3cd;
+  border: 3px solid #ffb703;
+  border-radius: 4px;
+  color: #d97706;
+  font-weight: 900;
+  animation: pulse-target 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-target {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0px #ffb703; }
+  50% { transform: scale(1.08); box-shadow: 0 0 8px #ffb703; }
+}
+
 .column-line {
   width: 100%;
   height: 4px;
