@@ -228,13 +228,13 @@
 }
 
 .challenge-panel {
-  max-width: 420px;
+  max-width: 360px;
   width: 90%;
   border-radius: 8px;
   overflow: hidden;
   background: #fff;
-  border: 4px solid #000;
-  box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.4);
+  border: 3px solid #000;
+  box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.4);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -252,7 +252,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.25rem;
+  padding: 0.6rem 1rem;
   border-bottom: 3px solid #000;
   background: #ffb703;
 }

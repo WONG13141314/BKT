@@ -2,42 +2,42 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
-  padding: 1.5rem;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
 }
 
 /* ---- Column Stack (the vertical calculation) ---- */
 
 .column-stack {
   background: #fff;
-  border: 4px solid #000;
+  border: 3px solid #000;
   border-radius: 8px;
-  padding: 2rem 2.5rem;
+  padding: 1rem 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  min-width: 240px;
-  box-shadow: 6px 6px 0px rgba(0,0,0,0.3);
+  gap: 0.2rem;
+  min-width: 200px;
+  box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
 }
 
 .column-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .column-labels {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .place-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 24px;
-  font-size: 0.85rem;
+  width: 40px;
+  height: 20px;
+  font-size: 0.8rem;
   font-weight: 900;
   color: #000;
   text-transform: uppercase;
@@ -45,15 +45,15 @@
 }
 
 .operation-space {
-  width: 32px;
+  width: 28px;
 }
 
 .operation-symbol {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  font-size: 2rem;
+  width: 28px;
+  font-size: 1.6rem;
   font-weight: 900;
   color: #000;
 }
@@ -62,12 +62,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 56px;
-  font-size: 2.5rem;
+  width: 40px;
+  height: 46px;
+  font-size: 2rem;
   font-weight: 900;
   color: #000;
   font-family: 'Courier New', Courier, monospace;
+}
+
+.operand-box {
+  width: 90px;
+  height: 46px;
+  font-size: 2rem;
 }
 
 .digit-answer {
@@ -89,52 +95,46 @@
 
 @keyframes pulse-target {
   0%, 100% { transform: scale(1); box-shadow: 0 0 0px #ffb703; }
-  50% { transform: scale(1.08); box-shadow: 0 0 8px #ffb703; }
+  50% { transform: scale(1.05); box-shadow: 0 0 6px #ffb703; }
 }
 
 .column-line {
   width: 100%;
-  height: 4px;
+  height: 3px;
   background: #000;
-  margin: 0.5rem 0;
+  margin: 0.25rem 0;
   border-radius: 2px;
 }
 
 /* ---- Regrouping Hint ---- */
 
 .regroup-hint {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #000;
-  margin-top: 0.5rem;
-  padding: 0.5rem 1rem;
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.75rem;
   background: #ffb703;
   border-radius: 4px;
   border: 2px solid #000;
   font-weight: 900;
   font-family: 'Courier New', Courier, monospace;
   box-shadow: 2px 2px 0px #000;
-  animation: pulse-hint 2s ease-in-out infinite;
-}
-
-@keyframes pulse-hint {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
 }
 
 /* ---- Hint ---- */
 
 .column-hint {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: #000;
   background: #fff3cd;
   border: 2px solid #000;
-  border-radius: 8px;
-  padding: 0.75rem 1.25rem;
-  max-width: 300px;
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  max-width: 280px;
   text-align: center;
   font-weight: 800;
   font-family: 'Courier New', Courier, monospace;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+  box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
 }
 
 /* ---- MCQ Options ---- */
@@ -142,34 +142,29 @@
 .column-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: 0.6rem;
   width: 100%;
-  max-width: 320px;
+  max-width: 280px;
 }
 
 .column-option {
-  padding: 1rem;
-  font-size: 1.5rem;
+  padding: 0.65rem 0.5rem;
+  font-size: 1.35rem;
   font-weight: 900;
   border: 3px solid #000;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #fff;
   color: #000;
   cursor: pointer;
   transition: all 0.1s ease;
   font-family: 'Courier New', Courier, monospace;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
+  box-shadow: 3px 3px 0px rgba(0,0,0,0.3);
+  text-align: center;
 }
 
 .column-option:hover:not(.disabled) {
   background: #f8f9fa;
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0px rgba(0,0,0,0.4);
-}
-
-.column-option:active:not(.disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 0px 0px 0px #000;
+  transform: translate(-1px, -1px);
 }
 
 .column-option.selected {
@@ -181,31 +176,19 @@
   cursor: not-allowed;
 }
 
-/* ---- Responsive ---- */
-
 @media (max-width: 480px) {
   .digit-cell {
-    width: 40px;
-    height: 48px;
-    font-size: 2rem;
+    width: 34px;
+    height: 40px;
+    font-size: 1.6rem;
   }
-
-  .operation-symbol {
-    font-size: 1.5rem;
-    width: 28px;
+  .operand-box {
+    width: 75px;
+    height: 40px;
+    font-size: 1.6rem;
   }
-
-  .column-stack {
-    padding: 1.5rem;
-    min-width: auto;
-  }
-
-  .column-options {
-    max-width: 280px;
-  }
-
   .column-option {
-    font-size: 1.25rem;
-    padding: 0.75rem;
+    font-size: 1.15rem;
+    padding: 0.5rem;
   }
 }

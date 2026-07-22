@@ -398,12 +398,14 @@ export function buyPropertyFullPrice(state: GameState): GameState {
 export function startSmartBuyChallenge(state: GameState): GameState {
   const player = getCurrentPlayer(state);
   const event = state.pendingTileEvent!;
+  const tile = BOARD_TILES[event.tileIndex];
 
   const challenge = selectChallenge({
     masteryStates: player.masteryStates,
     context: 'SMART_BUY',
     consecutiveFailures: player.consecutiveFailures,
     propertyPrice: event.propertyPrice,
+    propertySkillTheme: tile?.skillTheme as SkillName | undefined,
   });
 
   return {
@@ -501,12 +503,14 @@ export function payFullRent(state: GameState): GameState {
 export function startRentDefense(state: GameState): GameState {
   const player = getCurrentPlayer(state);
   const event = state.pendingTileEvent!;
+  const tile = BOARD_TILES[event.tileIndex];
 
   const challenge = selectChallenge({
     masteryStates: player.masteryStates,
     context: 'RENT_DEFENSE',
     consecutiveFailures: player.consecutiveFailures,
     rentAmount: event.rentAmount,
+    propertySkillTheme: tile?.skillTheme as SkillName | undefined,
   });
 
   return {

@@ -26,25 +26,70 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
   const pos = question.missingPosition || 'answer';
   const place = question.missingDigitPlace;
 
-  // Helper to render top digit cell
-  const renderTopCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
-    if (pos === 'top_operand' && !answered) return <span className="digit-cell digit-target">?</span>;
-    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-target">?</span>;
-    return <span className="digit-cell">{digit ?? ''}</span>;
+  // Helper to render top row cells
+  const renderTopRow = () => {
+    if (pos === 'top_operand' && !answered) {
+      return <span className="digit-cell digit-target operand-box">?</span>;
+    }
+    return (
+      <>
+        {hasHundreds && (
+          <span className={`digit-cell ${pos === 'internal_digit' && place === 'hundreds' && !answered ? 'digit-target' : ''}`}>
+            {pos === 'internal_digit' && place === 'hundreds' && !answered ? '?' : (question.placeValues.hundreds?.top ?? '')}
+          </span>
+        )}
+        <span className={`digit-cell ${pos === 'internal_digit' && place === 'tens' && !answered ? 'digit-target' : ''}`}>
+          {pos === 'internal_digit' && place === 'tens' && !answered ? '?' : question.placeValues.tens.top}
+        </span>
+        <span className={`digit-cell ${pos === 'internal_digit' && place === 'ones' && !answered ? 'digit-target' : ''}`}>
+          {pos === 'internal_digit' && place === 'ones' && !answered ? '?' : question.placeValues.ones.top}
+        </span>
+      </>
+    );
   };
 
-  // Helper to render bottom digit cell
-  const renderBottomCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
-    if (pos === 'bottom_operand' && !answered) return <span className="digit-cell digit-target">?</span>;
-    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-target">?</span>;
-    return <span className="digit-cell">{digit ?? ''}</span>;
+  // Helper to render bottom row cells
+  const renderBottomRow = () => {
+    if (pos === 'bottom_operand' && !answered) {
+      return <span className="digit-cell digit-target operand-box">?</span>;
+    }
+    return (
+      <>
+        {hasHundreds && (
+          <span className={`digit-cell ${pos === 'internal_digit' && place === 'hundreds' && !answered ? 'digit-target' : ''}`}>
+            {pos === 'internal_digit' && place === 'hundreds' && !answered ? '?' : (question.placeValues.hundreds?.bottom ?? '')}
+          </span>
+        )}
+        <span className={`digit-cell ${pos === 'internal_digit' && place === 'tens' && !answered ? 'digit-target' : ''}`}>
+          {pos === 'internal_digit' && place === 'tens' && !answered ? '?' : question.placeValues.tens.bottom}
+        </span>
+        <span className={`digit-cell ${pos === 'internal_digit' && place === 'ones' && !answered ? 'digit-target' : ''}`}>
+          {pos === 'internal_digit' && place === 'ones' && !answered ? '?' : question.placeValues.ones.bottom}
+        </span>
+      </>
+    );
   };
 
-  // Helper to render answer digit cell
-  const renderAnswerCell = (digit: number | null | undefined, cellPlace: 'hundreds' | 'tens' | 'ones') => {
-    if (pos === 'answer' && !answered) return <span className="digit-cell digit-answer digit-target">?</span>;
-    if (pos === 'internal_digit' && place === cellPlace && !answered) return <span className="digit-cell digit-answer digit-target">?</span>;
-    return <span className="digit-cell digit-answer">{digit ?? ''}</span>;
+  // Helper to render answer row cells
+  const renderAnswerRow = () => {
+    if (pos === 'answer' && !answered) {
+      return <span className="digit-cell digit-answer digit-target operand-box">?</span>;
+    }
+    return (
+      <>
+        {hasHundreds && (
+          <span className="digit-cell digit-answer">
+            {question.answerDigits.hundreds ?? ''}
+          </span>
+        )}
+        <span className="digit-cell digit-answer">
+          {question.answerDigits.tens}
+        </span>
+        <span className="digit-cell digit-answer">
+          {question.answerDigits.ones}
+        </span>
+      </>
+    );
   };
 
   return (
@@ -61,17 +106,13 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
         {/* Top number */}
         <div className="column-row column-top">
           <span className="operation-space" />
-          {hasHundreds && renderTopCell(question.placeValues.hundreds?.top, 'hundreds')}
-          {renderTopCell(question.placeValues.tens.top, 'tens')}
-          {renderTopCell(question.placeValues.ones.top, 'ones')}
+          {renderTopRow()}
         </div>
 
         {/* Bottom number with operation */}
         <div className="column-row column-bottom">
           <span className="operation-symbol">{question.operation}</span>
-          {hasHundreds && renderBottomCell(question.placeValues.hundreds?.bottom, 'hundreds')}
-          {renderBottomCell(question.placeValues.tens.bottom, 'tens')}
-          {renderBottomCell(question.placeValues.ones.bottom, 'ones')}
+          {renderBottomRow()}
         </div>
 
         {/* Separator line */}
@@ -80,9 +121,7 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
         {/* Answer row */}
         <div className="column-row column-answer">
           <span className="operation-space" />
-          {hasHundreds && renderAnswerCell(question.answerDigits.hundreds, 'hundreds')}
-          {renderAnswerCell(question.answerDigits.tens, 'tens')}
-          {renderAnswerCell(question.answerDigits.ones, 'ones')}
+          {renderAnswerRow()}
         </div>
 
         {/* Regrouping indicator */}

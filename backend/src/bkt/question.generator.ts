@@ -37,7 +37,7 @@ function makeOptions(
   formatter: (n: number) => string = String,
   spread?: number
 ): { options: string[]; correctIndex: number } {
-  const actualSpread = spread || Math.max(3, Math.ceil(Math.abs(correct) * 0.2));
+  const actualSpread = spread || Math.max(3, Math.ceil(Math.abs(correct) * 0.25));
   const distractors = new Set<number>();
 
   while (distractors.size < 3) {
@@ -52,6 +52,23 @@ function makeOptions(
   return {
     options: allValues.map(formatter),
     correctIndex: allValues.indexOf(correct),
+  };
+}
+
+/** Create 4 unique 1-digit MCQ options for digit fill-in questions (0–9) */
+function makeDigitOptions(correctDigit: number): { options: string[]; correctIndex: number } {
+  const distractors = new Set<number>();
+  while (distractors.size < 3) {
+    const d = randInt(0, 9);
+    if (d !== correctDigit) {
+      distractors.add(d);
+    }
+  }
+
+  const allValues = shuffle([correctDigit, ...distractors]);
+  return {
+    options: allValues.map(String),
+    correctIndex: allValues.indexOf(correctDigit),
   };
 }
 
@@ -118,10 +135,11 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let targetAnswer: number;
   let text = '';
+  let isDigitTarget = false;
 
   switch (difficulty) {
     case 1: {
-      // Easy (P(L) < 0.40): Missing final answer digit
+      // Easy: Missing final sum digit (24 + 15 = ?)
       a = randInt(10, 45);
       const maxOnes = 9 - (a % 10);
       b = randInt(1, Math.max(1, Math.min(maxOnes, 35)));
@@ -131,7 +149,7 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
       break;
     }
     case 2: {
-      // Medium (0.40 <= P(L) < 0.75): Missing top/bottom operand or internal digit
+      // Medium: Missing top/bottom operand or internal digit (e.g. 2? + 11 = 33 or ? + 15 = 39)
       const choice = randInt(1, 3);
       if (choice === 1) {
         a = randInt(12, 50);
@@ -151,21 +169,30 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
         missingPosition = 'internal_digit';
         missingDigitPlace = 'ones';
         targetAnswer = a % 10;
+        isDigitTarget = true;
         text = `${Math.floor(a / 10)}(?) + ${b} = ${a + b}`;
       }
       break;
     }
     case 3: {
-      // Hard (P(L) >= 0.75): Multi-digit column with regrouping & missing internal digit
+      // Hard: Multi-digit column with regrouping & missing operand or digit
+      const choice = randInt(1, 2);
       a = randInt(25, 85);
       b = randInt(15, 95 - a);
       if ((a % 10) + (b % 10) < 10) {
         b = b - (b % 10) + randInt(10 - (a % 10), 9);
       }
-      missingPosition = 'internal_digit';
-      missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
-      targetAnswer = missingDigitPlace === 'tens' ? Math.floor(a / 10) % 10 : a % 10;
-      text = `Vertical Add Carry: find missing digit in ${a} + ${b} = ${a + b}`;
+      if (choice === 1) {
+        missingPosition = 'top_operand';
+        targetAnswer = a;
+        text = `(?) + ${b} = ${a + b}`;
+      } else {
+        missingPosition = 'internal_digit';
+        missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
+        targetAnswer = missingDigitPlace === 'tens' ? Math.floor(a / 10) % 10 : a % 10;
+        isDigitTarget = true;
+        text = `Find missing digit in ${a} + ${b} = ${a + b}`;
+      }
       break;
     }
     default:
@@ -173,7 +200,9 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '+', missingPosition, missingDigitPlace);
-  const { options, correctIndex } = makeOptions(targetAnswer, String, Math.max(3, Math.ceil(targetAnswer * 0.2)));
+  const { options, correctIndex } = isDigitTarget
+    ? makeDigitOptions(targetAnswer)
+    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -195,9 +224,11 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let targetAnswer: number;
   let text = '';
+  let isDigitTarget = false;
 
   switch (difficulty) {
     case 1: {
+      // Easy: Missing difference
       a = randInt(20, 50);
       b = randInt(1, a % 10 > 0 ? a % 10 : 9);
       missingPosition = 'answer';
@@ -206,6 +237,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       break;
     }
     case 2: {
+      // Medium: Missing top operand (? - 15 = 24), bottom operand (39 - ? = 24), or internal digit
       const choice = randInt(1, 3);
       if (choice === 1) {
         a = randInt(30, 75);
@@ -225,21 +257,31 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
         missingPosition = 'internal_digit';
         missingDigitPlace = 'ones';
         targetAnswer = a % 10;
+        isDigitTarget = true;
         text = `${Math.floor(a / 10)}(?) - ${b} = ${a - b}`;
       }
       break;
     }
     case 3: {
+      // Hard: With borrowing, missing operand or digit
       a = randInt(40, 99);
       b = randInt(15, a - 5);
       if ((a % 10) >= (b % 10)) {
         b = b - (b % 10) + randInt(a % 10 + 1, 9);
         if (b >= a) b = a - 1;
       }
-      missingPosition = 'internal_digit';
-      missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
-      targetAnswer = missingDigitPlace === 'tens' ? Math.floor(b / 10) % 10 : b % 10;
-      text = `Vertical Sub Borrow: find missing digit in ${a} - ${b} = ${a - b}`;
+      const choice = randInt(1, 2);
+      if (choice === 1) {
+        missingPosition = 'top_operand';
+        targetAnswer = a;
+        text = `(?) - ${b} = ${a - b}`;
+      } else {
+        missingPosition = 'internal_digit';
+        missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
+        targetAnswer = missingDigitPlace === 'tens' ? Math.floor(b / 10) % 10 : b % 10;
+        isDigitTarget = true;
+        text = `Find missing digit in ${a} - ${b} = ${a - b}`;
+      }
       break;
     }
     default:
@@ -247,7 +289,9 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '-', missingPosition, missingDigitPlace);
-  const { options, correctIndex } = makeOptions(targetAnswer, String, Math.max(3, Math.ceil(targetAnswer * 0.2)));
+  const { options, correctIndex } = isDigitTarget
+    ? makeDigitOptions(targetAnswer)
+    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -269,10 +313,12 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let targetAnswer: number;
   let text = '';
+  let isDigitTarget = false;
 
   switch (difficulty) {
     case 1: {
-      a = randInt(10, 24);
+      // Easy: Single-digit or simple vertical multiplication missing product (12 x 3 = ?)
+      a = randInt(10, 25);
       b = randInt(2, 4);
       missingPosition = 'answer';
       targetAnswer = a * b;
@@ -280,24 +326,33 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
       break;
     }
     case 2: {
-      const choice = randInt(1, 2);
+      // Medium: Missing multiplier (14 x ? = 42), missing multiplicand (? x 3 = 36), or internal digit
+      const choice = randInt(1, 3);
       if (choice === 1) {
         a = randInt(11, 25);
         b = randInt(2, 5);
         missingPosition = 'bottom_operand';
         targetAnswer = b;
         text = `${a} × (?) = ${a * b}`;
+      } else if (choice === 2) {
+        a = randInt(11, 25);
+        b = randInt(2, 5);
+        missingPosition = 'top_operand';
+        targetAnswer = a;
+        text = `(?) × ${b} = ${a * b}`;
       } else {
         a = randInt(12, 30);
         b = randInt(2, 4);
         missingPosition = 'internal_digit';
         missingDigitPlace = 'ones';
         targetAnswer = (a * b) % 10;
+        isDigitTarget = true;
         text = `${a} × ${b} = ${Math.floor((a * b) / 10)}(?)`;
       }
       break;
     }
     case 3: {
+      // Hard: Missing multiplicand or multiplicand digit in vertical multiplication
       a = randInt(15, 35);
       b = randInt(3, 6);
       missingPosition = 'top_operand';
@@ -310,7 +365,9 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '×', missingPosition, missingDigitPlace);
-  const { options, correctIndex } = makeOptions(targetAnswer, String, Math.max(3, Math.ceil(targetAnswer * 0.2)));
+  const { options, correctIndex } = isDigitTarget
+    ? makeDigitOptions(targetAnswer)
+    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -333,9 +390,11 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
   let targetAnswer: number;
   let text = '';
+  let isDigitTarget = true;
 
   switch (difficulty) {
     case 1: {
+      // Easy: Basic vertical division missing final quotient digit (3 | 339 = 11?)
       divisor = randInt(2, 5);
       quotient = randInt(11, 33);
       dividend = divisor * quotient;
@@ -345,23 +404,26 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
       break;
     }
     case 2: {
-      divisor = randInt(2, 4);
+      // Medium: Step-by-step missing quotient digit (3 | 339 = 1?3) or brought-down digit
+      divisor = randInt(2, 5);
       quotient = randInt(111, 333);
       dividend = divisor * quotient;
       missingTarget = Math.random() > 0.5 ? 'quotient_digit' : 'brought_down_digit';
       targetAnswer = missingTarget === 'quotient_digit'
         ? Math.floor(quotient / 10) % 10
         : Math.floor(dividend / 10) % 10;
-      text = `Long division step: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
+      text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
       break;
     }
     case 3: {
+      // Hard: Step-by-step division missing intermediate subtraction result or final remainder
       divisor = randInt(3, 6);
       quotient = randInt(12, 45);
       const remainder = randInt(0, divisor - 1);
       dividend = divisor * quotient + remainder;
       missingTarget = Math.random() > 0.5 ? 'subtraction_result' : 'remainder';
       targetAnswer = missingTarget === 'remainder' ? remainder : 0;
+      isDigitTarget = false;
       text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
       break;
     }
@@ -401,7 +463,9 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
     missingStepIndex: 1,
   };
 
-  const { options, correctIndex } = makeOptions(targetAnswer, String, 3);
+  const { options, correctIndex } = isDigitTarget
+    ? makeDigitOptions(targetAnswer)
+    : makeOptions(targetAnswer, String, 3);
 
   return {
     questionData: longDivisionData,
@@ -458,39 +522,20 @@ export function generateDiceChallenge(
 
 export function generateSmartBuyQuestion(
   propertyPrice: number,
-  difficulty: 1 | 2 | 3
+  difficulty: 1 | 2 | 3,
+  skillName?: string
 ): GeneratedQuestion {
-  const discountAmount = Math.floor(propertyPrice * 0.20);
-  const answer = propertyPrice - discountAmount;
-  const columnData = buildColumnData(propertyPrice, discountAmount, '-', 'answer');
-  const { options, correctIndex } = makeOptions(answer, (n) => `RM${n}`, Math.max(5, Math.ceil(answer * 0.1)));
-
-  return {
-    questionData: columnData,
-    text: `Smart Buy 20% Off: RM${propertyPrice} - RM${discountAmount} = (?)`,
-    options,
-    correctIndex,
-    difficulty,
-    skillName: 'Subtraction',
-  };
+  const targetSkill = skillName || 'Subtraction';
+  return generateQuestion(targetSkill, difficulty);
 }
 
 export function generateRentDefenseQuestion(
   rentAmount: number,
-  difficulty: 1 | 2 | 3
+  difficulty: 1 | 2 | 3,
+  skillName?: string
 ): GeneratedQuestion {
-  const halfRent = Math.floor(rentAmount / 2);
-  const columnData = buildColumnData(rentAmount, halfRent, '-', 'answer');
-  const { options, correctIndex } = makeOptions(halfRent, (n) => `RM${n}`, Math.max(3, Math.ceil(halfRent * 0.2)));
-
-  return {
-    questionData: columnData,
-    text: `Rent Defense: Pay half of RM${rentAmount} = (?)`,
-    options,
-    correctIndex,
-    difficulty,
-    skillName: 'Subtraction',
-  };
+  const targetSkill = skillName || 'Subtraction';
+  return generateQuestion(targetSkill, difficulty);
 }
 
 // ============================================

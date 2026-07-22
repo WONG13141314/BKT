@@ -212,7 +212,10 @@ export function GamePage() {
     setActiveChallenge(null);
     setAnswerResult(null);
     setChallengePlayerId(null);
-  }, []);
+    if (gameState?.id) {
+      emitEndTurn();
+    }
+  }, [gameState?.id, emitEndTurn]);
 
   // ---- Render helpers ----
   function isChallengePhase(phase: string): boolean {
@@ -296,7 +299,7 @@ export function GamePage() {
   }
 
   const renderPhase = activePhase || gameState.turnPhase;
-  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn;
+  const showChallenge = (isChallengePhase(renderPhase) || answerResult !== null) && activeChallenge && isMyTurn;
   const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
 
 

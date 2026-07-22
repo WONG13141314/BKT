@@ -125,8 +125,8 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   // 1. Get eligible skills
   let eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || SKILL_NAMES;
 
-  // For LEVEL_UP: prefer the property's skill theme
-  if (context === 'LEVEL_UP' && propertySkillTheme) {
+  // Prefer property's skill theme if provided (e.g., SMART_BUY, RENT_DEFENSE, LEVEL_UP)
+  if (propertySkillTheme) {
     eligibleSkills = [propertySkillTheme];
   }
 
@@ -169,27 +169,14 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     difficulty = 1; // Rebuild confidence after consecutive failures
   }
 
-  // 3. Generate the question
+  // 3. Generate the question using the selected skill and difficulty
   let generated;
-
-  switch (context) {
-    case 'SMART_BUY':
-      if (propertyPrice != null) {
-        generated = generateSmartBuyQuestion(propertyPrice, difficulty);
-      } else {
-        generated = generateQuestion(selectedSkill, difficulty);
-      }
-      break;
-    case 'RENT_DEFENSE':
-      if (rentAmount != null) {
-        generated = generateRentDefenseQuestion(rentAmount, difficulty);
-      } else {
-        generated = generateQuestion(selectedSkill, difficulty);
-      }
-      break;
-    default:
-      generated = generateQuestion(selectedSkill, difficulty);
-      break;
+  if (context === 'SMART_BUY' && propertyPrice != null) {
+    generated = generateSmartBuyQuestion(propertyPrice, difficulty, selectedSkill);
+  } else if (context === 'RENT_DEFENSE' && rentAmount != null) {
+    generated = generateRentDefenseQuestion(rentAmount, difficulty, selectedSkill);
+  } else {
+    generated = generateQuestion(selectedSkill, difficulty);
   }
 
   // 4. Determine hint
