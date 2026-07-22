@@ -122,6 +122,7 @@ export interface ColumnQuestion {
   };
   missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
   missingDigitPlace?: 'hundreds' | 'tens' | 'ones';
+  missingDigitRow?: 'top' | 'bottom';
 }
 
 /** Vertical Step-by-Step Long Division */

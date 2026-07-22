@@ -146,6 +146,7 @@ export interface ColumnQuestion {
   };
   missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
   missingDigitPlace?: 'hundreds' | 'tens' | 'ones';
+  missingDigitRow?: 'top' | 'bottom';
 }
 
 export interface LongDivisionStep {

@@ -79,7 +79,8 @@ function buildColumnData(
   b: number,
   operation: '+' | '-' | '×',
   missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit',
-  missingDigitPlace?: 'hundreds' | 'tens' | 'ones'
+  missingDigitPlace?: 'hundreds' | 'tens' | 'ones',
+  missingDigitRow?: 'top' | 'bottom'
 ): ColumnQuestion {
   let answer: number;
   if (operation === '+') answer = a + b;
@@ -112,6 +113,7 @@ function buildColumnData(
     },
     missingPosition,
     missingDigitPlace,
+    missingDigitRow: missingDigitRow || (missingPosition === 'internal_digit' ? 'top' : undefined),
   };
 
   if (a >= 100 || b >= 100 || answer >= 100) {

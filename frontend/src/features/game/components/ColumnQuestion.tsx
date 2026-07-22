@@ -31,18 +31,20 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
     if (pos === 'top_operand' && !answered) {
       return <span className="digit-cell digit-target operand-box">?</span>;
     }
+    const isTopTargeted = pos === 'internal_digit' && question.missingDigitRow !== 'bottom' && !answered;
+
     return (
       <>
         {hasHundreds && (
-          <span className={`digit-cell ${pos === 'internal_digit' && place === 'hundreds' && !answered ? 'digit-target' : ''}`}>
-            {pos === 'internal_digit' && place === 'hundreds' && !answered ? '?' : (question.placeValues.hundreds?.top ?? '')}
+          <span className={`digit-cell ${isTopTargeted && place === 'hundreds' ? 'digit-target' : ''}`}>
+            {isTopTargeted && place === 'hundreds' ? '?' : (question.placeValues.hundreds?.top ?? '')}
           </span>
         )}
-        <span className={`digit-cell ${pos === 'internal_digit' && place === 'tens' && !answered ? 'digit-target' : ''}`}>
-          {pos === 'internal_digit' && place === 'tens' && !answered ? '?' : question.placeValues.tens.top}
+        <span className={`digit-cell ${isTopTargeted && place === 'tens' ? 'digit-target' : ''}`}>
+          {isTopTargeted && place === 'tens' ? '?' : question.placeValues.tens.top}
         </span>
-        <span className={`digit-cell ${pos === 'internal_digit' && place === 'ones' && !answered ? 'digit-target' : ''}`}>
-          {pos === 'internal_digit' && place === 'ones' && !answered ? '?' : question.placeValues.ones.top}
+        <span className={`digit-cell ${isTopTargeted && place === 'ones' ? 'digit-target' : ''}`}>
+          {isTopTargeted && place === 'ones' ? '?' : question.placeValues.ones.top}
         </span>
       </>
     );
@@ -53,18 +55,20 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
     if (pos === 'bottom_operand' && !answered) {
       return <span className="digit-cell digit-target operand-box">?</span>;
     }
+    const isBottomTargeted = pos === 'internal_digit' && question.missingDigitRow === 'bottom' && !answered;
+
     return (
       <>
         {hasHundreds && (
-          <span className={`digit-cell ${pos === 'internal_digit' && place === 'hundreds' && !answered ? 'digit-target' : ''}`}>
-            {pos === 'internal_digit' && place === 'hundreds' && !answered ? '?' : (question.placeValues.hundreds?.bottom ?? '')}
+          <span className={`digit-cell ${isBottomTargeted && place === 'hundreds' ? 'digit-target' : ''}`}>
+            {isBottomTargeted && place === 'hundreds' ? '?' : (question.placeValues.hundreds?.bottom ?? '')}
           </span>
         )}
-        <span className={`digit-cell ${pos === 'internal_digit' && place === 'tens' && !answered ? 'digit-target' : ''}`}>
-          {pos === 'internal_digit' && place === 'tens' && !answered ? '?' : question.placeValues.tens.bottom}
+        <span className={`digit-cell ${isBottomTargeted && place === 'tens' ? 'digit-target' : ''}`}>
+          {isBottomTargeted && place === 'tens' ? '?' : question.placeValues.tens.bottom}
         </span>
-        <span className={`digit-cell ${pos === 'internal_digit' && place === 'ones' && !answered ? 'digit-target' : ''}`}>
-          {pos === 'internal_digit' && place === 'ones' && !answered ? '?' : question.placeValues.ones.bottom}
+        <span className={`digit-cell ${isBottomTargeted && place === 'ones' ? 'digit-target' : ''}`}>
+          {isBottomTargeted && place === 'ones' ? '?' : question.placeValues.ones.bottom}
         </span>
       </>
     );
@@ -73,19 +77,19 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
   // Helper to render answer row cells
   const renderAnswerRow = () => {
     if (pos === 'answer' && !answered) {
-      return <span className="digit-cell digit-answer digit-target operand-box">?</span>;
+      return <span className="digit-cell digit-target operand-box">?</span>;
     }
     return (
       <>
         {hasHundreds && (
-          <span className="digit-cell digit-answer">
+          <span className="digit-cell">
             {question.answerDigits.hundreds ?? ''}
           </span>
         )}
-        <span className="digit-cell digit-answer">
+        <span className="digit-cell">
           {question.answerDigits.tens}
         </span>
-        <span className="digit-cell digit-answer">
+        <span className="digit-cell">
           {question.answerDigits.ones}
         </span>
       </>
