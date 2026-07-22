@@ -212,6 +212,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     emitAnswerResult(socketRoom, result.state, result.result);
     broadcastState(socketRoom, result.state);
+    handleEndTurnFlow(data.gameId, socketRoom);
   });
 
   // ---- BUY: Skip ----
@@ -259,6 +260,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     emitAnswerResult(socketRoom, result.state, result.result);
     broadcastState(socketRoom, result.state);
+    handleEndTurnFlow(data.gameId, socketRoom);
   });
 
   // ---- CARD: Acknowledge luck card ----
@@ -283,6 +285,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     emitAnswerResult(socketRoom, result.state, result.result);
     broadcastState(socketRoom, result.state);
+    handleEndTurnFlow(data.gameId, socketRoom);
   });
 
   // ---- JAIL: Math escape ----
@@ -314,6 +317,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
       }
     } else {
       broadcastState(socketRoom, result.state);
+      handleEndTurnFlow(data.gameId, socketRoom);
     }
   });
 
@@ -381,6 +385,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     emitAnswerResult(socketRoom, result.state, result.result);
     broadcastState(socketRoom, result.state);
+    handleEndTurnFlow(data.gameId, socketRoom);
   });
 
   // ---- LEVEL UP: Decline ----

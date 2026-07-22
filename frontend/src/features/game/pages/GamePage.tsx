@@ -111,9 +111,20 @@ export function GamePage() {
     },
     onAnswerResult: (data) => {
       setAnswerResult(data.result);
-      if (data.result.isCorrect) {
-        addNotification('reward', data.result.reward.description);
-      }
+      const isCorrect = data.result.isCorrect;
+      const type = isCorrect ? 'reward' : 'penalty';
+      const desc = data.result.reward.description ? ` (${data.result.reward.description})` : '';
+      const msg = isCorrect
+        ? `✅ Correct!${desc}`
+        : `❌ Incorrect! Answer: ${data.result.correctAnswer}${desc}`;
+      addNotification(type, msg);
+
+      // Auto-close modal smoothly after brief selection display
+      setTimeout(() => {
+        setActiveChallenge(null);
+        setAnswerResult(null);
+        setChallengePlayerId(null);
+      }, 600);
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
@@ -299,7 +310,7 @@ export function GamePage() {
   }
 
   const renderPhase = activePhase || gameState.turnPhase;
-  const showChallenge = (isChallengePhase(renderPhase) || answerResult !== null) && activeChallenge && isMyTurn;
+  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn;
   const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
 
 
@@ -460,15 +471,6 @@ export function GamePage() {
               <span className="challenge-skill">{activeChallenge!.skillName}</span>
             </div>
             {renderQuestion()}
-            {answerResult && (
-              <div className={`challenge-result ${answerResult.isCorrect ? 'correct' : 'incorrect'}`}>
-                <p>{answerResult.isCorrect ? '✅ Correct!' : `❌ Answer: ${answerResult.correctAnswer}`}</p>
-                <p className="result-reward">{answerResult.reward.description}</p>
-                <button className="action-btn action-btn--primary" onClick={handleContinue}>
-                  Continue
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
