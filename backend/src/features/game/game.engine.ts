@@ -828,9 +828,10 @@ function resolveLuckyBreak(state: GameState, player: PlayerState): GameState {
 // ---- JAIL ----
 
 function resolveGoToJail(state: GameState, player: PlayerState): GameState {
+  // Go directly to jail — turn ends. Jail decision happens on player's NEXT turn.
   return {
     ...sendToJail(state, state.currentPlayerIndex),
-    turnPhase: 'JAIL_DECISION',
+    turnPhase: 'END_TURN',
   };
 }
 
@@ -1089,21 +1090,28 @@ export function processLevelUpAnswer(
       turnPhase: 'END_TURN',
       currentChallenge: null,
       pendingTileEvent: null,
-    },
+      // Mark that level up was already handled this turn — prevent re-check loop
+      _skipLevelUpCheck: true,
+    } as GameState,
     result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
   };
 }
 
 /** Player declines Level Up */
 export function declineLevelUp(state: GameState): GameState {
-  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+  // Mark that level up was already handled this turn
+  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null, _skipLevelUpCheck: true } as GameState;
 }
 
 // ---- E. END TURN ----
 
-export function endTurn(state: GameState): GameState {
-  // Check Level Up eligibility before truly ending
-  if (state.turnPhase !== 'LEVEL_UP_OFFER' && state.turnPhase !== 'LEVEL_UP_CHALLENGE') {
+export function endTurn(state: GameState, skipLevelUpCheck?: boolean): GameState {
+  // Check Level Up eligibility before truly ending —
+  // BUT skip if we just came from a Level Up answer/decline to prevent infinite loop
+  const shouldSkipLevelUp = skipLevelUpCheck || (state as any)._skipLevelUpCheck;
+  if (!shouldSkipLevelUp &&
+      state.turnPhase !== 'LEVEL_UP_OFFER' &&
+      state.turnPhase !== 'LEVEL_UP_CHALLENGE') {
     const levelUpState = checkLevelUpEligibility(state);
     if (levelUpState.turnPhase === 'LEVEL_UP_OFFER') {
       return levelUpState;
@@ -1128,9 +1136,14 @@ export function endTurn(state: GameState): GameState {
     safety++;
   }
 
-  // New round if we've wrapped around
-  if (nextIdx <= updatedState.currentPlayerIndex) {
-    nextRound++;
+  // New round: find the first active (non-bankrupt) player index
+  const firstActiveIdx = updatedState.players.findIndex(p => !p.isBankrupt);
+  // A new round starts when we wrap back to (or past) the first active player
+  if (nextIdx <= updatedState.currentPlayerIndex && firstActiveIdx !== -1) {
+    // Only increment if we truly wrapped around past the first active player
+    if (nextIdx <= firstActiveIdx || updatedState.currentPlayerIndex >= firstActiveIdx) {
+      nextRound++;
+    }
   }
 
   if (nextRound > updatedState.maxRounds) {

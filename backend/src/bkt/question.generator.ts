@@ -268,7 +268,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       // Hard: With borrowing, missing operand or digit
       a = randInt(40, 99);
       b = randInt(15, a - 5);
-      if ((a % 10) >= (b % 10)) {
+      if ((a % 10) >= (b % 10) && (a % 10) < 9) {
         b = b - (b % 10) + randInt(a % 10 + 1, 9);
         if (b >= a) b = a - 1;
       }

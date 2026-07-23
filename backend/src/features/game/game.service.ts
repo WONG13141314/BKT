@@ -279,7 +279,9 @@ export const gameService = {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'END_TURN') return null;
 
-    const newState = endTurn(state);
+    // Pass through the _skipLevelUpCheck flag from the state (set by processLevelUpAnswer / declineLevelUp)
+    const skipLevelUp = (state as any)._skipLevelUpCheck === true;
+    const newState = endTurn(state, skipLevelUp);
     activeGames.set(gameId, newState);
     return newState;
   },

@@ -256,7 +256,9 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
       }
 
       case 'END_TURN': {
-        currentState = endTurn(currentState);
+        // Pass through _skipLevelUpCheck if set (after Level Up answer/decline)
+        const skipLevelUp = (currentState as any)._skipLevelUpCheck === true;
+        currentState = endTurn(currentState, skipLevelUp);
         steps.push({ state: currentState, action: 'end_turn', delay: 300 });
         // Break out — next player's turn
         return steps;

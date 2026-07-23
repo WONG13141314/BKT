@@ -219,14 +219,7 @@ export function GamePage() {
     }
   }, [gameState?.turnPhase, emitDiceAnswer, emitSmartBuyAnswer, emitRentDefenseAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
 
-  const handleContinue = useCallback(() => {
-    setActiveChallenge(null);
-    setAnswerResult(null);
-    setChallengePlayerId(null);
-    if (gameState?.id) {
-      emitEndTurn();
-    }
-  }, [gameState?.id, emitEndTurn]);
+
 
   // ---- Render helpers ----
   function isChallengePhase(phase: string): boolean {
