@@ -26,6 +26,12 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
   const pos = question.missingPosition || 'answer';
   const place = question.missingDigitPlace;
 
+  // Detect single-digit-only question: all operands and answer are < 10
+  const isSingleDigit = !hasHundreds
+    && question.topNumber < 10
+    && question.bottomNumber < 10
+    && Math.abs(question.answer) < 10;
+
   // Helper to render top row cells
   const renderTopRow = () => {
     if (pos === 'top_operand' && !answered) {
@@ -40,9 +46,11 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
             {isTopTargeted && place === 'hundreds' ? '?' : (question.placeValues.hundreds?.top ?? '')}
           </span>
         )}
-        <span className={`digit-cell ${isTopTargeted && place === 'tens' ? 'digit-target' : ''}`}>
-          {isTopTargeted && place === 'tens' ? '?' : question.placeValues.tens.top}
-        </span>
+        {!isSingleDigit && (
+          <span className={`digit-cell ${isTopTargeted && place === 'tens' ? 'digit-target' : ''}`}>
+            {isTopTargeted && place === 'tens' ? '?' : question.placeValues.tens.top}
+          </span>
+        )}
         <span className={`digit-cell ${isTopTargeted && place === 'ones' ? 'digit-target' : ''}`}>
           {isTopTargeted && place === 'ones' ? '?' : question.placeValues.ones.top}
         </span>
@@ -64,9 +72,11 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
             {isBottomTargeted && place === 'hundreds' ? '?' : (question.placeValues.hundreds?.bottom ?? '')}
           </span>
         )}
-        <span className={`digit-cell ${isBottomTargeted && place === 'tens' ? 'digit-target' : ''}`}>
-          {isBottomTargeted && place === 'tens' ? '?' : question.placeValues.tens.bottom}
-        </span>
+        {!isSingleDigit && (
+          <span className={`digit-cell ${isBottomTargeted && place === 'tens' ? 'digit-target' : ''}`}>
+            {isBottomTargeted && place === 'tens' ? '?' : question.placeValues.tens.bottom}
+          </span>
+        )}
         <span className={`digit-cell ${isBottomTargeted && place === 'ones' ? 'digit-target' : ''}`}>
           {isBottomTargeted && place === 'ones' ? '?' : question.placeValues.ones.bottom}
         </span>
@@ -86,9 +96,11 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
             {question.answerDigits.hundreds ?? ''}
           </span>
         )}
-        <span className="digit-cell">
-          {question.answerDigits.tens}
-        </span>
+        {!isSingleDigit && (
+          <span className="digit-cell">
+            {question.answerDigits.tens}
+          </span>
+        )}
         <span className="digit-cell">
           {question.answerDigits.ones}
         </span>
@@ -100,12 +112,14 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
     <div className="column-question">
       {/* Column/Vertical Layout */}
       <div className="column-stack">
-        {/* Place value labels */}
-        <div className="column-row column-labels">
-          {hasHundreds && <span className="place-label">H</span>}
-          <span className="place-label">T</span>
-          <span className="place-label">O</span>
-        </div>
+        {/* Place value labels — hide for single-digit-only questions */}
+        {!isSingleDigit && (
+          <div className="column-row column-labels">
+            {hasHundreds && <span className="place-label">H</span>}
+            <span className="place-label">T</span>
+            <span className="place-label">O</span>
+          </div>
+        )}
 
         {/* Top number */}
         <div className="column-row column-top">
