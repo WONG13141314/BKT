@@ -314,6 +314,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
       const movedState = gameService.executeMove(data.gameId);
       if (movedState) {
         broadcastState(socketRoom, movedState);
+        // Auto-advance if resolved tile goes straight to END_TURN (e.g. GO_TO_JAIL, GO, REST, TAX)
+        if (movedState.turnPhase === 'END_TURN') {
+          handleEndTurnFlow(data.gameId, socketRoom);
+        }
       }
     } else {
       broadcastState(socketRoom, result.state);
@@ -339,6 +343,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
       const movedState = gameService.executeMove(data.gameId);
       if (movedState) {
         broadcastState(socketRoom, movedState);
+        // Auto-advance if resolved tile goes straight to END_TURN
+        if (movedState.turnPhase === 'END_TURN') {
+          handleEndTurnFlow(data.gameId, socketRoom);
+        }
       }
     }
   });
@@ -358,6 +366,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
       const movedState = gameService.executeMove(data.gameId);
       if (movedState) {
         broadcastState(socketRoom, movedState);
+        // Auto-advance if resolved tile goes straight to END_TURN
+        if (movedState.turnPhase === 'END_TURN') {
+          handleEndTurnFlow(data.gameId, socketRoom);
+        }
       }
     } else {
       handleEndTurnFlow(data.gameId, socketRoom);

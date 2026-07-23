@@ -112,14 +112,8 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
     <div className="column-question">
       {/* Column/Vertical Layout */}
       <div className="column-stack">
-        {/* Place value labels — hide for single-digit-only questions */}
-        {!isSingleDigit && (
-          <div className="column-row column-labels">
-            {hasHundreds && <span className="place-label">H</span>}
-            <span className="place-label">T</span>
-            <span className="place-label">O</span>
-          </div>
-        )}
+
+
 
         {/* Top number */}
         <div className="column-row column-top">

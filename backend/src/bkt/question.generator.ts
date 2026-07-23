@@ -393,27 +393,38 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let targetAnswer: number;
   let text = '';
   let isDigitTarget = true;
+  let missingBroughtStepIdx: number | undefined;
+  let needsStepCompute = false;
 
   switch (difficulty) {
     case 1: {
-      // Easy: Basic vertical division missing final quotient digit (3 | 339 = 11?)
+      // Easy: Basic vertical division missing final quotient digit (3 | 66 = 3?)
       divisor = randInt(2, 5);
       quotient = randInt(11, 33);
       dividend = divisor * quotient;
       missingTarget = 'quotient_digit';
+      // Frontend always hides the LAST quotient digit
       targetAnswer = quotient % 10;
       text = `${dividend} ÷ ${divisor} = quotient missing digit (?)`;
       break;
     }
     case 2: {
-      // Medium: Step-by-step missing quotient digit (3 | 339 = 1?3) or brought-down digit
+      // Medium: Step-by-step missing last quotient digit or brought-down digit
       divisor = randInt(2, 5);
       quotient = randInt(111, 333);
       dividend = divisor * quotient;
       missingTarget = Math.random() > 0.5 ? 'quotient_digit' : 'brought_down_digit';
-      targetAnswer = missingTarget === 'quotient_digit'
-        ? Math.floor(quotient / 10) % 10
-        : Math.floor(dividend / 10) % 10;
+      if (missingTarget === 'quotient_digit') {
+        // Frontend always hides the LAST quotient digit
+        targetAnswer = quotient % 10;
+      } else {
+        // brought_down_digit: use the last digit of the dividend that gets brought down
+        // Pick a valid step that has a broughtDownDigit (not the last step)
+        const divStr = String(dividend);
+        const lastBroughtIdx = divStr.length - 2; // second-to-last step has a brought-down digit
+        targetAnswer = parseInt(divStr[divStr.length - 1], 10);
+        missingBroughtStepIdx = Math.max(0, lastBroughtIdx);
+      }
       text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
       break;
     }
@@ -424,14 +435,20 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
       const remainder = randInt(0, divisor - 1);
       dividend = divisor * quotient + remainder;
       missingTarget = Math.random() > 0.5 ? 'subtraction_result' : 'remainder';
-      targetAnswer = missingTarget === 'remainder' ? remainder : 0;
+      if (missingTarget === 'remainder') {
+        targetAnswer = remainder;
+      } else {
+        // Will be computed after steps are generated
+        targetAnswer = 0;
+        needsStepCompute = true;
+      }
       isDigitTarget = false;
       text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
       break;
     }
     default:
       divisor = 3; quotient = 113; dividend = 339;
-      missingTarget = 'quotient_digit'; targetAnswer = 1;
+      missingTarget = 'quotient_digit'; targetAnswer = 3;
       text = '339 ÷ 3 = ?';
   }
 
@@ -454,6 +471,20 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
     currentVal = subRes;
   }
 
+  // Compute missingStepIndex dynamically
+  let computedStepIndex = steps.length - 1; // default to last step
+  if (missingTarget === 'quotient_digit') {
+    computedStepIndex = steps.length - 1; // last step = last quotient digit
+  } else if (missingTarget === 'brought_down_digit') {
+    computedStepIndex = missingBroughtStepIdx ?? Math.max(0, steps.length - 2);
+  } else if (missingTarget === 'subtraction_result') {
+    // Pick a step with a non-trivial subtraction result (prefer step index 1 if available)
+    computedStepIndex = steps.length > 1 ? 1 : 0;
+    if (needsStepCompute) {
+      targetAnswer = steps[computedStepIndex].subtractionResult;
+    }
+  }
+
   const longDivisionData: LongDivisionQuestion = {
     type: 'long_division',
     divisor,
@@ -462,7 +493,7 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
     remainder: dividend % divisor,
     steps,
     missingTarget,
-    missingStepIndex: 1,
+    missingStepIndex: computedStepIndex,
   };
 
   const { options, correctIndex } = isDigitTarget
