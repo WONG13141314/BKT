@@ -76,5 +76,52 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
       const diffs = new Set(bank.map((q) => q.difficulty));
       expect(diffs).toEqual(new Set([1, 2, 3]));
     });
+
+    it('should generate mathematically valid questions where options[correctIndex] matches the missing target', () => {
+      // Stress test 500 generated questions across all skills & difficulties
+      for (let i = 0; i < 500; i++) {
+        const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'];
+        const diff = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3;
+        const skill = skills[Math.floor(Math.random() * skills.length)];
+        const q = generateQuestion(skill, diff);
+
+        const chosenOption = Number(q.options[q.correctIndex]);
+
+        if (q.questionData.type === 'column') {
+          const cd = q.questionData;
+          if (cd.missingPosition === 'answer') {
+            expect(chosenOption).toBe(cd.answer);
+          } else if (cd.missingPosition === 'top_operand') {
+            expect(chosenOption).toBe(cd.topNumber);
+          } else if (cd.missingPosition === 'bottom_operand') {
+            expect(chosenOption).toBe(cd.bottomNumber);
+          } else if (cd.missingPosition === 'internal_digit') {
+            const rowNumber = cd.missingDigitRow === 'bottom' ? cd.bottomNumber : cd.topNumber;
+            let expectedDigit: number;
+            if (cd.missingDigitPlace === 'hundreds') {
+              expectedDigit = Math.floor(rowNumber / 100) % 10;
+            } else if (cd.missingDigitPlace === 'tens') {
+              expectedDigit = Math.floor(rowNumber / 10) % 10;
+            } else {
+              expectedDigit = rowNumber % 10;
+            }
+            expect(chosenOption).toBe(expectedDigit);
+          }
+        } else if (q.questionData.type === 'long_division') {
+          const ld = q.questionData;
+          if (ld.missingTarget === 'quotient_digit') {
+            expect(chosenOption).toBe(ld.quotient % 10);
+          } else if (ld.missingTarget === 'remainder') {
+            expect(chosenOption).toBe(ld.remainder);
+          } else if (ld.missingTarget === 'subtraction_result') {
+            const stepIdx = ld.missingStepIndex ?? 0;
+            expect(chosenOption).toBe(ld.steps[stepIdx].subtractionResult);
+          } else if (ld.missingTarget === 'brought_down_digit') {
+            const stepIdx = ld.missingStepIndex ?? 0;
+            expect(chosenOption).toBe(ld.steps[stepIdx].broughtDownDigit);
+          }
+        }
+      }
+    });
   });
 });

@@ -360,6 +360,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       } else {
         missingPosition = 'internal_digit';
         missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
+        missingDigitRow = 'bottom';
         targetAnswer = missingDigitPlace === 'tens' ? Math.floor(b / 10) % 10 : b % 10;
         isDigitTarget = true;
         text = `Find missing digit in ${a} - ${b} = ${a - b}`;
@@ -433,9 +434,10 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
         b = randInt(2, 4);
         missingPosition = 'internal_digit';
         missingDigitPlace = 'ones';
-        targetAnswer = (a * b) % 10;
+        missingDigitRow = 'top';
+        targetAnswer = a % 10;
         isDigitTarget = true;
-        text = `${a} × ${b} = ${Math.floor((a * b) / 10)}(?)`;
+        text = `${Math.floor(a / 10)}(?) × ${b} = ${a * b}`;
       }
       break;
     }
