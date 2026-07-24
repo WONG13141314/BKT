@@ -10,12 +10,14 @@ import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
+import { LandingBanner } from '../components/LandingBanner';
 import { BOARD_TILES } from '../config/board.config';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import {
   MathChallenge,
   MasteryReport,
+  TileConfig,
   formatRM,
 } from '../types/game.types';
 import {
@@ -32,6 +34,8 @@ import {
   SkipForward,
 } from 'lucide-react';
 import './GamePage.css';
+
+type PacingState = 'IDLE' | 'DICE_FEEDBACK' | 'PAWN_MOVING' | 'TILE_LANDING' | 'EVENT_ACTIVE';
 
 export function GamePage() {
   const [searchParams] = useSearchParams();
@@ -69,6 +73,12 @@ export function GamePage() {
   const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
   const [botActionMessage, setBotActionMessage] = useState<string | null>(null);
   const challengeStartTime = useRef<number>(Date.now());
+
+  // Game Flow Pacing States
+  const [pacingState, setPacingState] = useState<PacingState>('EVENT_ACTIVE');
+  const [landedTile, setLandedTile] = useState<TileConfig | null>(null);
+  const [landedTileIndex, setLandedTileIndex] = useState<number | null>(null);
+  const landingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     emitRoll,
@@ -120,12 +130,23 @@ export function GamePage() {
         : `❌ Incorrect! Answer: ${data.result.correctAnswer}${desc}`;
       addNotification(type, msg);
 
-      // Auto-close modal smoothly after brief selection display
-      setTimeout(() => {
-        setActiveChallenge(null);
-        setAnswerResult(null);
-        setChallengePlayerId(null);
-      }, 600);
+      // If answering dice challenge, hold feedback briefly before closing & allowing movement
+      if (gameState?.turnPhase === 'DICE_CHALLENGE') {
+        setPacingState('DICE_FEEDBACK');
+        setTimeout(() => {
+          setActiveChallenge(null);
+          setAnswerResult(null);
+          setChallengePlayerId(null);
+          setPacingState('PAWN_MOVING');
+        }, 800);
+      } else {
+        // Auto-close modal smoothly after brief selection display
+        setTimeout(() => {
+          setActiveChallenge(null);
+          setAnswerResult(null);
+          setChallengePlayerId(null);
+        }, 600);
+      }
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
@@ -171,6 +192,35 @@ export function GamePage() {
   const prevPhaseRef = useRef<string | null>(null);
   const lastCardNotifiedRef = useRef<string | null>(null);
 
+  const handleMovementChange = useCallback((isMoving: boolean) => {
+    setIsPawnMoving(isMoving);
+    if (isMoving) {
+      setPacingState('PAWN_MOVING');
+      setLandedTile(null);
+      setLandedTileIndex(null);
+    }
+  }, []);
+
+  const handleMovementComplete = useCallback(() => {
+    setIsPawnMoving(false);
+    if (!gameState) return;
+
+    const currPlayer = gameState.players[gameState.currentPlayerIndex];
+    const targetPos = currPlayer ? currPlayer.position : 0;
+    const tile = BOARD_TILES[targetPos] || null;
+
+    setPacingState('TILE_LANDING');
+    setLandedTile(tile);
+    setLandedTileIndex(targetPos);
+
+    if (landingTimerRef.current) clearTimeout(landingTimerRef.current);
+    landingTimerRef.current = setTimeout(() => {
+      setPacingState('EVENT_ACTIVE');
+      setLandedTile(null);
+      setLandedTileIndex(null);
+    }, 850);
+  }, [gameState]);
+
   useEffect(() => {
     if (!gameState) return;
     
@@ -195,10 +245,10 @@ export function GamePage() {
 
   // Auto-request missing active challenge if in challenge phase
   useEffect(() => {
-    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge) {
+    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge && pacingState === 'EVENT_ACTIVE') {
       emitRequestChallenge();
     }
-  }, [gameState?.turnPhase, isMyTurn, activeChallenge, emitRequestChallenge]);
+  }, [gameState?.turnPhase, isMyTurn, activeChallenge, pacingState, emitRequestChallenge]);
 
 
   // ---- Answer Handler ----
@@ -312,7 +362,8 @@ export function GamePage() {
   }
 
   const renderPhase = activePhase || gameState.turnPhase;
-  const isAnimating = isPawnMoving;
+  const isPacingBusy = isPawnMoving || pacingState === 'PAWN_MOVING' || pacingState === 'TILE_LANDING' || pacingState === 'DICE_FEEDBACK';
+  const isAnimating = isPacingBusy;
   const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isAnimating;
   const showChallenge = isChallenge && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
@@ -327,6 +378,15 @@ export function GamePage() {
         isMyTurn={isMyTurn}
         turnPhase={gameState.turnPhase}
       />
+
+      {/* Floating Tile Landing Notification Banner */}
+      {pacingState === 'TILE_LANDING' && landedTile && (
+        <LandingBanner
+          tile={landedTile}
+          playerName={currentPlayer?.name}
+          playerColor={currentPlayer?.color}
+        />
+      )}
 
       {/* Main Layout */}
       <div className="game-layout">
@@ -343,7 +403,9 @@ export function GamePage() {
         <Board
           gameState={gameState}
           currentPlayerId={myUserId}
-          onMovementChange={setIsPawnMoving}
+          landedTileIndex={landedTileIndex}
+          onMovementChange={handleMovementChange}
+          onMovementComplete={handleMovementComplete}
         />
 
         {/* Right Panel: Dice + Actions */}

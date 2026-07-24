@@ -6,6 +6,7 @@ import './Board.css';
 interface Props {
   gameState: GameState;
   currentPlayerId: string;
+  landedTileIndex?: number | null;
   onMovementChange?: (isMoving: boolean) => void;
   onMovementComplete?: () => void;
 }
@@ -21,7 +22,7 @@ const TILE_ICONS: Record<string, string> = {
   REST: '☕',
 };
 
-export function Board({ gameState, currentPlayerId, onMovementChange, onMovementComplete }: Props) {
+export function Board({ gameState, currentPlayerId, landedTileIndex, onMovementChange, onMovementComplete }: Props) {
   const { players, properties } = gameState;
   
   // Track visual positions for animations
@@ -114,6 +115,8 @@ export function Board({ gameState, currentPlayerId, onMovementChange, onMovement
         else if (tile.index >= 10 && tile.index <= 15) rotationClass = 'tile-rotate-top';
         else if (tile.index >= 16 && tile.index <= 19) rotationClass = 'tile-rotate-right';
 
+        const isLandedTile = landedTileIndex === tile.index;
+
         return (
           <div
             key={tile.index}
@@ -121,7 +124,7 @@ export function Board({ gameState, currentPlayerId, onMovementChange, onMovement
               tile.index === players.find((p) => p.id === currentPlayerId)?.position
                 ? 'current-tile'
                 : ''
-            }`}
+            } ${isLandedTile ? 'tile-landed-pulse' : ''}`}
             style={{
               gridRow: pos.gridRow,
               gridColumn: pos.gridColumn,
