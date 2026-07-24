@@ -166,7 +166,9 @@ export function GamePage() {
 
   // ---- Pacing Logic (Delaying UI for animations) ----
   const [activePhase, setActivePhase] = useState<string | null>(null);
+  const [isPawnMoving, setIsPawnMoving] = useState(false);
   const prevPhaseRef = useRef<string | null>(null);
+  const lastCardNotifiedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!gameState) return;
@@ -176,20 +178,19 @@ export function GamePage() {
     
     if (currentPhase !== prevPhase) {
       prevPhaseRef.current = currentPhase;
-      
-      // If we are transitioning FROM a roll, we delay showing the next phase's UI
-      // to allow the dice roll (600ms) and token movement (~400ms) animations to finish.
-      if (prevPhase === 'ROLL_PHASE') {
-        const timer = setTimeout(() => {
-          setActivePhase(currentPhase);
-        }, 1200);
-        return () => clearTimeout(timer);
-      } else {
-        // Otherwise, apply phase immediately (e.g., smart buy clicked -> smart buy challenge)
-        setActivePhase(currentPhase);
+      setActivePhase(currentPhase);
+    }
+
+    // Passive player challenge card notification
+    if (currentPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card && !isMyTurn) {
+      const cardKey = `${gameState.currentPlayerIndex}_${gameState.pendingTileEvent.card.name}`;
+      if (lastCardNotifiedRef.current !== cardKey) {
+        lastCardNotifiedRef.current = cardKey;
+        const playerName = currentPlayer?.name || 'Player';
+        addNotification('info', `⚡ ${playerName} drew Challenge Card: ${gameState.pendingTileEvent.card.name}`);
       }
     }
-  }, [gameState?.turnPhase]);
+  }, [gameState, isMyTurn, currentPlayer?.name, addNotification]);
 
 
   // ---- Answer Handler ----
@@ -303,8 +304,9 @@ export function GamePage() {
   }
 
   const renderPhase = activePhase || gameState.turnPhase;
-  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn;
-  const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card;
+  const isAnimating = isPawnMoving;
+  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn && !isAnimating;
+  const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card && isMyTurn && !isAnimating;
 
 
   return (
@@ -331,6 +333,7 @@ export function GamePage() {
         <Board
           gameState={gameState}
           currentPlayerId={myUserId}
+          onMovementChange={setIsPawnMoving}
         />
 
         {/* Right Panel: Dice + Actions */}
@@ -349,10 +352,10 @@ export function GamePage() {
             </div>
           )}
 
-          {/* === DECISION UIs (only for active human player) === */}
+          {/* === DECISION UIs (only for active human player when movement animation completes) === */}
 
           {/* BUY_DECISION: Buy / Smart Buy / Skip */}
-          {renderPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'BUY_DECISION' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 {gameState.pendingTileEvent.tileName} — {formatRM(gameState.pendingTileEvent.propertyPrice!)}
@@ -370,7 +373,7 @@ export function GamePage() {
           )}
 
           {/* RENT_PAYMENT: Pay / Defend */}
-          {renderPhase === 'RENT_PAYMENT' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'RENT_PAYMENT' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 Rent: {formatRM(gameState.pendingTileEvent.rentAmount!)}
@@ -385,7 +388,7 @@ export function GamePage() {
           )}
 
           {/* JAIL_DECISION: Math / Bail / Wait */}
-          {renderPhase === 'JAIL_DECISION' && isMyTurn && (
+          {renderPhase === 'JAIL_DECISION' && isMyTurn && !isAnimating && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 <Lock size={16} /> You're in Jail!
@@ -403,7 +406,7 @@ export function GamePage() {
           )}
 
           {/* LEVEL_UP_OFFER: Accept / Decline */}
-          {renderPhase === 'LEVEL_UP_OFFER' && isMyTurn && gameState.pendingTileEvent && (
+          {renderPhase === 'LEVEL_UP_OFFER' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 <Star size={16} /> Level Up: {gameState.pendingTileEvent.tileName}
@@ -421,7 +424,7 @@ export function GamePage() {
           )}
 
           {/* END_TURN */}
-          {renderPhase === 'END_TURN' && isMyTurn && (
+          {renderPhase === 'END_TURN' && isMyTurn && !isAnimating && (
             <div className="game-actions">
               <button className="action-btn action-btn--end" onClick={emitEndTurn}>
                 End Turn <ArrowRight size={16} />

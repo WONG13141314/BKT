@@ -6,6 +6,8 @@ import './Board.css';
 interface Props {
   gameState: GameState;
   currentPlayerId: string;
+  onMovementChange?: (isMoving: boolean) => void;
+  onMovementComplete?: () => void;
 }
 
 // Tile type icons
@@ -19,7 +21,7 @@ const TILE_ICONS: Record<string, string> = {
   REST: '☕',
 };
 
-export function Board({ gameState, currentPlayerId }: Props) {
+export function Board({ gameState, currentPlayerId, onMovementChange, onMovementComplete }: Props) {
   const { players, properties } = gameState;
   
   // Track visual positions for animations
@@ -31,6 +33,7 @@ export function Board({ gameState, currentPlayerId }: Props) {
 
   // Target positions ref so we can update without triggering useEffect re-runs
   const targetPositions = useRef<Record<string, number>>({});
+  const wasMovingRef = useRef(false);
   
   useEffect(() => {
     // Update target positions from game state
@@ -49,6 +52,7 @@ export function Board({ gameState, currentPlayerId }: Props) {
     const interval = setInterval(() => {
       setVisualPositions(prev => {
         let changed = false;
+        let stillMoving = false;
         const next = { ...prev };
 
         for (const [id, targetPos] of Object.entries(targetPositions.current)) {
@@ -64,16 +68,31 @@ export function Board({ gameState, currentPlayerId }: Props) {
             } else {
               // Move 1 step forward
               next[id] = (currentPos + 1) % BOARD_TILES.length;
+              if (next[id] !== targetPos) {
+                stillMoving = true;
+              }
             }
             changed = true;
           }
         }
+
+        if (changed || stillMoving) {
+          if (!wasMovingRef.current) {
+            wasMovingRef.current = true;
+            onMovementChange?.(true);
+          }
+        } else if (wasMovingRef.current) {
+          wasMovingRef.current = false;
+          onMovementChange?.(false);
+          onMovementComplete?.();
+        }
+
         return changed ? next : prev;
       });
     }, 200); // 200ms per tile step
 
     return () => clearInterval(interval);
-  }, []);
+  }, [onMovementChange, onMovementComplete]);
 
   return (
     <div className="board-grid">

@@ -127,7 +127,7 @@ describe('Game Engine — MathOpoly Redesign', () => {
     });
   });
 
-  describe('payBail', () => {
+  describe('payBail & Jail Auto-Release', () => {
     it('should release player from jail and deduct bail cost', () => {
       gameState.players[0].isInJail = true;
       gameState.players[0].jailTurns = 1;
@@ -139,6 +139,18 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(player.isInJail).toBe(false);
       expect(player.jailTurns).toBe(0);
       expect(player.money).toBe(STARTING_MONEY - BAIL_COST);
+    });
+
+    it('should auto-release player from jail when startRollPhase sees jailTurns >= MAX_JAIL_TURNS', () => {
+      gameState.players[0].isInJail = true;
+      gameState.players[0].jailTurns = 2; // MAX_JAIL_TURNS = 2
+
+      const newState = startRollPhase(gameState);
+      const player = getCurrentPlayer(newState);
+
+      expect(player.isInJail).toBe(false);
+      expect(player.jailTurns).toBe(0);
+      expect(['DICE_CHALLENGE', 'MOVING']).toContain(newState.turnPhase);
     });
   });
 

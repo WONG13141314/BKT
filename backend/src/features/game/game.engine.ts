@@ -136,8 +136,16 @@ export function getActivePlayers(state: GameState): PlayerState[] {
 export function startRollPhase(state: GameState): GameState {
   const player = getCurrentPlayer(state);
 
-  // If player is in jail → jail decision instead
+  // If player is in jail → jail decision instead (unless max jail turns reached)
   if (player.isInJail) {
+    if (player.jailTurns >= MAX_JAIL_TURNS) {
+      const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
+        ...p,
+        isInJail: false,
+        jailTurns: 0,
+      }));
+      return startRollPhase({ ...state, players: updatedPlayers });
+    }
     return { ...state, turnPhase: 'JAIL_DECISION' };
   }
 
@@ -880,19 +888,20 @@ export function processJailEscapeAnswer(
     player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
   );
 
-  const reward: RewardResult = isCorrect
-    ? { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' }
-    : { type: 'NONE', value: 0, description: 'Still in jail. Better luck next turn!' };
-
   let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  const newJailTurns = player.jailTurns + 1;
 
-  if (isCorrect) {
-    // Freed! Player gets a normal turn
+  if (isCorrect || newJailTurns >= MAX_JAIL_TURNS) {
+    // Freed! Player gets a normal turn (either via correct math answer or reaching max jail turns)
     updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
       ...p,
       isInJail: false,
       jailTurns: 0,
     }));
+
+    const reward: RewardResult = isCorrect
+      ? { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' }
+      : { type: 'NONE', value: 0, description: 'Max jail turns reached! Released from jail!' };
 
     // Re-roll dice for the freed player
     const die1 = Math.floor(Math.random() * 6) + 1;
@@ -909,11 +918,17 @@ export function processJailEscapeAnswer(
       result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
     };
   } else {
-    // Stay jailed, increment jail turns
+    // Stay jailed for now, increment jail turns
     updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
       ...p,
-      jailTurns: p.jailTurns + 1,
+      jailTurns: newJailTurns,
     }));
+
+    const reward: RewardResult = {
+      type: 'NONE',
+      value: 0,
+      description: 'Still in jail. Better luck next turn!',
+    };
 
     return {
       newState: {
