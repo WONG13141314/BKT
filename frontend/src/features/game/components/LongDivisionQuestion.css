@@ -14,151 +14,154 @@
   text-align: center;
 }
 
-.division-container {
+.ld-container {
   background: #fff;
   border: 3px solid #000;
   border-radius: 8px;
-  padding: 1rem 1.5rem;
+  padding: 1.25rem 1.75rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  min-width: 220px;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
+  align-items: flex-start;
+  gap: 0;
+  min-width: 240px;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
   font-family: 'Courier New', Courier, monospace;
 }
 
-.division-row {
+.ld-row {
   display: flex;
   align-items: center;
+  height: 32px;
 }
 
-.digits-grid {
-  display: flex;
-  align-items: center;
-}
-
-.dividend-bar {
-  border-top: 3px solid #000;
-  padding-top: 2px;
-}
-
-.div-cell {
-  width: 32px;
-  height: 38px;
+.ld-cell {
+  width: 28px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  font-size: 1.65rem;
   font-weight: 900;
   color: #000;
-  font-family: 'Courier New', Courier, monospace;
+  box-sizing: border-box;
 }
 
-.cell-empty {
-  width: 28px;
-}
-
-.divisor-val {
-  font-size: 1.75rem;
-  font-weight: 900;
+/* Divisor */
+.ld-divisor {
+  padding-right: 8px;
+  justify-content: flex-end;
+  width: 36px;
   color: #000;
+  font-size: 1.65rem;
+  font-weight: 900;
 }
 
-.division-bracket {
+/* Quotient Digits */
+.ld-quotient-row {
+  margin-bottom: 2px;
+}
+
+.ld-quotient-row .ld-cell:first-child {
+  width: 36px; /* Match divisor cell width */
+}
+
+.ld-quotient-digit {
+  font-size: 1.65rem;
+  font-weight: 900;
+}
+
+/* Dividend Row & Division House Symbol */
+.ld-dividend-row {
+  position: relative;
+}
+
+.ld-dividend-digit {
+  border-top: 3px solid #000;
+  font-size: 1.65rem;
+  font-weight: 900;
+}
+
+.ld-dividend-digit:first-of-type {
+  position: relative;
+}
+
+/* The bracket symbol sticking directly to the overline line */
+.ld-dividend-digit:first-of-type::before {
+  content: ')';
+  position: absolute;
+  left: -10px;
+  top: -7px;
   font-size: 1.9rem;
   font-weight: 900;
   color: #000;
-  margin-right: 4px;
+  line-height: 1;
 }
 
-.dividend-val {
-  font-size: 1.75rem;
+/* Minus sign */
+.ld-minus {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #000;
+  justify-content: center;
+  width: 36px; /* Align under divisor column */
+}
+
+/* Step Digits */
+.ld-step-digit {
+  font-size: 1.5rem;
   font-weight: 900;
   color: #000;
 }
 
-.div-target {
+.ld-product-row .ld-cell:first-child,
+.ld-step-line-row .ld-cell:first-child,
+.ld-result-row .ld-cell:first-child {
+  width: 36px; /* Match divisor column width */
+}
+
+/* Subtraction Lines */
+.ld-step-line-row {
+  height: 6px;
+}
+
+.ld-line-cell {
+  border-top: 2.5px solid #000;
+  height: 2px;
+}
+
+/* Target Box for missing digits */
+.ld-target {
   background: #fff;
   border: 2px dashed #000;
   border-radius: 4px;
   color: #000;
   font-weight: 900;
-}
-
-/* ---- Step-by-Step Subtractions ---- */
-
-.division-steps {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  width: 100%;
-  margin-top: 0.35rem;
-}
-
-.step-block {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  width: 100%;
-  margin-bottom: 0.2rem;
-}
-
-.step-sub-row {
-  display: flex;
+  width: 26px;
+  height: 30px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 1.5rem;
-  font-weight: 900;
-  color: #000;
+  justify-content: center;
 }
 
-.step-minus {
-  color: #000;
-  font-weight: 900;
-}
-
-.step-val {
-  color: #000;
-  font-weight: 900;
-}
-
-.step-line {
-  width: 80%;
-  height: 2px;
-  background: #000;
-  margin: 2px 0;
-}
-
-.step-result-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 1.5rem;
-  font-weight: 900;
-  color: #000;
-}
-
-.step-result, .brought-down {
-  color: #000;
-  font-weight: 900;
-}
-
-.remainder-row {
-  margin-top: 0.35rem;
+/* Remainder Row */
+.ld-remainder-row {
+  margin-top: 0.5rem;
   font-size: 1.1rem;
   font-weight: 900;
   color: #000;
   display: flex;
   align-items: center;
   gap: 6px;
+  padding-left: 4px;
 }
 
-.remainder-label, .remainder-val {
+.ld-remainder-label,
+.ld-remainder-val {
   color: #000;
   font-weight: 900;
 }
 
+/* Hint */
 .division-hint {
   font-size: 0.85rem;
   color: #000;
@@ -172,6 +175,7 @@
   font-family: 'Courier New', Courier, monospace;
 }
 
+/* Options */
 .division-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -191,7 +195,7 @@
   cursor: pointer;
   transition: all 0.1s ease;
   font-family: 'Courier New', Courier, monospace;
-  box-shadow: 3px 3px 0px rgba(0,0,0,0.3);
+  box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.3);
   text-align: center;
 }
 

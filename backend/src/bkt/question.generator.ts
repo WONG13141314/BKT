@@ -72,6 +72,60 @@ function makeDigitOptions(correctDigit: number): { options: string[]; correctInd
   };
 }
 
+/** Possibly convert a full-operand ? into a single-digit ? with ~50% probability.
+ *  Returns updated values for missingPosition, missingDigitPlace, missingDigitRow, targetAnswer, isDigitTarget, and text. */
+function maybeSingleDigitMissing(
+  operand: number,
+  missingPosition: 'top_operand' | 'bottom_operand',
+  otherOperand: number,
+  answer: number,
+  operation: '+' | '-' | '×'
+): {
+  missingPosition: 'top_operand' | 'bottom_operand' | 'internal_digit';
+  missingDigitPlace?: 'tens' | 'ones';
+  missingDigitRow?: 'top' | 'bottom';
+  targetAnswer: number;
+  isDigitTarget: boolean;
+  text: string;
+} {
+  // Only convert if operand is >= 10 (has both tens and ones digit)
+  if (operand < 10 || Math.random() > 0.5) {
+    // Keep as full-operand ?
+    const opSymbol = operation === '×' ? '×' : operation;
+    const text = missingPosition === 'top_operand'
+      ? `(?) ${opSymbol} ${otherOperand} = ${answer}`
+      : `${otherOperand} ${opSymbol} (?) = ${answer}`;
+    return { missingPosition, targetAnswer: operand, isDigitTarget: false, text };
+  }
+
+  // Convert to single-digit ?
+  const digitPlace: 'tens' | 'ones' = Math.random() > 0.5 ? 'tens' : 'ones';
+  const digitRow: 'top' | 'bottom' = missingPosition === 'top_operand' ? 'top' : 'bottom';
+  const targetDigit = digitPlace === 'tens' ? Math.floor(operand / 10) % 10 : operand % 10;
+  const opSymbol = operation === '×' ? '×' : operation;
+
+  // Build display text showing the partially-hidden operand
+  let partialStr: string;
+  if (digitPlace === 'tens') {
+    partialStr = `(?)${operand % 10}`;
+  } else {
+    partialStr = `${Math.floor(operand / 10)}(?)`;
+  }
+
+  const text = missingPosition === 'top_operand'
+    ? `${partialStr} ${opSymbol} ${otherOperand} = ${answer}`
+    : `${otherOperand} ${opSymbol} ${partialStr} = ${answer}`;
+
+  return {
+    missingPosition: 'internal_digit',
+    missingDigitPlace: digitPlace,
+    missingDigitRow: digitRow,
+    targetAnswer: targetDigit,
+    isDigitTarget: true,
+    text,
+  };
+}
+
 // ---- Column Question Builder ----
 
 function buildColumnData(
@@ -135,6 +189,7 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let a: number, b: number;
   let missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
+  let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
   let text = '';
   let isDigitTarget = false;
@@ -156,15 +211,23 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
       if (choice === 1) {
         a = randInt(12, 50);
         b = randInt(5, 40);
-        missingPosition = 'bottom_operand';
-        targetAnswer = b;
-        text = `${a} + (?) = ${a + b}`;
+        const converted = maybeSingleDigitMissing(b, 'bottom_operand', a, a + b, '+');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else if (choice === 2) {
         a = randInt(12, 50);
         b = randInt(5, 40);
-        missingPosition = 'top_operand';
-        targetAnswer = a;
-        text = `(?) + ${b} = ${a + b}`;
+        const converted = maybeSingleDigitMissing(a, 'top_operand', b, a + b, '+');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else {
         a = randInt(20, 75);
         b = randInt(10, 20);
@@ -185,9 +248,13 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
         b = b - (b % 10) + randInt(10 - (a % 10), 9);
       }
       if (choice === 1) {
-        missingPosition = 'top_operand';
-        targetAnswer = a;
-        text = `(?) + ${b} = ${a + b}`;
+        const converted = maybeSingleDigitMissing(a, 'top_operand', b, a + b, '+');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else {
         missingPosition = 'internal_digit';
         missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
@@ -201,7 +268,7 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
       a = 12; b = 5; missingPosition = 'answer'; targetAnswer = 17; text = '12 + 5 = (?)';
   }
 
-  const columnData = buildColumnData(a, b, '+', missingPosition, missingDigitPlace);
+  const columnData = buildColumnData(a, b, '+', missingPosition, missingDigitPlace, missingDigitRow);
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
     : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
@@ -224,6 +291,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let a: number, b: number;
   let missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
+  let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
   let text = '';
   let isDigitTarget = false;
@@ -244,15 +312,23 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       if (choice === 1) {
         a = randInt(30, 75);
         b = randInt(10, a - 10);
-        missingPosition = 'bottom_operand';
-        targetAnswer = b;
-        text = `${a} - (?) = ${a - b}`;
+        const converted = maybeSingleDigitMissing(b, 'bottom_operand', a, a - b, '-');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else if (choice === 2) {
         a = randInt(30, 75);
         b = randInt(10, a - 10);
-        missingPosition = 'top_operand';
-        targetAnswer = a;
-        text = `(?) - ${b} = ${a - b}`;
+        const converted = maybeSingleDigitMissing(a, 'top_operand', b, a - b, '-');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else {
         a = randInt(30, 75);
         b = randInt(10, 20);
@@ -274,9 +350,13 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       }
       const choice = randInt(1, 2);
       if (choice === 1) {
-        missingPosition = 'top_operand';
-        targetAnswer = a;
-        text = `(?) - ${b} = ${a - b}`;
+        const converted = maybeSingleDigitMissing(a, 'top_operand', b, a - b, '-');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else {
         missingPosition = 'internal_digit';
         missingDigitPlace = Math.random() > 0.5 ? 'tens' : 'ones';
@@ -290,7 +370,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
       a = 25; b = 10; missingPosition = 'answer'; targetAnswer = 15; text = '25 - 10 = (?)';
   }
 
-  const columnData = buildColumnData(a, b, '-', missingPosition, missingDigitPlace);
+  const columnData = buildColumnData(a, b, '-', missingPosition, missingDigitPlace, missingDigitRow);
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
     : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
@@ -313,6 +393,7 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let a: number, b: number;
   let missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
+  let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
   let text = '';
   let isDigitTarget = false;
@@ -333,15 +414,20 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
       if (choice === 1) {
         a = randInt(11, 25);
         b = randInt(2, 5);
+        // bottom_operand is single-digit (2-5), so no conversion needed — keep as full ?
         missingPosition = 'bottom_operand';
         targetAnswer = b;
         text = `${a} × (?) = ${a * b}`;
       } else if (choice === 2) {
         a = randInt(11, 25);
         b = randInt(2, 5);
-        missingPosition = 'top_operand';
-        targetAnswer = a;
-        text = `(?) × ${b} = ${a * b}`;
+        const converted = maybeSingleDigitMissing(a, 'top_operand', b, a * b, '×');
+        missingPosition = converted.missingPosition;
+        missingDigitPlace = converted.missingDigitPlace;
+        if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+        targetAnswer = converted.targetAnswer;
+        isDigitTarget = converted.isDigitTarget;
+        text = converted.text;
       } else {
         a = randInt(12, 30);
         b = randInt(2, 4);
@@ -357,16 +443,20 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
       // Hard: Missing multiplicand or multiplicand digit in vertical multiplication
       a = randInt(15, 35);
       b = randInt(3, 6);
-      missingPosition = 'top_operand';
-      targetAnswer = a;
-      text = `(?) × ${b} = ${a * b}`;
+      const converted = maybeSingleDigitMissing(a, 'top_operand', b, a * b, '×');
+      missingPosition = converted.missingPosition;
+      missingDigitPlace = converted.missingDigitPlace;
+      if (converted.missingDigitRow) missingDigitRow = converted.missingDigitRow;
+      targetAnswer = converted.targetAnswer;
+      isDigitTarget = converted.isDigitTarget;
+      text = converted.text;
       break;
     }
     default:
       a = 12; b = 3; missingPosition = 'answer'; targetAnswer = 36; text = '12 × 3 = (?)';
   }
 
-  const columnData = buildColumnData(a, b, '×', missingPosition, missingDigitPlace);
+  const columnData = buildColumnData(a, b, '×', missingPosition, missingDigitPlace, missingDigitRow);
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
     : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
