@@ -90,6 +90,7 @@ export function GamePage() {
     emitLevelUpAnswer,
     emitLevelUpDecline,
     emitEndTurn,
+    emitRequestChallenge,
   } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
       setGameState(state);
@@ -191,6 +192,13 @@ export function GamePage() {
       }
     }
   }, [gameState, isMyTurn, currentPlayer?.name, addNotification]);
+
+  // Auto-request missing active challenge if in challenge phase
+  useEffect(() => {
+    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge) {
+      emitRequestChallenge();
+    }
+  }, [gameState?.turnPhase, isMyTurn, activeChallenge, emitRequestChallenge]);
 
 
   // ---- Answer Handler ----
@@ -305,12 +313,14 @@ export function GamePage() {
 
   const renderPhase = activePhase || gameState.turnPhase;
   const isAnimating = isPawnMoving;
-  const showChallenge = isChallengePhase(renderPhase) && activeChallenge && isMyTurn && !isAnimating;
-  const showCardDraw = renderPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card && isMyTurn && !isAnimating;
+  const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isAnimating;
+  const showChallenge = isChallenge && !!activeChallenge;
+  const showChallengeLoading = isChallenge && !activeChallenge;
+  const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isAnimating;
 
 
   return (
-    <div className={`game-page ${showChallenge ? 'game-page--quiz-active' : ''}`}>
+    <div className={`game-page ${showChallenge || showChallengeLoading ? 'game-page--quiz-active' : ''}`}>
       {/* Turn Indicator */}
       <TurnIndicator
         currentPlayer={currentPlayer}
@@ -471,10 +481,41 @@ export function GamePage() {
         </div>
       )}
 
+      {/* Challenge Loading / Recovery Overlay */}
+      {showChallengeLoading && (
+        <div className="challenge-overlay">
+          <div className="challenge-panel challenge-panel--loading">
+            <div className="challenge-header">
+              <span className="challenge-context">⚡ Card Challenge</span>
+            </div>
+            <div style={{ padding: '24px', textAlign: 'center' }}>
+              <Loader2 size={32} className="icon-spin" style={{ margin: '0 auto 16px' }} />
+              <h3 style={{ margin: '8px 0', fontSize: '1.25rem' }}>Loading Question...</h3>
+              <p style={{ color: '#6b7280', margin: '4px 0 16px', fontSize: '0.9rem' }}>
+                Fetching your challenge from the server.
+              </p>
+              <button
+                className="action-btn action-btn--primary"
+                onClick={emitRequestChallenge}
+                style={{ margin: '0 auto' }}
+              >
+                Fetch Question
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Challenge Card Modal */}
-      {showCardDraw && gameState.pendingTileEvent?.card && (
+      {showCardDraw && (
         <ChallengeCardModal
-          card={gameState.pendingTileEvent.card}
+          card={gameState.pendingTileEvent?.card || {
+            id: 8,
+            name: 'Challenge Card',
+            description: 'You drew a Challenge Card! Click OK to continue.',
+            isMathCard: false,
+            effect: { type: 'NOTHING' }
+          }}
           onClose={emitCardAck}
         />
       )}

@@ -37,7 +37,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     for (const socketId of room) {
       const s = io.sockets.sockets.get(socketId);
-      if (s && s.data.user.id === activePlayer.userId) {
+      if (s && (s.data?.user?.id === activePlayer.userId || s.data?.user?.id === activePlayer.id)) {
         s.emit('game:challenge', {
           challenge: state.currentChallenge,
           playerId: activePlayer.id,
@@ -74,7 +74,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const state = gameService.getGameSync(gameId);
     if (!state) return null;
     const activePlayer = state.players[state.currentPlayerIndex];
-    if (activePlayer.userId !== userId) {
+    if (activePlayer.userId !== userId && activePlayer.id !== userId) {
       socket.emit('game:error', { message: 'Not your turn' });
       return null;
     }
@@ -120,9 +120,36 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
   // ---- Request current state (reconnect) ----
   socket.on('game:request-state', async (data: { gameId: string }) => {
+    const socketRoom = getSocketRoom(data.gameId);
+    socket.join(socketRoom);
+
     const state = await gameService.getGame(data.gameId);
     if (state) {
-      broadcastState(getSocketRoom(data.gameId), state);
+      socket.emit('game:state', { state: stripChallenge(state) });
+      broadcastState(socketRoom, state);
+
+      // Re-emit challenge if it's the active player's turn and challenge exists
+      const activePlayer = state.players[state.currentPlayerIndex];
+      if (state.currentChallenge && activePlayer && (activePlayer.userId === userId || activePlayer.id === userId)) {
+        socket.emit('game:challenge', {
+          challenge: state.currentChallenge,
+          playerId: activePlayer.id,
+        });
+      }
+    }
+  });
+
+  // ---- Request active challenge explicitly ----
+  socket.on('game:request-challenge', async (data: { gameId: string }) => {
+    const state = await gameService.getGame(data.gameId);
+    if (state && state.currentChallenge) {
+      const activePlayer = state.players[state.currentPlayerIndex];
+      if (activePlayer && (activePlayer.userId === userId || activePlayer.id === userId)) {
+        socket.emit('game:challenge', {
+          challenge: state.currentChallenge,
+          playerId: activePlayer.id,
+        });
+      }
     }
   });
 

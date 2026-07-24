@@ -48,7 +48,7 @@ import {
   LUCKY_BREAK_TOKEN_CHANCE,
   formatRM,
 } from './game.constants';
-import { createShuffledDeck, drawCard } from './card.deck';
+import { createShuffledDeck, drawCard, getCardById } from './card.deck';
 import { updateMastery } from '../../bkt/bkt.engine';
 import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
 import { clampProbability } from '../../bkt/bkt.utils';
@@ -658,21 +658,23 @@ export function processCardChallengeAnswer(
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
-  const card = state.pendingTileEvent!.card!;
+  const card = state.pendingTileEvent?.card || getCardById(8)!;
   const isCorrect = selectedIndex === challenge.correctIndex;
 
   const { newMastery, previousMastery } = updatePlayerMastery(
     player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
   );
 
-  const effect = isCorrect ? card.correctReward! : card.wrongOutcome!;
+  const fallbackEffect: CardEffect = { type: 'GAIN_MONEY', amount: isCorrect ? 80 : 20 };
+  const effect = (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
   const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
   let stateAfterEffect = { ...state, players: updatedPlayers };
   stateAfterEffect = applyCardEffect(stateAfterEffect, effect, getCurrentPlayer(stateAfterEffect));
 
+  const cardName = card?.name || 'Challenge Card';
   const reward: RewardResult = isCorrect
-    ? { type: 'BONUS_CASH', value: 0, description: `${card.name} — Correct! ${describeEffect(effect)}` }
-    : { type: 'NONE', value: 0, description: `${card.name} — ${describeEffect(effect)}` };
+    ? { type: 'BONUS_CASH', value: 0, description: `${cardName} — Correct! ${describeEffect(effect)}` }
+    : { type: 'NONE', value: 0, description: `${cardName} — ${describeEffect(effect)}` };
 
   return {
     newState: {

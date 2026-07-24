@@ -97,6 +97,9 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emit('game:level-up-answer', { selectedIndex, timeMs }), [emit]);
   const emitLevelUpDecline = useCallback(() => emit('game:level-up-decline'), [emit]);
 
+  // Request challenge re-sync
+  const emitRequestChallenge = useCallback(() => emit('game:request-challenge'), [emit]);
+
   // End Turn
   const emitEndTurn = useCallback(() => emit('game:end-turn'), [emit]);
 
@@ -120,5 +123,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitLevelUpAnswer,
     emitLevelUpDecline,
     emitEndTurn,
+    emitRequestChallenge,
   };
 }
