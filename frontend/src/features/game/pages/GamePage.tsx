@@ -10,7 +10,6 @@ import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
-import { LandingBanner } from '../components/LandingBanner';
 import { BOARD_TILES } from '../config/board.config';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
@@ -372,21 +371,14 @@ export function GamePage() {
 
   return (
     <div className={`game-page ${showChallenge || showChallengeLoading ? 'game-page--quiz-active' : ''}`}>
-      {/* Turn Indicator */}
+      {/* Unified Monopoly Top Banner (Turn Status + Landing Notifications) */}
       <TurnIndicator
         currentPlayer={currentPlayer}
         isMyTurn={isMyTurn}
         turnPhase={gameState.turnPhase}
+        landedTile={landedTile}
+        isLanding={pacingState === 'TILE_LANDING'}
       />
-
-      {/* Floating Tile Landing Notification Banner */}
-      {pacingState === 'TILE_LANDING' && landedTile && (
-        <LandingBanner
-          tile={landedTile}
-          playerName={currentPlayer?.name}
-          playerColor={currentPlayer?.color}
-        />
-      )}
 
       {/* Main Layout */}
       <div className="game-layout">
