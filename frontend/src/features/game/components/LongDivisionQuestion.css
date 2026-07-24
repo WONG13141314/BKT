@@ -81,20 +81,15 @@
   font-weight: 900;
 }
 
-.ld-dividend-digit:first-of-type {
-  position: relative;
-}
-
-/* The bracket symbol sticking directly to the overline line */
-.ld-dividend-digit:first-of-type::before {
-  content: ')';
+.ld-house-bracket {
   position: absolute;
-  left: -10px;
-  top: -7px;
-  font-size: 1.9rem;
-  font-weight: 900;
+  left: 26px;
+  top: 0;
+  width: 10px;
+  height: 34px;
   color: #000;
-  line-height: 1;
+  pointer-events: none;
+  overflow: visible;
 }
 
 /* Minus sign */

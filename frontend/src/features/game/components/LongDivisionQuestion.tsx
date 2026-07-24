@@ -183,6 +183,16 @@ export function LongDivisionQuestion({ question, options, onAnswer, disabled, ti
         {/* Divisor + Division House + Dividend Row */}
         <div className="ld-row ld-dividend-row">
           <span className="ld-cell ld-divisor">{question.divisor}</span>
+          <svg className="ld-house-bracket" viewBox="0 0 10 34" aria-hidden="true">
+            <path
+              d="M 8 32 C 1 23 1 9 8 1.5 L 10 1.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           {dividendDigits.map((dChar, idx) => (
             <span key={idx} className="ld-cell ld-dividend-digit">
               {dChar}
