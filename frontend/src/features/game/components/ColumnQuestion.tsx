@@ -137,9 +137,9 @@ export function ColumnQuestion({ question, options, onAnswer, disabled, timeLimi
         </div>
 
         {/* Regrouping indicator */}
-        {question.hasRegrouping && !answered && (
+        {question.hasRegrouping && !answered && question.operation !== '-' && (
           <div className="regroup-hint">
-            {question.operation === '+' ? '↑ Remember to carry!' : question.operation === '-' ? '↓ Remember to borrow!' : '× Multiply digit by digit!'}
+            {question.operation === '+' ? '↑ Remember to carry!' : '× Multiply digit by digit!'}
           </div>
         )}
       </div>

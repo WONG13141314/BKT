@@ -21,7 +21,7 @@
   padding: 1.25rem 1.75rem;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 0;
   min-width: 240px;
   box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
@@ -85,7 +85,7 @@
   position: absolute;
   left: 26px;
   top: 0;
-  width: 10px;
+  width: 12px;
   height: 34px;
   color: #000;
   pointer-events: none;
