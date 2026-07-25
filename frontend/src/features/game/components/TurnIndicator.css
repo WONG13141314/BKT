@@ -1,11 +1,11 @@
 /* ============================================ */
-/* Monopoly Top Banner — Combined Indicator     */
-/* Classic Monopoly Aesthetic                   */
+/* Turn Banner — Monopoly Board Theme           */
+/* Compact top-center notification strip        */
 /* ============================================ */
 
 .turn-banner-wrapper {
   position: fixed;
-  top: 1rem;
+  top: 0.75rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 120;
@@ -14,108 +14,87 @@
   pointer-events: none;
 }
 
-.monopoly-banner {
+/* ---- Base Banner ---- */
+
+.turn-banner {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.5rem 1.25rem;
+  gap: 0.6rem;
+  padding: 0.45rem 1.1rem;
   background: #ffffff;
-  border: 4px solid #000000;
-  border-radius: 4px;
-  box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.45);
-  animation: bannerPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  min-width: 260px;
+  border: 3px solid #000000;
+  border-radius: 3px;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.4);
+  animation: bannerSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
   max-width: 90vw;
-  justify-content: space-between;
 }
 
-.monopoly-banner--my-turn {
+/* ---- Your Turn State ---- */
+
+.turn-banner--you {
   background: #ffb703;
   border-color: #000000;
+  animation: bannerSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+             bannerPulseGlow 2.4s ease-in-out 0.3s infinite;
 }
 
-.monopoly-banner__player {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+/* ---- Player Dot ---- */
 
-.monopoly-banner__color-dot {
-  width: 12px;
-  height: 12px;
+.turn-banner__dot {
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid #000000;
-  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.3);
   flex-shrink: 0;
 }
 
-.monopoly-banner__name {
-  font-size: 1.1rem;
+/* ---- Player Name ---- */
+
+.turn-banner__who {
+  font-size: 1.05rem;
   font-weight: 900;
   color: #000000;
-  font-family: 'Impact', 'Arial Narrow', sans-serif;
-  letter-spacing: 0.8px;
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
 }
 
-.monopoly-banner__phase {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
+/* ---- Phase Hint Badge ---- */
+
+.turn-banner__hint {
+  font-size: 0.78rem;
+  font-weight: 800;
   color: #000000;
-  padding: 0.25rem 0.65rem;
-  border-radius: 4px;
+  padding: 0.15rem 0.55rem;
   background: #ffffff;
   border: 2px solid #000000;
-  font-weight: 800;
+  border-radius: 3px;
   font-family: 'Courier New', Courier, monospace;
-  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.2);
+  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.15);
 }
 
-.monopoly-banner--my-turn .monopoly-banner__phase {
+.turn-banner--you .turn-banner__hint {
   background: #ffffff;
 }
 
 /* ============================================ */
-/* Landing Notification State                   */
+/* Landing Banner — One-Line Tile Notification  */
 /* ============================================ */
 
-.monopoly-banner--landing {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.6rem 1.25rem;
-  animation: bannerBounceLanding 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  min-width: 300px;
+.turn-banner--land {
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  animation: bannerBounceIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.monopoly-banner__tag {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #000000;
-  text-transform: uppercase;
-  font-family: 'Courier New', Courier, monospace;
-  border-bottom: 2px dashed rgba(0, 0, 0, 0.3);
-  padding-bottom: 0.3rem;
-}
-
-.monopoly-banner__content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.monopoly-banner__icon {
+.turn-banner__land-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 3px;
   border: 2px solid #000000;
   background: #ffffff;
   color: #000000;
@@ -123,84 +102,70 @@
   flex-shrink: 0;
 }
 
-.monopoly-banner__details {
-  display: flex;
-  flex-direction: column;
-}
-
-.monopoly-banner__title {
-  font-size: 1.15rem;
-  font-weight: 900;
-  color: #000000;
-  font-family: 'Impact', 'Arial Narrow', sans-serif;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  line-height: 1.1;
-}
-
-.monopoly-banner__subtitle {
-  font-size: 0.75rem;
+.turn-banner__land-text {
+  font-size: 0.88rem;
   font-weight: 800;
-  color: #212529;
-  font-family: 'Outfit', 'Inter', sans-serif;
+  color: #000000;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.2;
 }
 
-/* Themes for Landing Banner */
+.turn-banner__land-text strong {
+  font-family: 'Impact', 'Arial Black', sans-serif;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
 
-.monopoly-banner--property {
+/* ---- Landing Tile Themes ---- */
+
+.turn-banner--property {
   background: #a8dadc;
 }
-.monopoly-banner--property .monopoly-banner__icon {
+.turn-banner--property .turn-banner__land-icon {
   background: #1d3557;
   color: #ffffff;
 }
 
-.monopoly-banner--challenge {
+.turn-banner--challenge {
   background: #e0aaff;
 }
-.monopoly-banner--challenge .monopoly-banner__icon {
+.turn-banner--challenge .turn-banner__land-icon {
   background: #7b2cbf;
   color: #ffffff;
 }
 
-.monopoly-banner--lucky {
-  background: #fff3b0;
-}
-.monopoly-banner--lucky .monopoly-banner__icon {
-  background: #d4a373;
-  color: #000000;
-}
-
-.monopoly-banner--tax {
+.turn-banner--tax {
   background: #ffe5d9;
 }
-.monopoly-banner--tax .monopoly-banner__icon {
+.turn-banner--tax .turn-banner__land-icon {
   background: #e63946;
   color: #ffffff;
 }
 
-.monopoly-banner--jail {
+.turn-banner--jail {
   background: #ffcad4;
 }
-.monopoly-banner--jail .monopoly-banner__icon {
+.turn-banner--jail .turn-banner__land-icon {
   background: #d62828;
   color: #ffffff;
 }
 
-.monopoly-banner--go {
+.turn-banner--go {
   background: #d8f3dc;
 }
-.monopoly-banner--go .monopoly-banner__icon {
+.turn-banner--go .turn-banner__land-icon {
   background: #2a9d8f;
   color: #ffffff;
 }
 
-/* Animations */
+/* ============================================ */
+/* Animations                                   */
+/* ============================================ */
 
-@keyframes bannerPopIn {
+@keyframes bannerSlideIn {
   0% {
     opacity: 0;
-    transform: translateY(-10px) scale(0.95);
+    transform: translateY(-8px) scale(0.96);
   }
   100% {
     opacity: 1;
@@ -208,17 +173,58 @@
   }
 }
 
-@keyframes bannerBounceLanding {
+@keyframes bannerBounceIn {
   0% {
     opacity: 0;
-    transform: translateY(-15px) scale(0.9);
+    transform: translateY(-12px) scale(0.92);
   }
   60% {
     opacity: 1;
-    transform: translateY(4px) scale(1.02);
+    transform: translateY(3px) scale(1.01);
   }
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bannerPulseGlow {
+  0%, 100% {
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.4),
+                0 0 12px rgba(255, 183, 3, 0.35);
+  }
+}
+
+/* ============================================ */
+/* Responsive                                   */
+/* ============================================ */
+
+@media (max-width: 480px) {
+  .turn-banner {
+    padding: 0.35rem 0.8rem;
+    gap: 0.4rem;
+    border-width: 2px;
+    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.35);
+  }
+
+  .turn-banner__who {
+    font-size: 0.9rem;
+  }
+
+  .turn-banner__hint {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+  }
+
+  .turn-banner__land-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .turn-banner__land-text {
+    font-size: 0.78rem;
   }
 }

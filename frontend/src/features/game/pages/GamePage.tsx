@@ -189,7 +189,6 @@ export function GamePage() {
   const [activePhase, setActivePhase] = useState<string | null>(null);
   const [isPawnMoving, setIsPawnMoving] = useState(false);
   const prevPhaseRef = useRef<string | null>(null);
-  const lastCardNotifiedRef = useRef<string | null>(null);
 
   const handleMovementChange = useCallback((isMoving: boolean) => {
     setIsPawnMoving(isMoving);
@@ -231,16 +230,7 @@ export function GamePage() {
       setActivePhase(currentPhase);
     }
 
-    // Passive player challenge card notification
-    if (currentPhase === 'CARD_DRAW' && gameState.pendingTileEvent?.card && !isMyTurn) {
-      const cardKey = `${gameState.currentPlayerIndex}_${gameState.pendingTileEvent.card.name}`;
-      if (lastCardNotifiedRef.current !== cardKey) {
-        lastCardNotifiedRef.current = cardKey;
-        const playerName = currentPlayer?.name || 'Player';
-        addNotification('info', `⚡ ${playerName} drew Challenge Card: ${gameState.pendingTileEvent.card.name}`);
-      }
-    }
-  }, [gameState, isMyTurn, currentPlayer?.name, addNotification]);
+  }, [gameState]);
 
   // Auto-request missing active challenge if in challenge phase
   useEffect(() => {
