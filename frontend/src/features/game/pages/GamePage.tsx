@@ -16,7 +16,6 @@ import { useGameSocket } from '../hooks/useGameSocket';
 import {
   MathChallenge,
   MasteryReport,
-  TileConfig,
   formatRM,
 } from '../types/game.types';
 import {
@@ -70,13 +69,12 @@ export function GamePage() {
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
   const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
-  const [botActionMessage, setBotActionMessage] = useState<string | null>(null);
+
   const challengeStartTime = useRef<number>(Date.now());
 
   // Game Flow Pacing States
   const [pacingState, setPacingState] = useState<PacingState>('EVENT_ACTIVE');
-  const [landedTile, setLandedTile] = useState<TileConfig | null>(null);
-  const [landedTileIndex, setLandedTileIndex] = useState<number | null>(null);
+
   const landingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -125,8 +123,8 @@ export function GamePage() {
       const type = isCorrect ? 'reward' : 'penalty';
       const desc = data.result.reward.description ? ` (${data.result.reward.description})` : '';
       const msg = isCorrect
-        ? `✅ Correct!${desc}`
-        : `❌ Incorrect! Answer: ${data.result.correctAnswer}${desc}`;
+        ? `Correct${desc}`
+        : `Incorrect — answer was ${data.result.correctAnswer}${desc}`;
       addNotification(type, msg);
 
       // If answering dice challenge, hold feedback briefly before closing & allowing movement
@@ -151,34 +149,9 @@ export function GamePage() {
       setFinalScores(data.scores);
       setMasteryReports(data.masteryReports ?? null);
     },
-    onBotAction: (data) => {
-      const actionLabels: Record<string, string> = {
-        roll: 'rolling dice',
-        dice_answer: 'answering dice challenge',
-        move: 'moving',
-        resolve: 'resolving tile',
-        smart_buy_start: 'trying Smart Buy',
-        smart_buy_answer: 'answering',
-        buy_full: 'buying property',
-        skip_buy: 'skipping purchase',
-        rent_defense_start: 'defending rent',
-        rent_defense_answer: 'answering',
-        pay_rent: 'paying rent',
-        card_ack: 'reading card',
-        card_answer: 'answering card challenge',
-        jail_math_start: 'attempting jail escape',
-        jail_bail: 'paying bail',
-        jail_wait: 'waiting in jail',
-        jail_answer: 'answering',
-        level_up_start: 'attempting Level Up',
-        level_up_answer: 'answering',
-        level_up_decline: 'skipping Level Up',
-        end_turn: 'ending turn',
-      };
-      const label = actionLabels[data.action] || data.action;
-      setBotActionMessage(`🤖 ${data.botName} is ${label}...`);
-      // Keep bot action banner slightly longer for readability
-      setTimeout(() => setBotActionMessage(null), 2500); 
+    onBotAction: () => {
+      // Bot actions are communicated through board animations (dice, piece movement).
+      // No text banner needed.
     },
     onError: (data) => {
       addNotification('info', data.message);
@@ -194,8 +167,6 @@ export function GamePage() {
     setIsPawnMoving(isMoving);
     if (isMoving) {
       setPacingState('PAWN_MOVING');
-      setLandedTile(null);
-      setLandedTileIndex(null);
     }
   }, []);
 
@@ -203,19 +174,11 @@ export function GamePage() {
     setIsPawnMoving(false);
     if (!gameState) return;
 
-    const currPlayer = gameState.players[gameState.currentPlayerIndex];
-    const targetPos = currPlayer ? currPlayer.position : 0;
-    const tile = BOARD_TILES[targetPos] || null;
-
     setPacingState('TILE_LANDING');
-    setLandedTile(tile);
-    setLandedTileIndex(targetPos);
 
     if (landingTimerRef.current) clearTimeout(landingTimerRef.current);
     landingTimerRef.current = setTimeout(() => {
       setPacingState('EVENT_ACTIVE');
-      setLandedTile(null);
-      setLandedTileIndex(null);
     }, 850);
   }, [gameState]);
 
@@ -361,13 +324,10 @@ export function GamePage() {
 
   return (
     <div className={`game-page ${showChallenge || showChallengeLoading ? 'game-page--quiz-active' : ''}`}>
-      {/* Unified Monopoly Top Banner (Turn Status + Landing Notifications) */}
       <TurnIndicator
         currentPlayer={currentPlayer}
         isMyTurn={isMyTurn}
         turnPhase={gameState.turnPhase}
-        landedTile={landedTile}
-        isLanding={pacingState === 'TILE_LANDING'}
       />
 
       {/* Main Layout */}
@@ -385,7 +345,6 @@ export function GamePage() {
         <Board
           gameState={gameState}
           currentPlayerId={myUserId}
-          landedTileIndex={landedTileIndex}
           onMovementChange={handleMovementChange}
           onMovementComplete={handleMovementComplete}
         />
@@ -398,13 +357,6 @@ export function GamePage() {
             turnPhase={gameState.turnPhase}
             onRollClick={emitRoll}
           />
-
-          {/* Bot action overlay */}
-          {botActionMessage && (
-            <div className="bot-action-banner">
-              {botActionMessage}
-            </div>
-          )}
 
           {/* === DECISION UIs (only for active human player when movement animation completes) === */}
 
@@ -448,7 +400,7 @@ export function GamePage() {
                 <Lock size={16} /> You're in Jail!
               </h3>
               <button className="action-btn action-btn--primary" onClick={emitJailMath}>
-                🧮 Math Escape
+                Math Escape
               </button>
               <button className="action-btn action-btn--secondary" onClick={emitJailBail}>
                 <Banknote size={16} /> Pay Bail ({formatRM(50)})
@@ -498,7 +450,7 @@ export function GamePage() {
               <div className="quick-stat">
                 <span className="quick-stat__label"><Zap size={16} /> Streak</span>
                 <span className="quick-stat__value">
-                  {currentPlayer.streak > 0 ? `🔥 ${currentPlayer.streak}` : '—'}
+                  {currentPlayer.streak > 0 ? currentPlayer.streak : '—'}
                 </span>
               </div>
               <div className="quick-stat">
@@ -530,7 +482,7 @@ export function GamePage() {
         <div className="challenge-overlay">
           <div className="challenge-panel challenge-panel--loading">
             <div className="challenge-header">
-              <span className="challenge-context">⚡ Card Challenge</span>
+              <span className="challenge-context">Card Challenge</span>
             </div>
             <div style={{ padding: '24px', textAlign: 'center' }}>
               <Loader2 size={32} className="icon-spin" style={{ margin: '0 auto 16px' }} />
@@ -585,12 +537,12 @@ export function GamePage() {
 
 function formatContext(context: string): string {
   const labels: Record<string, string> = {
-    DICE_CHALLENGE: '🎲 Dice Challenge',
-    SMART_BUY: '🏷️ Smart Buy',
-    RENT_DEFENSE: '🛡️ Rent Defense',
-    CHALLENGE_CARD: '⚡ Challenge Card',
-    JAIL_ESCAPE: '🔓 Jail Escape',
-    LEVEL_UP: '⭐ Level Up',
+    DICE_CHALLENGE: 'Dice Challenge',
+    SMART_BUY: 'Smart Buy',
+    RENT_DEFENSE: 'Rent Defense',
+    CHALLENGE_CARD: 'Challenge Card',
+    JAIL_ESCAPE: 'Jail Escape',
+    LEVEL_UP: 'Level Up',
   };
   return labels[context] || context;
 }
