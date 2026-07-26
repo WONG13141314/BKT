@@ -87,7 +87,26 @@ On the **monomath** static site, set `VITE_API_URL` (ending in `/api`) and
 > `JWT_EXPIRES_IN` is `90d` and should stay long. The token *is* the player's
 > identity — shortening it resets everyone's learning progress when it lapses.
 
-### 3. Migrating an existing database
+### 3. Migrations are applied manually, not on deploy
+
+`startCommand` deliberately does **not** run `prisma migrate deploy`.
+
+`startCommand` runs on every container start — restarts, health-check failures,
+free-tier spin-ups — and each run competes for Prisma's advisory lock. Through
+Neon's pooler that lock can end up orphaned on a reused backend, and once one
+attempt fails the service crash-loops with every retry making it worse.
+
+So apply migrations yourself, **before** deploying code that needs them:
+
+```bash
+cd backend
+npm run db:status    # what is applied
+npm run db:deploy    # apply anything pending
+```
+
+Then push. Render just starts the server.
+
+### 4. Migrating an existing database
 
 The Phase 2 schema is a clean baseline: `User` became `Player`, the `Question`
 table was dropped, and several stale columns were removed. There is a **single**
@@ -102,31 +121,64 @@ npx prisma migrate reset --force   # drops everything, replays the baseline, res
 ```
 
 If you would rather not use `reset` against a remote database, drop the schema in
-the Neon SQL editor and let Render's `prisma migrate deploy` rebuild it:
+the Neon SQL editor:
 
 ```sql
 DROP SCHEMA public CASCADE;
 CREATE SCHEMA public;
 ```
 
-Then redeploy. `startCommand` already runs `prisma migrate deploy`.
+then rebuild it with `npm run db:deploy && npm run db:seed`.
 
-### 4. Seeding on Render
+### 5. Seeding
 
-`migrate deploy` does not seed. After the first successful deploy, run the seed
-once — either from your machine with `backend/.env` pointing at Neon:
-
-```bash
-cd backend && npx prisma db seed
-```
-
-or from **Render → monomath-api → Shell**:
+Migrations do not seed. Run it once from your machine with `backend/.env`
+pointing at Neon:
 
 ```bash
-cd backend && npx prisma db seed
+cd backend && npm run db:seed
 ```
 
-The four skill rows must exist before mastery can be recorded.
+`prisma migrate reset` runs the seed automatically, so you only need this after a
+plain `db:deploy` onto an empty database. The four skill rows must exist before
+mastery can be recorded.
+
+## Troubleshooting
+
+### `P1002 — Timed out trying to acquire a postgres advisory lock`
+
+Prisma takes an advisory lock before migrating. Neon's pooler (PgBouncer) reuses
+server backends, so a migration that was interrupted can leave that lock orphaned
+on a pooled connection, blocking every later attempt.
+
+Advisory locks are session-scoped and cannot be released from another session, so
+either reconnect until you land on the holding backend, or terminate it:
+
+```sql
+-- Who holds it (72707369 is Prisma's migrate lock)
+SELECT l.pid, a.application_name, a.backend_start
+FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+WHERE l.locktype = 'advisory' AND l.objid = 72707369;
+
+-- Release
+SELECT pg_advisory_unlock_all();          -- works only on the holding session
+SELECT pg_terminate_backend(<pid>);       -- otherwise kill it
+```
+
+Then `npm run db:status` to confirm.
+
+### `P3009 — migrate found failed migrations in the target database`
+
+A migration record exists with no `finished_at`. Check whether it actually
+changed anything before removing it:
+
+```sql
+SELECT migration_name, started_at, finished_at, applied_steps_count
+FROM _prisma_migrations ORDER BY started_at;
+```
+
+`applied_steps_count = 0` means no DDL ran and the row is safe to delete. Anything
+above 0 means the schema is half-migrated — inspect before touching it.
 
 ## Tests
 

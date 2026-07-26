@@ -25,7 +25,13 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && cd backend && npx prisma generate && npm run build
-    startCommand: cd backend && npx prisma migrate deploy && npx tsx src/server.ts
+    # Migrations are deliberately NOT run here. startCommand executes on every
+    # container start — restarts, health-check failures, free-tier spin-ups —
+    # and each run competes for Prisma's advisory lock. Through Neon's pooler
+    # that lock can be orphaned on a reused backend, at which point the service
+    # crash-loops and every retry makes it worse.
+    # Apply migrations deliberately instead: `npm run db:deploy` in backend/.
+    startCommand: cd backend && npx tsx src/server.ts
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
