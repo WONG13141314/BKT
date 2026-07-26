@@ -8,16 +8,16 @@ import {
   initializeGameState,
   getCurrentPlayer,
   startRollPhase,
-  processDiceChallengeAnswer,
+  processRollChallengeAnswer,
   movePlayer,
   resolveTileEvent,
   buyPropertyFullPrice,
   startSmartBuyChallenge,
   processSmartBuyAnswer,
   skipBuy,
-  payFullRent,
-  startRentDefense,
-  processRentDefenseAnswer,
+  submitDuelAnswer,
+  bothDuellistsAnswered,
+  resolveDuel,
   acknowledgeCard,
   processCardChallengeAnswer,
   startJailMathEscape,
@@ -32,8 +32,16 @@ import {
   generateMasteryReport,
 } from './game.engine';
 import type { GamePlayerSeed } from './game.engine';
-import { GameState, FinalScore, MasteryReport, AnswerResult, TurnPhase } from './game.types';
-import { executeBotTurn, BotTurnStep } from './bot.engine';
+import {
+  GameState,
+  FinalScore,
+  MasteryReport,
+  AnswerResult,
+  TurnPhase,
+  DuelState,
+  DuelResolution,
+} from './game.types';
+import { executeBotTurn, submitBotDuelAnswers, BotTurnStep } from './bot.engine';
 import { loadMasteryPriors, newGameId, recordAttempt } from './game.persistence';
 
 // In-memory game state store (per active game session)
@@ -81,6 +89,36 @@ function submitAnswer(
   return { state: newState, result };
 }
 
+/**
+ * Log both sides of a settled duel.
+ *
+ * This is the only place a player produces evidence on someone else's turn. A
+ * landlord who is landed on three times contributes three extra observations
+ * without waiting for their own turn to come round, which is a large part of
+ * why the duel exists at all.
+ *
+ * `state` must be the post-resolution state — `applyAnswerToPlayer` has already
+ * incremented the counters, and the before/after masteries live on each side.
+ */
+function recordDuelAttempts(duel: DuelState, state: GameState): void {
+  for (const side of [duel.challenger, duel.owner]) {
+    const player = state.players.find((p) => p.id === side.playerId);
+    if (!player || side.previousMastery === null || side.newMastery === null) continue;
+
+    recordAttempt({
+      player,
+      dbGameId: state.dbGameId,
+      challenge: side.challenge,
+      // A side that never answered is graded wrong and logged as a timeout.
+      selectedIndex: side.selectedIndex ?? -1,
+      timeMs: side.timeMs ?? 0,
+      previousMastery: side.previousMastery,
+      newMastery: side.newMastery,
+      isCorrect: side.isCorrect === true,
+    });
+  }
+}
+
 export const gameService = {
   // ---- Lifecycle ----
 
@@ -89,10 +127,10 @@ export const gameService = {
     const humanIds = players.filter((p) => !p.isBot).map((p) => p.playerId);
     const priors = await loadMasteryPriors(humanIds);
 
-    const seeded = players.map((p) => ({
-      ...p,
-      masteryPriors: p.isBot ? undefined : priors.get(p.playerId),
-    }));
+    const seeded = players.map((p) => {
+      const prior = p.isBot ? undefined : priors.get(p.playerId);
+      return { ...p, masteryPriors: prior?.mastery, attemptPriors: prior?.attempts };
+    });
 
     const state = initializeGameState(gameId, seeded, newGameId());
     activeGames.set(gameId, state);
@@ -131,14 +169,14 @@ export const gameService = {
     return newState;
   },
 
-  // ---- Dice Challenge ----
+  // ---- Roll Challenge ----
 
-  submitDiceChallengeAnswer: (
+  submitRollChallengeAnswer: (
     gameId: string,
     selectedIndex: number,
     timeMs: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'DICE_CHALLENGE', processDiceChallengeAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'ROLL_CHALLENGE', processRollChallengeAnswer, selectedIndex, timeMs),
 
   // ---- Movement ----
 
@@ -188,32 +226,51 @@ export const gameService = {
     return newState;
   },
 
-  // ---- Rent ----
+  // ---- Math Duel ----
 
-  payRent: (gameId: string): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'RENT_PAYMENT') return null;
-
-    const newState = payFullRent(state);
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
-  startRentDefense: (gameId: string): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'RENT_PAYMENT') return null;
-
-    const newState = startRentDefense(state);
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
-  submitRentDefenseAnswer: (
+  /**
+   * Record one duellist's answer, then settle if both sides are in.
+   *
+   * Returns `resolution` only on the submission that completes the duel, so the
+   * socket layer can broadcast the reveal exactly once.
+   */
+  submitDuelAnswer: (
     gameId: string,
+    playerId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'RENT_CHALLENGE', processRentDefenseAnswer, selectedIndex, timeMs),
+  ): { state: GameState; resolution: DuelResolution | null } | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
+
+    // A bot landlord answers the moment the challenge reaches it.
+    let next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, timeMs));
+
+    if (!bothDuellistsAnswered(next)) {
+      activeGames.set(gameId, next);
+      return { state: next, resolution: null };
+    }
+
+    const settled = resolveDuel(next);
+    activeGames.set(gameId, settled.newState);
+    recordDuelAttempts(settled.duel, settled.newState);
+
+    return { state: settled.newState, resolution: settled.resolution };
+  },
+
+  /** Force the duel to settle now. Unanswered sides count as wrong. */
+  forceResolveDuel: (
+    gameId: string
+  ): { state: GameState; resolution: DuelResolution } | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
+
+    const settled = resolveDuel(state);
+    activeGames.set(gameId, settled.newState);
+    recordDuelAttempts(settled.duel, settled.newState);
+
+    return { state: settled.newState, resolution: settled.resolution };
+  },
 
   // ---- Challenge Cards ----
 
@@ -361,12 +418,10 @@ export const gameService = {
     switch (state.turnPhase) {
       case 'ROLL_PHASE':
         return advanced(gameService.startRoll(gameId));
-      case 'DICE_CHALLENGE':
-        return timedOut(gameService.submitDiceChallengeAnswer(gameId, NO_ANSWER, elapsed));
+      case 'ROLL_CHALLENGE':
+        return timedOut(gameService.submitRollChallengeAnswer(gameId, NO_ANSWER, elapsed));
       case 'SMART_BUY_CHALLENGE':
         return timedOut(gameService.submitSmartBuyAnswer(gameId, NO_ANSWER, elapsed));
-      case 'RENT_CHALLENGE':
-        return timedOut(gameService.submitRentDefenseAnswer(gameId, NO_ANSWER, elapsed));
       case 'CARD_MATH_CHALLENGE':
         return timedOut(gameService.submitCardAnswer(gameId, NO_ANSWER, elapsed));
       case 'JAIL_CHALLENGE':
@@ -375,8 +430,8 @@ export const gameService = {
         return timedOut(gameService.submitLevelUpAnswer(gameId, NO_ANSWER, elapsed));
       case 'BUY_DECISION':
         return advanced(gameService.skipBuy(gameId));
-      case 'RENT_PAYMENT':
-        return advanced(gameService.payRent(gameId));
+      case 'MATH_DUEL':
+        return advanced(gameService.forceResolveDuel(gameId)?.state ?? null);
       case 'JAIL_DECISION':
         return advanced(gameService.waitInJail(gameId));
       case 'LEVEL_UP_OFFER':

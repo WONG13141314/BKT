@@ -15,6 +15,11 @@ import {
   MasteryReport,
   LuckyBreakReward,
   CardEffect,
+  TileConfig,
+  DuelState,
+  DuelSide,
+  DuelOutcome,
+  DuelResolution,
 } from './game.types';
 import { SKILL_NAMES, SkillName } from './game.constants';
 import {
@@ -36,10 +41,11 @@ import {
   CLOCK_CAP_MINUTES,
   MAX_JAIL_TURNS,
   TOTAL_TILES,
-  DICE_CHALLENGE_PROBABILITY,
-  DICE_CHALLENGE_BONUS,
+  ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
-  RENT_DEFENSE_DISCOUNT,
+  DUEL_TIME_LIMIT,
+  LANDLORD_BONUS,
+  DUEL_DRAW_RENT_RATIO,
   LUCKY_BREAK_CASH_OPTIONS,
   LUCKY_BREAK_TOKEN_CHANCE,
   formatRM,
@@ -67,6 +73,12 @@ export interface GamePlayerSeed {
    * and a returning one take the same code path.
    */
   masteryPriors?: Record<string, number>;
+  /**
+   * Observations already recorded per skill, carried over from previous
+   * sessions. A returning player is not re-gated to easy questions just because
+   * this match has only just started.
+   */
+  attemptPriors?: Record<string, number>;
 }
 
 export function initializeGameState(
@@ -94,6 +106,9 @@ export function initializeGameState(
     masteryStates: Object.fromEntries(
       SKILL_NAMES.map((s) => [s, p.masteryPriors?.[s] ?? INITIAL_MASTERY])
     ),
+    skillAttempts: Object.fromEntries(
+      SKILL_NAMES.map((s) => [s, p.attemptPriors?.[s] ?? 0])
+    ),
     consecutiveFailures: Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])),
     isBot: p.isBot ?? false,
     botDifficulty: p.botDifficulty,
@@ -118,7 +133,9 @@ export function initializeGameState(
     round: 1,
     maxRounds: MAX_ROUNDS,
     diceValues: [1, 1],
+    diceCount: 2,
     currentChallenge: null,
+    duelState: null,
     pendingTileEvent: null,
     challengeCardDeck: createShuffledDeck(),
     challengeCardIndex: 0,
@@ -145,8 +162,13 @@ export function getActivePlayers(state: GameState): PlayerState[] {
 // ---- A. ROLL PHASE ----
 
 /**
- * Start the roll phase. If player is jailed, redirect to jail decision.
- * Otherwise roll dice and check for dice mini-challenge (1-in-3 chance).
+ * Open the turn. Jailed players go to the jail decision; everyone else faces the
+ * Roll Challenge — the question is the toll for the turn.
+ *
+ * Before Phase 4 the dice were thrown here and a question appeared only 1 turn
+ * in 3, so a whole session produced roughly seven observations across four
+ * skills. BKT cannot converge on that. Now every turn contributes one
+ * BKT-selected question, and the dice follow the answer.
  */
 export function startRollPhase(state: GameState): GameState {
   const player = getCurrentPlayer(state);
@@ -164,41 +186,35 @@ export function startRollPhase(state: GameState): GameState {
     return { ...state, turnPhase: 'JAIL_DECISION' };
   }
 
-  // Roll 2d6
-  const die1 = Math.floor(Math.random() * 6) + 1;
-  const die2 = Math.floor(Math.random() * 6) + 1;
+  const challenge = selectChallenge({
+    masteryStates: player.masteryStates,
+    context: 'ROLL_CHALLENGE',
+    consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
+  });
 
-  const newState: GameState = {
-    ...state,
-    diceValues: [die1, die2],
-  };
-
-  // 1-in-3 chance of dice mini-challenge
-  if (Math.random() < DICE_CHALLENGE_PROBABILITY) {
-    const challenge = selectChallenge({
-      masteryStates: player.masteryStates,
-      context: 'DICE_CHALLENGE',
-      consecutiveFailures: player.consecutiveFailures,
-      diceValues: [die1, die2],
-    });
-
-    return {
-      ...newState,
-      turnPhase: 'DICE_CHALLENGE',
-      currentChallenge: challenge,
-    };
-  }
-
-  // No challenge → move directly
   return {
-    ...newState,
-    turnPhase: 'MOVING',
+    ...state,
+    turnPhase: 'ROLL_CHALLENGE',
+    currentChallenge: challenge,
   };
 }
 
-// ---- DICE CHALLENGE ANSWER ----
+/** Roll a fair d6. */
+function rollDie(): number {
+  return Math.floor(Math.random() * 6) + 1;
+}
 
-export function processDiceChallengeAnswer(
+// ---- ROLL CHALLENGE ANSWER ----
+
+/**
+ * Grade the turn toll and hand out the dice.
+ *
+ * Correct → two dice. Wrong → one. The player always moves: a wrong answer costs
+ * distance, never the turn itself. Being stuck on the spot would punish exactly
+ * the children this game exists to help, and they would stop answering.
+ */
+export function processRollChallengeAnswer(
   state: GameState,
   selectedIndex: number,
   timeMs: number
@@ -207,49 +223,37 @@ export function processDiceChallengeAnswer(
   const challenge = state.currentChallenge!;
   const isCorrect = selectedIndex === challenge.correctIndex;
 
-  // Update BKT mastery
   const { newMastery, previousMastery } = updatePlayerMastery(
     player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
   );
 
-  // Reward: RM20 bonus for correct, nothing for wrong
+  const diceCount: 1 | 2 = isCorrect ? 2 : 1;
+  const diceValues: [number, number] = isCorrect ? [rollDie(), rollDie()] : [rollDie(), 0];
+
   const reward: RewardResult = isCorrect
-    ? { type: 'BONUS_CASH', value: DICE_CHALLENGE_BONUS, description: `Correct! +${formatRM(DICE_CHALLENGE_BONUS)} bonus!` }
-    : { type: 'NONE', value: 0, description: 'No bonus this time.' };
+    ? {
+        type: 'BONUS_CASH',
+        value: ROLL_CHALLENGE_BONUS,
+        description: `Correct! Two dice, and +${formatRM(ROLL_CHALLENGE_BONUS)}.`,
+      }
+    : { type: 'NONE', value: 0, description: 'One die this turn — you still move.' };
 
   const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
     ...p,
-    money: isCorrect ? p.money + DICE_CHALLENGE_BONUS : p.money,
-    totalQuestions: p.totalQuestions + 1,
-    totalCorrect: isCorrect ? p.totalCorrect + 1 : p.totalCorrect,
-    streak: isCorrect ? p.streak + 1 : 0,
-    masteryStates: { ...p.masteryStates, [challenge.skillName]: newMastery },
-    consecutiveFailures: {
-      ...p.consecutiveFailures,
-      [challenge.skillName]: isCorrect ? 0 : (p.consecutiveFailures[challenge.skillName] ?? 0) + 1,
-    },
+    money: isCorrect ? p.money + ROLL_CHALLENGE_BONUS : p.money,
+    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery),
   }));
-
-  const result: AnswerResult = {
-    isCorrect,
-    correctAnswer: challenge.options[challenge.correctIndex],
-    newMastery,
-    previousMastery,
-    reward,
-    streakCount: isCorrect ? (player.streak + 1) : 0,
-    streakBroken: !isCorrect && player.streak > 0,
-    showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
-    timedOut: false,
-  };
 
   return {
     newState: {
       ...state,
       players: updatedPlayers,
+      diceValues,
+      diceCount,
       turnPhase: 'MOVING',
       currentChallenge: null,
     },
-    result,
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
   };
 }
 
@@ -374,11 +378,232 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
     isLeveledUp: property.isLeveledUp,
   };
 
+  // The rent is disputed: challenger and owner answer at the same time.
   return {
     ...state,
-    turnPhase: 'RENT_PAYMENT',
+    turnPhase: 'MATH_DUEL',
     pendingTileEvent: event,
+    duelState: buildDuel(player, owner, tile, rent),
   };
+}
+
+// ---- MATH DUEL ----
+
+/**
+ * Set up a duel over one property's rent.
+ *
+ * Both duellists get the *same skill* — the property's theme, which is what
+ * makes it read as a fair contest — but each at their own BKT difficulty. That
+ * is the whole fairness mechanism: because each question is calibrated to its
+ * player, both sit at a similar probability of answering correctly, so a duel
+ * between the strongest and weakest player at the table is close to even while
+ * still stretching each of them appropriately.
+ */
+function buildDuel(
+  challenger: PlayerState,
+  owner: PlayerState,
+  tile: TileConfig,
+  rent: number
+): DuelState {
+  const skillName = (tile.skillTheme ?? 'Addition') as SkillName;
+
+  const questionFor = (player: PlayerState) =>
+    selectChallenge({
+      masteryStates: player.masteryStates,
+      context: 'MATH_DUEL',
+      consecutiveFailures: player.consecutiveFailures,
+      skillAttempts: player.skillAttempts,
+      forceSkill: skillName,
+    });
+
+  const side = (player: PlayerState): DuelSide => ({
+    playerId: player.id,
+    challenge: questionFor(player),
+    selectedIndex: null,
+    isCorrect: null,
+    timeMs: null,
+    previousMastery: null,
+    newMastery: null,
+  });
+
+  return {
+    tileIndex: tile.index,
+    tileName: tile.name,
+    skillName,
+    rentAmount: rent,
+    challenger: side(challenger),
+    owner: side(owner),
+    startedAt: Date.now(),
+    timeLimit: DUEL_TIME_LIMIT,
+    resolution: null,
+  };
+}
+
+/**
+ * Record one duellist's answer. Returns unchanged state if this player is not in
+ * the duel or has already answered — a second submission cannot overwrite a
+ * graded answer.
+ */
+export function submitDuelAnswer(
+  state: GameState,
+  playerId: string,
+  selectedIndex: number,
+  timeMs: number
+): GameState {
+  const duel = state.duelState;
+  if (!duel || duel.resolution) return state;
+
+  const which =
+    duel.challenger.playerId === playerId
+      ? 'challenger'
+      : duel.owner.playerId === playerId
+        ? 'owner'
+        : null;
+
+  if (!which || duel[which].selectedIndex !== null) return state;
+
+  const side = duel[which];
+  const answered: DuelSide = {
+    ...side,
+    selectedIndex,
+    isCorrect: selectedIndex === side.challenge.correctIndex,
+    timeMs,
+  };
+
+  return { ...state, duelState: { ...duel, [which]: answered } };
+}
+
+export function bothDuellistsAnswered(state: GameState): boolean {
+  const duel = state.duelState;
+  return !!duel && duel.challenger.selectedIndex !== null && duel.owner.selectedIndex !== null;
+}
+
+/**
+ * Settle the duel and move the money.
+ *
+ * | | Owner correct | Owner wrong |
+ * |---|---|---|
+ * | **Challenger correct** | draw — half rent | challenger wins — no rent |
+ * | **Challenger wrong**   | owner wins — full rent | draw — full rent |
+ *
+ * The challenger can never pay more than the rent they owed before the duel
+ * started, so a child who is struggling is never punished twice for it. The
+ * owner's reward is paid by the bank rather than taken from the challenger, for
+ * the same reason.
+ *
+ * Any side that has not answered when time runs out counts as wrong.
+ */
+export function resolveDuel(state: GameState): {
+  newState: GameState;
+  duel: DuelState;
+  resolution: DuelResolution;
+} {
+  const duel = state.duelState!;
+
+  const challengerCorrect = duel.challenger.isCorrect === true;
+  const ownerCorrect = duel.owner.isCorrect === true;
+
+  let outcome: DuelOutcome;
+  let rentPaid: number;
+
+  if (challengerCorrect && ownerCorrect) {
+    outcome = 'DRAW_BOTH';
+    rentPaid = Math.floor(duel.rentAmount * DUEL_DRAW_RENT_RATIO);
+  } else if (challengerCorrect) {
+    outcome = 'CHALLENGER_WINS';
+    rentPaid = 0;
+  } else if (ownerCorrect) {
+    outcome = 'OWNER_WINS';
+    rentPaid = duel.rentAmount;
+  } else {
+    outcome = 'DRAW_NEITHER';
+    rentPaid = duel.rentAmount;
+  }
+
+  const landlordBonus = ownerCorrect ? LANDLORD_BONUS : 0;
+
+  const resolution: DuelResolution = {
+    outcome,
+    rentPaid,
+    landlordBonus,
+    challengerCorrect,
+    ownerCorrect,
+    headline: duelHeadline(outcome, rentPaid, duel.rentAmount, landlordBonus),
+  };
+
+  // Apply both players' BKT updates, recording each transition on its side so
+  // the attempt log has the before/after it cannot reconstruct later.
+  let players = state.players;
+
+  const settleSide = (side: DuelSide): DuelSide => {
+    const idx = players.findIndex((p) => p.id === side.playerId);
+    if (idx === -1) return side;
+
+    const correct = side.isCorrect === true;
+    const { newMastery, previousMastery } = updatePlayerMastery(
+      players[idx], side.challenge.skillName as SkillName, correct, side.challenge.difficulty
+    );
+
+    players = updatePlayerInList(players, idx, (p) => ({
+      ...p,
+      ...applyAnswerToPlayer(p, side.challenge.skillName, correct, newMastery),
+    }));
+
+    // An unanswered side is graded wrong, and says so explicitly.
+    return { ...side, isCorrect: correct, previousMastery, newMastery };
+  };
+
+  const challengerSide = settleSide(duel.challenger);
+  const ownerSide = settleSide(duel.owner);
+
+  const challengerIdx = players.findIndex((p) => p.id === challengerSide.playerId);
+  const ownerIdx = players.findIndex((p) => p.id === ownerSide.playerId);
+
+  players = players.map((p, idx) => {
+    if (idx === challengerIdx) return { ...p, money: p.money - rentPaid };
+    if (idx === ownerIdx) return { ...p, money: p.money + rentPaid + landlordBonus };
+    return p;
+  });
+
+  const settled: DuelState = {
+    ...duel,
+    challenger: challengerSide,
+    owner: ownerSide,
+    resolution,
+  };
+
+  return {
+    newState: {
+      ...state,
+      players,
+      duelState: settled,
+      pendingTileEvent: null,
+      turnPhase: 'END_TURN',
+    },
+    duel: settled,
+    resolution,
+  };
+}
+
+function duelHeadline(
+  outcome: DuelOutcome,
+  rentPaid: number,
+  fullRent: number,
+  bonus: number
+): string {
+  const bonusNote = bonus > 0 ? ` Landlord's bonus +${formatRM(bonus)}.` : '';
+
+  switch (outcome) {
+    case 'CHALLENGER_WINS':
+      return `Rent defended — no rent to pay!`;
+    case 'OWNER_WINS':
+      return `Property held. Rent ${formatRM(fullRent)}.${bonusNote}`;
+    case 'DRAW_BOTH':
+      return `Both correct — rent halved to ${formatRM(rentPaid)}.${bonusNote}`;
+    case 'DRAW_NEITHER':
+    default:
+      return `Neither answer stood. Rent ${formatRM(fullRent)}.`;
+  }
 }
 
 // ---- BUY DECISIONS ----
@@ -428,6 +653,7 @@ export function startSmartBuyChallenge(state: GameState): GameState {
     masteryStates: player.masteryStates,
     context: 'SMART_BUY',
     consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
     propertyPrice: event.propertyPrice,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
   });
@@ -516,87 +742,9 @@ export function skipBuy(state: GameState): GameState {
 // ---- RENT ----
 
 /** Player pays full rent (skips defense) */
-export function payFullRent(state: GameState): GameState {
-  const event = state.pendingTileEvent!;
-  const rent = event.rentAmount!;
-
-  return transferRent(state, rent);
-}
-
-/** Player opts into Rent Defense challenge */
-export function startRentDefense(state: GameState): GameState {
-  const player = getCurrentPlayer(state);
-  const event = state.pendingTileEvent!;
-  const tile = BOARD_TILES[event.tileIndex];
-
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'RENT_DEFENSE',
-    consecutiveFailures: player.consecutiveFailures,
-    rentAmount: event.rentAmount,
-    propertySkillTheme: tile?.skillTheme as SkillName | undefined,
-  });
-
-  return {
-    ...state,
-    turnPhase: 'RENT_CHALLENGE',
-    currentChallenge: challenge,
-  };
-}
-
-/** Process Rent Defense answer */
-export function processRentDefenseAnswer(
-  state: GameState,
-  selectedIndex: number,
-  timeMs: number
-): { newState: GameState; result: AnswerResult } {
-  const player = getCurrentPlayer(state);
-  const challenge = state.currentChallenge!;
-  const event = state.pendingTileEvent!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
-
-  const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
-  );
-
-  const fullRent = event.rentAmount!;
-  const halfRent = Math.floor(fullRent * RENT_DEFENSE_DISCOUNT);
-  const actualRent = isCorrect ? halfRent : fullRent;
-
-  const reward: RewardResult = isCorrect
-    ? { type: 'RENT_HALF', value: halfRent, description: `Defense successful! Pay only ${formatRM(halfRent)} instead of ${formatRM(fullRent)}!` }
-    : { type: 'NONE', value: 0, description: `Full rent: ${formatRM(fullRent)}` };
-
-  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
-  const stateAfterAnswer = { ...state, players: updatedPlayers, currentChallenge: null };
-  const finalState = transferRent(stateAfterAnswer, actualRent);
-
-  return {
-    newState: { ...finalState, pendingTileEvent: null },
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
-  };
-}
-
-function transferRent(state: GameState, rent: number): GameState {
-  const event = state.pendingTileEvent!;
-  const payerIdx = state.currentPlayerIndex;
-  const ownerIdx = state.players.findIndex((p) => p.id === event.propertyOwner);
-
-  if (ownerIdx === -1) return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
-
-  const updatedPlayers = state.players.map((p, idx) => {
-    if (idx === payerIdx) return { ...p, money: p.money - rent };
-    if (idx === ownerIdx) return { ...p, money: p.money + rent };
-    return p;
-  });
-
-  return {
-    ...state,
-    players: updatedPlayers,
-    turnPhase: 'END_TURN',
-    pendingTileEvent: null,
-  };
-}
+// Rent Defense was replaced by the Math Duel in Phase 4. Landing on an owned
+// property now disputes the rent with the owner instead of being a solo question
+// — see `buildDuel` / `resolveDuel` above.
 
 // ---- TAX ----
 
@@ -640,6 +788,7 @@ function resolveChallengeCardTile(state: GameState, player: PlayerState): GameSt
       masteryStates: player.masteryStates,
       context: 'CHALLENGE_CARD',
       consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
     });
 
     return {
@@ -883,6 +1032,7 @@ export function startJailMathEscape(state: GameState): GameState {
     masteryStates: player.masteryStates,
     context: 'JAIL_ESCAPE',
     consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
   });
 
   return {
@@ -1068,6 +1218,7 @@ export function startLevelUpChallenge(state: GameState): GameState {
     masteryStates: player.masteryStates,
     context: 'LEVEL_UP',
     consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
   });
 
@@ -1354,6 +1505,35 @@ function updatePlayerMastery(
   return { newMastery, previousMastery };
 }
 
+/**
+ * The bookkeeping every answer produces, wherever it happened. Returned as a
+ * patch so callers can merge it alongside their own changes (money, position).
+ *
+ * `skillAttempts` is incremented here so difficulty gating sees the observation
+ * immediately, in the same tick BKT updates.
+ */
+function applyAnswerToPlayer(
+  player: PlayerState,
+  skillName: string,
+  isCorrect: boolean,
+  newMastery: number
+): Partial<PlayerState> {
+  return {
+    totalQuestions: player.totalQuestions + 1,
+    totalCorrect: isCorrect ? player.totalCorrect + 1 : player.totalCorrect,
+    streak: isCorrect ? player.streak + 1 : 0,
+    masteryStates: { ...player.masteryStates, [skillName]: newMastery },
+    skillAttempts: {
+      ...player.skillAttempts,
+      [skillName]: (player.skillAttempts[skillName] ?? 0) + 1,
+    },
+    consecutiveFailures: {
+      ...player.consecutiveFailures,
+      [skillName]: isCorrect ? 0 : (player.consecutiveFailures[skillName] ?? 0) + 1,
+    },
+  };
+}
+
 function updatePlayerAfterAnswer(
   state: GameState,
   isCorrect: boolean,
@@ -1362,14 +1542,7 @@ function updatePlayerAfterAnswer(
 ): PlayerState[] {
   return updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
     ...p,
-    totalQuestions: p.totalQuestions + 1,
-    totalCorrect: isCorrect ? p.totalCorrect + 1 : p.totalCorrect,
-    streak: isCorrect ? p.streak + 1 : 0,
-    masteryStates: { ...p.masteryStates, [challenge.skillName]: newMastery },
-    consecutiveFailures: {
-      ...p.consecutiveFailures,
-      [challenge.skillName]: isCorrect ? 0 : (p.consecutiveFailures[challenge.skillName] ?? 0) + 1,
-    },
+    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery),
   }));
 }
 

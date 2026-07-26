@@ -26,9 +26,10 @@ export const GAME_CONSTANTS = {
   TAX_AMOUNT: 50,
   LUXURY_TAX_AMOUNT: 75,
   BAIL_COST: 50,
-  DICE_CHALLENGE_BONUS: 20,
+  ROLL_CHALLENGE_BONUS: 20,
   SMART_BUY_DISCOUNT: 0.20,
-  RENT_DEFENSE_DISCOUNT: 0.50,
+  DUEL_TIME_LIMIT: 20,
+  LANDLORD_BONUS: 20,
   MAX_JAIL_TURNS: 2,
   QUESTION_TIME_LIMIT_EASY: 20,
   QUESTION_TIME_LIMIT_MEDIUM: 15,
@@ -66,11 +67,16 @@ export interface PropertyState {
 
 // ---- Color Group ----
 
+/**
+ * A colour set, for monopoly bonuses only. It deliberately carries no skill
+ * theme: sets are pairs of adjacent tiles, and with 10 property tiles across 4
+ * skills a set cannot always hold one skill. Each tile's own `skillTheme` is
+ * the single source of truth.
+ */
 export interface ColorGroup {
   name: string;
   color: string;
   tileIndices: number[];
-  skillTheme: SkillName;
 }
 
 // ---- Players ----
@@ -102,13 +108,12 @@ export interface Player {
 
 export type TurnPhase =
   | 'ROLL_PHASE'
-  | 'DICE_CHALLENGE'
+  | 'ROLL_CHALLENGE'
   | 'MOVING'
   | 'RESOLVE_TILE'
   | 'BUY_DECISION'
   | 'SMART_BUY_CHALLENGE'
-  | 'RENT_PAYMENT'
-  | 'RENT_CHALLENGE'
+  | 'MATH_DUEL'
   | 'CARD_DRAW'
   | 'CARD_MATH_CHALLENGE'
   | 'JAIL_DECISION'
@@ -118,9 +123,9 @@ export type TurnPhase =
   | 'END_TURN';
 
 export type ChallengeContext =
-  | 'DICE_CHALLENGE'
+  | 'ROLL_CHALLENGE'
+  | 'MATH_DUEL'
   | 'SMART_BUY'
-  | 'RENT_DEFENSE'
   | 'CHALLENGE_CARD'
   | 'JAIL_ESCAPE'
   | 'LEVEL_UP';
@@ -275,6 +280,8 @@ export interface GameState {
   round: number;
   maxRounds: number;
   diceValues: [number, number];
+  /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
+  diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
   pendingTileEvent: TileEvent | null;
   challengeCardDeck: number[];
@@ -282,6 +289,41 @@ export interface GameState {
   gameStartTime: number;
   isFinalRound: boolean;
   auctionState: AuctionState | null;
+}
+
+// ---- Math Duel ----
+//
+// Mirrors the server's *public* duel payload. Neither question travels with it:
+// each duellist receives only their own, and only until they answer.
+
+export type DuelOutcome = 'CHALLENGER_WINS' | 'OWNER_WINS' | 'DRAW_BOTH' | 'DRAW_NEITHER';
+
+export interface DuelResolution {
+  outcome: DuelOutcome;
+  rentPaid: number;
+  landlordBonus: number;
+  challengerCorrect: boolean;
+  ownerCorrect: boolean;
+  headline: string;
+}
+
+export interface PublicDuelSide {
+  playerId: string;
+  hasAnswered: boolean;
+  /** Stays null until the duel resolves — nobody sees a result early. */
+  isCorrect: boolean | null;
+}
+
+export interface PublicDuelState {
+  tileIndex: number;
+  tileName: string;
+  skillName: string;
+  rentAmount: number;
+  challenger: PublicDuelSide;
+  owner: PublicDuelSide;
+  expiresAt: number;
+  timeLimit: number;
+  resolution: DuelResolution | null;
 }
 
 export interface AuctionState {

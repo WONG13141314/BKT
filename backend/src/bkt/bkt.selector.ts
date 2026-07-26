@@ -4,32 +4,56 @@
 // Picks the skill, the difficulty and the hint level for a game context.
 // ============================================
 
-import { ChallengeContext, MathChallenge, QuestionData } from '../features/game/game.types';
+import {
+  ChallengeContext,
+  ColumnQuestion,
+  LongDivisionQuestion,
+  MathChallenge,
+  QuestionData,
+} from '../features/game/game.types';
 import { SKILL_NAMES, SkillName, TIME_LIMIT_EASY, TIME_LIMIT_MEDIUM, TIME_LIMIT_HARD } from '../features/game/game.constants';
 import {
   generateQuestion,
-  generateDiceChallenge,
   generateSmartBuyQuestion,
-  generateRentDefenseQuestion,
 } from './question.generator';
+import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 
 // ---- Context-to-Skill Mapping ----
 
 const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
-  DICE_CHALLENGE: ['Addition', 'Subtraction'],            // Uses dice values
+  ROLL_CHALLENGE: SKILL_NAMES,                            // The turn toll — fully BKT-driven
+  MATH_DUEL: SKILL_NAMES,                                 // Themed by the disputed property
   SMART_BUY: ['Subtraction', 'Multiplication'],           // Price calculations
-  RENT_DEFENSE: ['Subtraction', 'Division'],             // Rent halving
   CHALLENGE_CARD: SKILL_NAMES,                            // All skills eligible
   JAIL_ESCAPE: SKILL_NAMES,                               // All, reduced difficulty
   LEVEL_UP: SKILL_NAMES,                                  // Matched to property skill theme
 };
 
 // ---- Difficulty from Mastery ----
+//
+// Two guards, both added in Phase 4 after Phase 3's logging showed three correct
+// answers taking P(L) from 0.10 to 0.94 — a child who guessed well three times
+// was being thrown onto the hardest tier.
+//
+//   1. Wider bands, so "hard" means genuinely confident.
+//   2. An evidence floor. A mastery estimate built on one or two observations is
+//      mostly prior, not knowledge, so it may not unlock the harder tiers yet.
 
-function getDifficultyFromMastery(pMastery: number): 1 | 2 | 3 {
-  if (pMastery < 0.40) return 1;   // Easy (P(L) < 0.40)
-  if (pMastery < 0.75) return 2;   // Medium (0.40 <= P(L) < 0.75)
-  return 3;                        // Hard (P(L) >= 0.75)
+const BAND_MEDIUM = 0.50;
+const BAND_HARD = 0.80;
+
+/** Below this many observations on a skill, difficulty 2 is the ceiling. */
+const MIN_ATTEMPTS_FOR_MEDIUM = 2;
+/** Below this many, difficulty 3 stays locked however high P(L) has climbed. */
+const MIN_ATTEMPTS_FOR_HARD = 5;
+
+function getDifficultyFromMastery(pMastery: number, attempts: number): 1 | 2 | 3 {
+  let difficulty: 1 | 2 | 3 = pMastery < BAND_MEDIUM ? 1 : pMastery < BAND_HARD ? 2 : 3;
+
+  if (attempts < MIN_ATTEMPTS_FOR_MEDIUM) difficulty = 1;
+  else if (attempts < MIN_ATTEMPTS_FOR_HARD && difficulty > 2) difficulty = 2;
+
+  return difficulty;
 }
 
 // ---- BKT Parameters by Difficulty ----
@@ -41,15 +65,13 @@ export interface AdjustedBktParams {
   pS: number;
 }
 
+/**
+ * Parameters for a difficulty tier. Reads the single table in `bkt.defaults` —
+ * this function used to hold its own hard-coded copy, so tuning one had no
+ * effect on the other.
+ */
 export function getAdjustedParams(difficulty: 1 | 2 | 3): AdjustedBktParams {
-  switch (difficulty) {
-    case 1:
-      return { pL0: 0.10, pT: 0.20, pG: 0.30, pS: 0.05 };  // High guess for young kids
-    case 2:
-      return { pL0: 0.10, pT: 0.15, pG: 0.25, pS: 0.10 };
-    case 3:
-      return { pL0: 0.10, pT: 0.10, pG: 0.20, pS: 0.15 };
-  }
+  return BKT_PARAMS_BY_DIFFICULTY[difficulty];
 }
 
 // ---- Hint Determination ----
@@ -59,30 +81,105 @@ export interface HintInfo {
   content: string | null;
 }
 
+/**
+ * Scaffolding for the specific thing the player has to supply.
+ *
+ * These used to be three fixed sentences that never mentioned the question —
+ * "Try breaking this problem into smaller steps" is no help to a child stuck on
+ * a carry. Each hint now names the column, row or step in front of them, and
+ * escalates from a nudge to a worked instruction as failures accumulate.
+ */
 export function determineHint(
   consecutiveFailures: number,
   pMastery: number,
-  skillName: string
+  skillName: string,
+  question?: QuestionData
 ): HintInfo {
-  if (consecutiveFailures >= 3 || pMastery < 0.15) {
-    return {
-      level: 3,
-      content: `Let's work through an example together. Take your time with ${skillName}.`,
-    };
+  const level: 0 | 1 | 2 | 3 =
+    consecutiveFailures >= 3 || pMastery < 0.15 ? 3 : consecutiveFailures >= 2 ? 2 : consecutiveFailures >= 1 ? 1 : 0;
+
+  if (level === 0) return { level: 0, content: null };
+
+  return { level, content: hintFor(level, skillName, question) };
+}
+
+function hintFor(level: 1 | 2 | 3, skillName: string, question?: QuestionData): string {
+  if (question?.type === 'column') return columnHint(level, question);
+  if (question?.type === 'long_division') return divisionHint(level, question);
+
+  // MCQ or no question data — fall back to something skill-specific.
+  return level >= 3
+    ? `Work it out step by step. ${skillName} is about doing one part at a time.`
+    : `Take your time and check each part of the ${skillName.toLowerCase()}.`;
+}
+
+const PLACE_LABEL: Record<string, string> = {
+  ones: 'ones',
+  tens: 'tens',
+  hundreds: 'hundreds',
+};
+
+function columnHint(level: 1 | 2 | 3, q: ColumnQuestion): string {
+  const verb = q.operation === '+' ? 'add' : q.operation === '-' ? 'subtract' : 'multiply';
+
+  // A missing digit inside the working: name the exact column.
+  if (q.missingPosition === 'internal_digit' || q.missingDigitPlace) {
+    const place = PLACE_LABEL[q.missingDigitPlace ?? 'ones'] ?? 'ones';
+    if (level === 1) return `Look at the ${place} column only.`;
+    if (level === 2) return `Cover the other columns. What must go in the ${place} place to make it work?`;
+    return `Work backwards: use the answer's ${place} digit to find the missing one.`;
   }
-  if (consecutiveFailures >= 2) {
-    return {
-      level: 2,
-      content: `Try breaking this problem into smaller steps.`,
-    };
+
+  // A missing operand: the child has to undo the operation.
+  if (q.missingPosition === 'top_operand' || q.missingPosition === 'bottom_operand') {
+    if (level === 1) return `You know the answer — work backwards to find the missing number.`;
+    if (level === 2) return `Start from the ones column and ask what you would ${verb} to get that digit.`;
+    return `Go column by column from the right, filling in one digit at a time.`;
   }
-  if (consecutiveFailures >= 1) {
-    return {
-      level: 1,
-      content: `Take it one column at a time — think about ${skillName}.`,
-    };
+
+  // The final answer.
+  if (level === 1) return `Start with the ones column, on the right.`;
+
+  if (q.operation === '-') {
+    return level === 2
+      ? `Check each column: if the top digit is smaller, you need to borrow.`
+      : `Go right to left. When the top digit is smaller than the bottom one, borrow 10 from the next column first.`;
   }
-  return { level: 0, content: null };
+
+  if (q.hasRegrouping) {
+    return level === 2
+      ? `Watch for a column that ${q.operation === '+' ? 'adds' : 'multiplies'} to more than 9 — that one carries.`
+      : `Go right to left. When a column goes past 9, write the ones digit and carry the ten into the next column.`;
+  }
+
+  return level === 2
+    ? `Take one column at a time, right to left.`
+    : `Line the digits up and ${verb} each column separately, starting from the ones.`;
+}
+
+function divisionHint(level: 1 | 2 | 3, q: LongDivisionQuestion): string {
+  const step = q.missingStepIndex + 1;
+
+  switch (q.missingTarget) {
+    case 'quotient_digit':
+      return level === 1
+        ? `How many times does ${q.divisor} fit in, without going over?`
+        : `Count up in ${q.divisor}s until you get as close as you can without passing the number above.`;
+    case 'product':
+      return level === 1
+        ? `Multiply ${q.divisor} by the digit you just wrote on top.`
+        : `Take the quotient digit above this step and multiply it by ${q.divisor}. That is what you subtract.`;
+    case 'subtraction_result':
+      return level === 1
+        ? `Subtract to find what is left over at step ${step}.`
+        : `Take the number underneath away from the one above it, just like a normal subtraction.`;
+    case 'remainder':
+      return level === 1
+        ? `What is left at the very end, after the last subtraction?`
+        : `The remainder is whatever is left over, and it is always smaller than ${q.divisor}.`;
+    default:
+      return `Work down one step at a time.`;
+  }
 }
 
 // ---- Main Selection Logic ----
@@ -91,15 +188,23 @@ export interface SelectionInput {
   masteryStates: Record<string, number>;
   context: ChallengeContext;
   consecutiveFailures: Record<string, number>;
-  // Dice challenge specific
-  diceValues?: [number, number];
+  /** Observations per skill. Gates difficulty until the estimate has evidence. */
+  skillAttempts?: Record<string, number>;
   // Smart Buy specific
   propertyPrice?: number;
-  // Rent Defense specific
-  rentAmount?: number;
-  // Level Up specific — skill theme of the property being leveled
+  /** Skill theme of the property in play. A preference, not a constraint. */
   propertySkillTheme?: SkillName;
+  /** Force a skill. Used by the Math Duel so both players face the same one. */
+  forceSkill?: SkillName;
 }
+
+/**
+ * How much a property's theme tilts selection toward its skill. A boost rather
+ * than a filter: before Phase 4 a themed tile collapsed the candidate list to a
+ * single skill, so BKT only ever chose the skill on Challenge Cards and Jail —
+ * the board was making the decision, not the learner model.
+ */
+const THEME_BOOST = 1.5;
 
 /**
  * Select the best math challenge for the current game context.
@@ -116,40 +221,29 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     masteryStates,
     context,
     consecutiveFailures,
-    diceValues,
+    skillAttempts,
     propertyPrice,
-    rentAmount,
     propertySkillTheme,
+    forceSkill,
   } = input;
 
-  // 1. Get eligible skills
-  let eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || SKILL_NAMES;
+  // 1. Eligible skills for this context
+  const eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || SKILL_NAMES;
 
-  // Prefer property's skill theme if provided (e.g., SMART_BUY, RENT_DEFENSE, LEVEL_UP)
-  if (propertySkillTheme) {
-    eligibleSkills = [propertySkillTheme];
-  }
+  // 2. Pick the skill. A themed property tilts the wheel toward its own skill
+  //    without excluding the others.
+  const selectedSkill: SkillName =
+    forceSkill ??
+    selectSkillWeighted(
+      masteryStates,
+      eligibleSkills,
+      propertySkillTheme ? { skill: propertySkillTheme, factor: THEME_BOOST } : undefined
+    );
 
-  // 2. Select skill via weighted random
-  let selectedSkill: SkillName;
-  let difficulty: 1 | 2 | 3;
-
-  // Special case: DICE_CHALLENGE uses dice values directly
-  if (context === 'DICE_CHALLENGE' && diceValues) {
-    const generated = generateDiceChallenge(diceValues[0], diceValues[1], 1);
-    selectedSkill = generated.skillName as SkillName;
-    difficulty = 1; // Dice challenges are always easy
-
-    const failures = consecutiveFailures[selectedSkill] ?? 0;
-    const mastery = masteryStates[selectedSkill] ?? 0.1;
-    const hint = determineHint(failures, mastery, selectedSkill);
-
-    return buildChallenge(generated, selectedSkill, difficulty, context, hint);
-  }
-
-  // Weighted random selection (lower mastery = higher weight)
-  selectedSkill = selectWeightedRandom(masteryStates, eligibleSkills);
-  difficulty = getDifficultyFromMastery(masteryStates[selectedSkill] ?? 0.1);
+  let difficulty = getDifficultyFromMastery(
+    masteryStates[selectedSkill] ?? INITIAL_MASTERY,
+    skillAttempts?.[selectedSkill] ?? 0
+  );
 
   // Context-specific difficulty adjustments
   switch (context) {
@@ -173,16 +267,15 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   let generated;
   if (context === 'SMART_BUY' && propertyPrice != null) {
     generated = generateSmartBuyQuestion(propertyPrice, difficulty, selectedSkill);
-  } else if (context === 'RENT_DEFENSE' && rentAmount != null) {
-    generated = generateRentDefenseQuestion(rentAmount, difficulty, selectedSkill);
   } else {
     generated = generateQuestion(selectedSkill, difficulty);
   }
 
-  // 4. Determine hint
+  // 4. Determine the hint — after generation, so it can point at the actual
+  //    column, row or division step the player has to fill in.
   const failures = consecutiveFailures[selectedSkill] ?? 0;
-  const mastery = masteryStates[selectedSkill] ?? 0.1;
-  const hint = determineHint(failures, mastery, selectedSkill);
+  const mastery = masteryStates[selectedSkill] ?? INITIAL_MASTERY;
+  const hint = determineHint(failures, mastery, selectedSkill, generated.questionData);
 
   return buildChallenge(generated, selectedSkill, difficulty, context, hint);
 }
@@ -215,29 +308,42 @@ function buildChallenge(
 }
 
 /**
- * Weighted random skill selection.
- * Weight = (1 - pL) × random noise [0.7, 1.3]
- * Lower mastery = higher chance of being picked.
+ * Roulette-wheel skill selection, weighted by `(1 − pL)²`.
+ *
+ * The previous implementation was named "weighted random" but scored every skill
+ * and always took the highest, so the weakest skill won almost every draw. A
+ * child could be buried in their worst subject for a whole session, and two
+ * close skills would lock onto one of them.
+ *
+ * Squaring the gap keeps a strong preference for weak skills while leaving every
+ * eligible skill a real chance. `MIN_WEIGHT` means even a mastered skill
+ * resurfaces occasionally, which is what makes retention visible in the data.
  */
-function selectWeightedRandom(
+const MIN_WEIGHT = 0.02;
+
+function selectSkillWeighted(
   masteryStates: Record<string, number>,
-  eligibleSkills: readonly SkillName[]
+  eligibleSkills: readonly SkillName[],
+  boost?: { skill: SkillName; factor: number }
 ): SkillName {
   if (eligibleSkills.length === 1) return eligibleSkills[0];
 
-  let bestSkill = eligibleSkills[0];
-  let bestWeight = -1;
+  const weights = eligibleSkills.map((skill) => {
+    const mastery = masteryStates[skill] ?? INITIAL_MASTERY;
+    const base = (1 - mastery) ** 2;
+    const weighted = boost && skill === boost.skill ? base * boost.factor : base;
+    return Math.max(weighted, MIN_WEIGHT);
+  });
 
-  for (const skill of eligibleSkills) {
-    const mastery = masteryStates[skill] ?? 0.1;
-    const weight = (1 - mastery) * (0.7 + Math.random() * 0.6); // noise [0.7, 1.3]
-    if (weight > bestWeight) {
-      bestWeight = weight;
-      bestSkill = skill;
-    }
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let ticket = Math.random() * total;
+
+  for (let i = 0; i < eligibleSkills.length; i++) {
+    ticket -= weights[i];
+    if (ticket <= 0) return eligibleSkills[i];
   }
 
-  return bestSkill;
+  return eligibleSkills[eligibleSkills.length - 1];
 }
 
 function getTimeLimit(difficulty: 1 | 2 | 3): number {

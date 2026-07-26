@@ -98,3 +98,25 @@
   transform: translate(2px, 2px);
   box-shadow: 0px 0px 0px #000;
 }
+
+/* A forfeited second die — a wrong Roll Challenge answer costs distance, never
+   the turn itself, so the slot stays visible rather than collapsing. */
+.dice-face--forfeit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    45deg,
+    #efe9dc,
+    #efe9dc 6px,
+    #e3dbc9 6px,
+    #e3dbc9 12px
+  );
+  opacity: 0.75;
+}
+
+.dice-forfeit__mark {
+  font-family: Impact, 'Arial Narrow Bold', sans-serif;
+  font-size: 1.6rem;
+  color: #6b705c;
+}

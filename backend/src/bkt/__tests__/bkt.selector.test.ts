@@ -1,5 +1,6 @@
 import { selectChallenge, getAdjustedParams, determineHint } from '../bkt.selector';
 import { ChallengeContext, SKILL_NAMES } from '../../features/game/game.types';
+import { BKT_PARAMS_BY_DIFFICULTY } from '../bkt.defaults';
 
 describe('BKT Question Selector', () => {
   const defaultMastery: Record<string, number> = {
@@ -14,12 +15,11 @@ describe('BKT Question Selector', () => {
   };
 
   describe('selectChallenge', () => {
-    it('should return a valid MathChallenge for DICE_CHALLENGE context', () => {
+    it('should return a valid MathChallenge for ROLL_CHALLENGE context', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
-        context: 'DICE_CHALLENGE',
+        context: 'ROLL_CHALLENGE',
         consecutiveFailures: noFailures,
-        diceValues: [3, 4],
       });
 
       expect(challenge.id).toBeTruthy();
@@ -27,7 +27,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.options.length).toBe(4);
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
-      expect(challenge.context).toBe('DICE_CHALLENGE');
+      expect(challenge.context).toBe('ROLL_CHALLENGE');
       expect(challenge.timeLimit).toBeGreaterThan(0);
     });
 
@@ -71,18 +71,19 @@ describe('BKT Question Selector', () => {
   });
 
   describe('getAdjustedParams', () => {
-    it('should return correct params for each difficulty', () => {
-      const easy = getAdjustedParams(1);
-      expect(easy.pT).toBe(0.20);
-      expect(easy.pS).toBe(0.05);
+    it('reads the single parameter table in bkt.defaults', () => {
+      for (const difficulty of [1, 2, 3] as const) {
+        expect(getAdjustedParams(difficulty)).toEqual(BKT_PARAMS_BY_DIFFICULTY[difficulty]);
+      }
+    });
 
-      const medium = getAdjustedParams(2);
-      expect(medium.pT).toBe(0.15);
-      expect(medium.pS).toBe(0.10);
+    it('makes harder questions slower to learn and easier to slip on', () => {
+      const [easy, medium, hard] = [1, 2, 3].map((d) => getAdjustedParams(d as 1 | 2 | 3));
 
-      const hard = getAdjustedParams(3);
-      expect(hard.pT).toBe(0.10);
-      expect(hard.pS).toBe(0.15);
+      expect(easy.pT).toBeGreaterThan(medium.pT);
+      expect(medium.pT).toBeGreaterThan(hard.pT);
+      expect(easy.pG).toBeGreaterThan(hard.pG);
+      expect(easy.pS).toBeLessThan(hard.pS);
     });
   });
 

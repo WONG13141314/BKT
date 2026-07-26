@@ -1,6 +1,6 @@
 // ============================================
 // Game Socket Handlers
-// Turn flow: Roll → Dice Challenge → Move → Resolve → Buy/Rent/Card/Jail → Level Up → End
+// Turn flow: Roll Challenge → Move → Resolve → Buy/Duel/Card/Jail → Level Up → End
 //
 // Two invariants this layer is responsible for:
 //   1. No answer ever reaches a client. State broadcasts drop `currentChallenge`
@@ -11,14 +11,14 @@
 
 import { Server, Socket } from 'socket.io';
 import { gameService } from '../features/game/game.service';
-import { AnswerResult, GameState } from '../features/game/game.types';
+import { AnswerResult, DuelState, GameState, PublicDuelState } from '../features/game/game.types';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { getCurrentPlayer } from '../features/game/game.engine';
 import { recordGameResult } from '../features/game/game.persistence';
 
 // ---- Deadlines ----
 
-/** How long a player may sit on a decision (buy, rent, jail, level up, end turn). */
+/** How long a player may sit on a decision (buy, jail, level up, end turn). */
 const DECISION_TIMEOUT_MS = 45_000;
 /** Slack on top of a challenge's own time limit, to cover latency. */
 const CHALLENGE_GRACE_MS = 3_000;
@@ -37,9 +37,72 @@ function getSocketRoom(gameId: string): string {
   return `room:${gameId.replace('game_', '')}`;
 }
 
-/** The challenge holds the answer, so it never travels with the state. */
+/**
+ * Challenges hold answers, so they never travel with the state — neither the
+ * active challenge nor either side of a duel. The duel is re-sent separately,
+ * redacted per recipient.
+ */
 function toPublicState(state: GameState): GameState {
-  return { ...state, currentChallenge: null };
+  return { ...state, currentChallenge: null, duelState: null };
+}
+
+/**
+ * Duel status without either question. During the duel a player learns only
+ * whether their opponent has answered — not what they were asked. Seeing an
+ * easier-looking question opposite reads as unfair even when both are correctly
+ * calibrated, so the questions are only ever revealed after the result.
+ */
+function toPublicDuel(duel: DuelState): PublicDuelState {
+  const side = (s: DuelState['challenger']) => ({
+    playerId: s.playerId,
+    hasAnswered: s.selectedIndex !== null,
+    isCorrect: duel.resolution ? s.isCorrect : null,
+  });
+
+  return {
+    tileIndex: duel.tileIndex,
+    tileName: duel.tileName,
+    skillName: duel.skillName,
+    rentAmount: duel.rentAmount,
+    challenger: side(duel.challenger),
+    owner: side(duel.owner),
+    expiresAt: duel.startedAt + duel.timeLimit * 1000,
+    timeLimit: duel.timeLimit,
+    resolution: duel.resolution,
+  };
+}
+
+/**
+ * Send the duel to the room: each duellist gets their own redacted question,
+ * everyone else watches the scoreboard half of the card.
+ */
+function emitDuel(io: Server, socketRoom: string, state: GameState) {
+  const duel = state.duelState;
+  if (!duel) return;
+
+  const publicDuel = toPublicDuel(duel);
+  const room = io.sockets.adapter.rooms.get(socketRoom);
+  if (!room) return;
+
+  for (const socketId of room) {
+    const s = io.sockets.sockets.get(socketId);
+    if (!s) continue;
+
+    const viewerId = s.data?.player?.id;
+    const mySide =
+      state.players.find((p) => p.id === duel.challenger.playerId)?.playerId === viewerId
+        ? duel.challenger
+        : state.players.find((p) => p.id === duel.owner.playerId)?.playerId === viewerId
+          ? duel.owner
+          : null;
+
+    s.emit('game:duel', {
+      duel: publicDuel,
+      // Null for onlookers, and for a duellist who has already answered.
+      myChallenge:
+        mySide && mySide.selectedIndex === null ? toPublicChallenge(mySide.challenge) : null,
+    });
+  }
 }
 
 function emitChallengeToPlayer(io: Server, socketRoom: string, state: GameState) {
@@ -75,6 +138,7 @@ function emitChallengeToPlayer(io: Server, socketRoom: string, state: GameState)
 function broadcastState(io: Server, socketRoom: string, state: GameState) {
   io.to(socketRoom).emit('game:state', { state: toPublicState(state) });
   emitChallengeToPlayer(io, socketRoom, state);
+  emitDuel(io, socketRoom, state);
   armPhaseTimer(io, state.id);
 }
 
@@ -151,6 +215,19 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   // MOVING and RESOLVE_TILE are driven by the server, not by a human.
   if (state.turnPhase === 'MOVING' || state.turnPhase === 'RESOLVE_TILE') return;
 
+  // A duel waits on the owner as well as the active player, so it still needs a
+  // deadline when a bot is the one taking the turn.
+  if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
+    const deadline = state.duelState.startedAt + state.duelState.timeLimit * 1000 + CHALLENGE_GRACE_MS;
+    const timer = setTimeout(() => {
+      phaseTimers.delete(gameId);
+      void resolveStall(io, gameId);
+    }, Math.max(1_000, deadline - Date.now()));
+
+    phaseTimers.set(gameId, timer);
+    return;
+  }
+
   // Bot turns run to completion synchronously.
   if (state.players[state.currentPlayerIndex].isBot) return;
 
@@ -184,6 +261,15 @@ async function resolveStall(io: Server, gameId: string) {
   if (outcome.result) {
     emitAnswerResult(io, socketRoom, outcome.state, outcome.result);
   }
+
+  // A duel forced to settle reveals its result like a normal one.
+  if (outcome.state.duelState?.resolution) {
+    io.to(socketRoom).emit('game:duel-result', {
+      duel: toPublicDuel(outcome.state.duelState),
+      resolution: outcome.state.duelState.resolution,
+    });
+  }
+
   broadcastState(io, socketRoom, outcome.state);
 
   // A timed-out roll or jail escape leaves the player mid-move.
@@ -389,21 +475,47 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
   type AnswerPayload = { gameId: string; selectedIndex: number; timeMs: number };
 
-  // The dice challenge only unlocks the roll — the player still gets to see the
+  // The Roll Challenge only unlocks the dice — the player still gets to see the
   // tile they land on and end the turn themselves.
-  socket.on('game:dice-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitDiceChallengeAnswer(id, d.selectedIndex, d.timeMs), {
+  socket.on('game:roll-answer', (d: AnswerPayload) =>
+    runAnswer(d.gameId, (id) => gameService.submitRollChallengeAnswer(id, d.selectedIndex, d.timeMs), {
       autoEnd: false,
-      errorMessage: 'No active dice challenge',
+      errorMessage: 'No active Roll Challenge',
     }));
+
+  /**
+   * A duel answer, from either side. Unlike every other answer this is NOT
+   * gated on `validateTurn` — the property owner answers on someone else's
+   * turn, which is the whole point. `submitDuelAnswer` matches the caller to a
+   * duel side and ignores anyone who is not in it.
+   */
+  socket.on('game:duel-answer', (d: AnswerPayload) => {
+    const state = gameService.getGameSync(d.gameId);
+    if (!state?.duelState) return;
+
+    // Sockets carry the DB player id; duel sides carry the seat id.
+    const seat = state.players.find((p) => p.playerId === playerId);
+    if (!seat) return;
+
+    const outcome = gameService.submitDuelAnswer(d.gameId, seat.id, d.selectedIndex, d.timeMs);
+    if (!outcome) return;
+
+    const socketRoom = getSocketRoom(d.gameId);
+    broadcastState(io, socketRoom, outcome.state);
+
+    if (outcome.resolution) {
+      io.to(socketRoom).emit('game:duel-result', {
+        duel: toPublicDuel(outcome.state.duelState!),
+        resolution: outcome.resolution,
+      });
+      void handleEndTurnFlow(io, d.gameId);
+    }
+  });
 
   socket.on('game:smart-buy-answer', (d: AnswerPayload) =>
     runAnswer(d.gameId, (id) => gameService.submitSmartBuyAnswer(id, d.selectedIndex, d.timeMs), {
       errorMessage: 'No active Smart Buy challenge',
     }));
-
-  socket.on('game:rent-defense-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitRentDefenseAnswer(id, d.selectedIndex, d.timeMs)));
 
   socket.on('game:card-answer', (d: AnswerPayload) =>
     runAnswer(d.gameId, (id) => gameService.submitCardAnswer(id, d.selectedIndex, d.timeMs)));
@@ -430,9 +542,6 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
   socket.on('game:smart-buy', (d: { gameId: string }) =>
     runChallengeStart(d.gameId, gameService.startSmartBuy, 'Cannot Smart Buy right now'));
 
-  socket.on('game:rent-defense', (d: { gameId: string }) =>
-    runChallengeStart(d.gameId, gameService.startRentDefense));
-
   socket.on('game:jail-math', (d: { gameId: string }) =>
     runChallengeStart(d.gameId, gameService.jailMathEscape));
 
@@ -446,9 +555,6 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
   socket.on('game:skip-buy', (d: { gameId: string }) =>
     runAction(d.gameId, gameService.skipBuy));
-
-  socket.on('game:pay-rent', (d: { gameId: string }) =>
-    runAction(d.gameId, gameService.payRent));
 
   socket.on('game:card-ack', (d: { gameId: string }) =>
     runAction(d.gameId, gameService.acknowledgeCard));

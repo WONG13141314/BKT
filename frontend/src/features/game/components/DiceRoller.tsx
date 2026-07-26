@@ -4,6 +4,8 @@ import './DiceRoller.css';
 
 interface DiceRollerProps {
   diceValues: [number, number];
+  /** 1 after a failed Roll Challenge — the second die is not thrown at all. */
+  diceCount: 1 | 2;
   isMyTurn: boolean;
   turnPhase: string;
   onRollClick: () => void;
@@ -35,6 +37,7 @@ function DiceFace({ value, isRolling }: { value: number; isRolling: boolean }) {
 
 export function DiceRoller({
   diceValues,
+  diceCount,
   isMyTurn,
   turnPhase,
   onRollClick,
@@ -75,7 +78,8 @@ export function DiceRoller({
     if (canRoll) return 'Roll Dice';
     switch (turnPhase) {
       case 'MOVING': return 'Moving...';
-      case 'DICE_CHALLENGE': return 'Dice Challenge!';
+      case 'ROLL_CHALLENGE': return 'Answer to roll!';
+      case 'MATH_DUEL': return 'Math duel!';
       case 'RESOLVE_TILE': return 'Resolving...';
       default: return 'Wait...';
     }
@@ -85,7 +89,14 @@ export function DiceRoller({
     <div className="dice-roller">
       <div className="dice-pair">
         <DiceFace value={displayValues[0]} isRolling={isRolling} />
-        <DiceFace value={displayValues[1]} isRolling={isRolling} />
+        {/* A wrong Roll Challenge answer costs you the second die, not the turn. */}
+        {diceCount === 2 ? (
+          <DiceFace value={displayValues[1]} isRolling={isRolling} />
+        ) : (
+          <div className="dice-face dice-face--forfeit" title="Wrong answer — one die this turn">
+            <span className="dice-forfeit__mark">—</span>
+          </div>
+        )}
       </div>
 
       {/* Total display — pure dice, no movement modifier */}

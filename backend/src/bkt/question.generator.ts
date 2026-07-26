@@ -38,20 +38,87 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-function makeOptions(
+// ============================================
+// Misconception-based distractors
+//
+// Wrong options used to be `correct ± random`, so a child picking one told you
+// nothing beyond "wrong". These produce the answers a child actually arrives at
+// when they make a specific, well-documented error — forgetting to carry, taking
+// the smaller digit from the larger, slipping a place value, counting one group
+// too many. A wrong answer then identifies *which* mistake was made, which is
+// both better teaching and a richer result for the write-up.
+// ============================================
+
+/** Column-wise sum with every carry dropped. The classic "forgot to carry". */
+export function addWithoutCarrying(a: number, b: number): number {
+  let result = 0;
+  let place = 1;
+
+  while (a > 0 || b > 0) {
+    result += ((a % 10) + (b % 10)) % 10 * place;
+    a = Math.floor(a / 10);
+    b = Math.floor(b / 10);
+    place *= 10;
+  }
+
+  return result;
+}
+
+/**
+ * Column-wise |top − bottom|, i.e. always taking the smaller digit from the
+ * larger instead of borrowing. 52 − 37 becomes 25 rather than 15.
+ */
+export function subtractSmallerFromLarger(a: number, b: number): number {
+  let result = 0;
+  let place = 1;
+
+  while (a > 0 || b > 0) {
+    result += Math.abs((a % 10) - (b % 10)) * place;
+    a = Math.floor(a / 10);
+    b = Math.floor(b / 10);
+    place *= 10;
+  }
+
+  return result;
+}
+
+/** A digit written one column left or right of where it belongs. */
+function placeValueSlips(correct: number): number[] {
+  return [correct + 10, correct - 10, correct * 10];
+}
+
+/**
+ * Build options from plausible errors first, topping up with near misses only if
+ * the misconceptions collide or fall out of range.
+ */
+function makeOptionsFrom(
   correct: number,
+  misconceptions: number[],
   formatter: (n: number) => string = String,
   spread?: number
 ): { options: string[]; correctIndex: number } {
-  const actualSpread = spread || Math.max(3, Math.ceil(Math.abs(correct) * 0.25));
   const distractors = new Set<number>();
 
-  while (distractors.size < 3) {
+  for (const candidate of misconceptions) {
+    if (distractors.size >= 3) break;
+    if (Number.isInteger(candidate) && candidate !== correct && candidate >= 0) {
+      distractors.add(candidate);
+    }
+  }
+
+  const actualSpread = spread || Math.max(3, Math.ceil(Math.abs(correct) * 0.25));
+  let guard = 0;
+  while (distractors.size < 3 && guard++ < 100) {
     const offset = randInt(1, actualSpread) * (Math.random() > 0.5 ? 1 : -1);
     const distractor = correct + offset;
-    if (distractor !== correct && distractor >= 0) {
-      distractors.add(distractor);
-    }
+    if (distractor !== correct && distractor >= 0) distractors.add(distractor);
+  }
+
+  // Degenerate case (e.g. correct === 0 with a tiny spread): pad upward.
+  let filler = correct + 1;
+  while (distractors.size < 3) {
+    if (filler !== correct && filler >= 0) distractors.add(filler);
+    filler++;
   }
 
   const allValues = shuffle([correct, ...distractors]);
@@ -61,17 +128,33 @@ function makeOptions(
   };
 }
 
-/** Create 4 unique 1-digit MCQ options for digit fill-in questions (0–9) */
+function makeOptions(
+  correct: number,
+  formatter: (n: number) => string = String,
+  spread?: number
+): { options: string[]; correctIndex: number } {
+  return makeOptionsFrom(correct, [], formatter, spread);
+}
+
+/**
+ * Four 1-digit options for a fill-in-the-digit question.
+ *
+ * The neighbours come first: being one out is exactly what a dropped carry or a
+ * botched borrow produces in a single column.
+ */
 function makeDigitOptions(correctDigit: number): { options: string[]; correctIndex: number } {
   const distractors = new Set<number>();
-  while (distractors.size < 3) {
-    const d = randInt(0, 9);
-    if (d !== correctDigit) {
-      distractors.add(d);
-    }
+
+  for (const candidate of [correctDigit + 1, correctDigit - 1]) {
+    if (candidate >= 0 && candidate <= 9) distractors.add(candidate);
   }
 
-  const allValues = shuffle([correctDigit, ...distractors]);
+  while (distractors.size < 3) {
+    const d = randInt(0, 9);
+    if (d !== correctDigit) distractors.add(d);
+  }
+
+  const allValues = shuffle([correctDigit, ...[...distractors].slice(0, 3)]);
   return {
     options: allValues.map(String),
     correctIndex: allValues.indexOf(correctDigit),
@@ -247,13 +330,20 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
     }
     case 3: {
       // Hard: Multi-digit column with regrouping & missing operand or digit
-      const choice = randInt(1, 2);
+      // Regrouping is forced below, so this is the only tier where the whole
+      // sum can be asked with a carry in it — which is what makes the
+      // forgot-to-carry distractor reachable.
+      const choice = randInt(1, 3);
       a = randInt(25, 85);
       b = randInt(15, 95 - a);
       if ((a % 10) + (b % 10) < 10) {
         b = b - (b % 10) + randInt(10 - (a % 10), 9);
       }
-      if (choice === 1) {
+      if (choice === 3) {
+        missingPosition = 'answer';
+        targetAnswer = a + b;
+        text = `${a} + ${b} = (?)`;
+      } else if (choice === 1) {
         const converted = maybeSingleDigitMissing(a, 'top_operand', b, a + b, '+');
         missingPosition = converted.missingPosition;
         missingDigitPlace = converted.missingDigitPlace;
@@ -275,9 +365,15 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '+', missingPosition, missingDigitPlace, missingDigitRow);
+  // Dropping a carry is the dominant Standard 1 addition error, so it leads.
+  const additionErrors =
+    missingPosition === 'answer'
+      ? [addWithoutCarrying(a, b), ...placeValueSlips(targetAnswer)]
+      : placeValueSlips(targetAnswer);
+
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
-    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
+    : makeOptionsFrom(targetAnswer, additionErrors, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -354,8 +450,14 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
         b = b - (b % 10) + randInt(a % 10 + 1, 9);
         if (b >= a) b = a - 1;
       }
-      const choice = randInt(1, 2);
-      if (choice === 1) {
+      // Borrowing is forced above, so asking for the whole difference here is
+      // what makes the smaller-from-larger distractor reachable.
+      const choice = randInt(1, 3);
+      if (choice === 3) {
+        missingPosition = 'answer';
+        targetAnswer = a - b;
+        text = `${a} - ${b} = (?)`;
+      } else if (choice === 1) {
         const converted = maybeSingleDigitMissing(a, 'top_operand', b, a - b, '-');
         missingPosition = converted.missingPosition;
         missingDigitPlace = converted.missingDigitPlace;
@@ -378,9 +480,15 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '-', missingPosition, missingDigitPlace, missingDigitRow);
+  // Taking the smaller digit from the larger instead of borrowing.
+  const subtractionErrors =
+    missingPosition === 'answer'
+      ? [subtractSmallerFromLarger(a, b), ...placeValueSlips(targetAnswer)]
+      : placeValueSlips(targetAnswer);
+
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
-    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
+    : makeOptionsFrom(targetAnswer, subtractionErrors, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -465,9 +573,15 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '×', missingPosition, missingDigitPlace, missingDigitRow);
+  // Counting one group too many or too few — the classic skip-counting slip.
+  const multiplicationErrors =
+    missingPosition === 'answer'
+      ? [targetAnswer - a, targetAnswer + a, ...placeValueSlips(targetAnswer)]
+      : placeValueSlips(targetAnswer);
+
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
-    : makeOptions(targetAnswer, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
+    : makeOptionsFrom(targetAnswer, multiplicationErrors, String, Math.max(4, Math.ceil(targetAnswer * 0.25)));
 
   return {
     questionData: columnData,
@@ -606,9 +720,17 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
     missingStepIndex,
   };
 
+  // One group too many or too few, and mistaking the remainder for the quotient.
+  const divisionErrors = [
+    targetAnswer - 1,
+    targetAnswer + 1,
+    targetAnswer + divisor,
+    Math.abs(targetAnswer - divisor),
+  ];
+
   const { options, correctIndex } = isDigitTarget
     ? makeDigitOptions(targetAnswer)
-    : makeOptions(targetAnswer, String, 3);
+    : makeOptionsFrom(targetAnswer, divisionErrors, String, 3);
 
   return {
     questionData,
@@ -624,56 +746,8 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
 // CONTEXTUAL Generators (Game Mechanics)
 // ============================================
 
-export function generateDiceChallenge(
-  die1: number,
-  die2: number,
-  difficulty: 1 | 2 | 3
-): GeneratedQuestion {
-  const useAddition = Math.random() > 0.3;
-  if (useAddition) {
-    const a = die1;
-    const b = die2;
-    const answer = a + b;
-    const columnData = buildColumnData(a, b, '+', 'answer');
-    const { options, correctIndex } = makeOptions(answer, String, 3);
-
-    return {
-      questionData: columnData,
-      text: `${a} + ${b} = (?)`,
-      options,
-      correctIndex,
-      difficulty: 1,
-      skillName: 'Addition',
-    };
-  } else {
-    const a = Math.max(die1, die2);
-    const b = Math.min(die1, die2);
-    const answer = a - b;
-    const columnData = buildColumnData(a, b, '-', 'answer');
-    const { options, correctIndex } = makeOptions(answer, String, 3);
-
-    return {
-      questionData: columnData,
-      text: `${a} - ${b} = (?)`,
-      options,
-      correctIndex,
-      difficulty: 1,
-      skillName: 'Subtraction',
-    };
-  }
-}
-
 export function generateSmartBuyQuestion(
   propertyPrice: number,
-  difficulty: 1 | 2 | 3,
-  skillName?: string
-): GeneratedQuestion {
-  const targetSkill = skillName || 'Subtraction';
-  return generateQuestion(targetSkill, difficulty);
-}
-
-export function generateRentDefenseQuestion(
-  rentAmount: number,
   difficulty: 1 | 2 | 3,
   skillName?: string
 ): GeneratedQuestion {

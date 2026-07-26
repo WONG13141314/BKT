@@ -112,19 +112,29 @@ export async function flushWrites(): Promise<void> {
 
 // ---- Game start: load priors ----
 
-export type MasteryPriors = Record<string, number>;
+export interface PlayerPriors {
+  /** skillName → stored P(L). */
+  mastery: Record<string, number>;
+  /** skillName → lifetime observations. Difficulty gating reads this. */
+  attempts: Record<string, number>;
+}
 
 /**
- * Fetch stored mastery for the given players. A player with no history yields no
- * entry, and the engine falls back to `INITIAL_MASTERY`.
+ * Fetch stored mastery *and* attempt counts for the given players. A player with
+ * no history yields no entry, and the engine falls back to `INITIAL_MASTERY`
+ * with zero attempts.
+ *
+ * Attempts matter as much as mastery here: difficulty selection refuses to
+ * escalate on a thin estimate, so a returning player who is loaded without their
+ * history would be pushed back down to easy questions every session.
  *
  * Returns an empty map on failure — a database outage must not stop a game from
- * starting, it just means this session begins from the default prior.
+ * starting, it just means this session begins from the defaults.
  */
 export async function loadMasteryPriors(
   playerIds: string[]
-): Promise<Map<string, MasteryPriors>> {
-  const result = new Map<string, MasteryPriors>();
+): Promise<Map<string, PlayerPriors>> {
+  const result = new Map<string, PlayerPriors>();
   if (playerIds.length === 0 || PERSISTENCE_DISABLED) return result;
 
   try {
@@ -132,15 +142,16 @@ export async function loadMasteryPriors(
 
     const rows = await prisma.masteryState.findMany({
       where: { playerId: { in: playerIds } },
-      select: { playerId: true, skillId: true, pMastery: true },
+      select: { playerId: true, skillId: true, pMastery: true, attempts: true },
     });
 
     for (const row of rows) {
       const skillName = skillNameById?.get(row.skillId);
       if (!skillName) continue;
 
-      const priors = result.get(row.playerId) ?? {};
-      priors[skillName] = row.pMastery;
+      const priors = result.get(row.playerId) ?? { mastery: {}, attempts: {} };
+      priors.mastery[skillName] = row.pMastery;
+      priors.attempts[skillName] = row.attempts;
       result.set(row.playerId, priors);
     }
   } catch (err) {

@@ -18,31 +18,26 @@ export const COLOR_GROUPS: Record<string, ColorGroup> = {
     name: 'blue',
     color: '#4A90D9',
     tileIndices: [1, 2],
-    skillTheme: 'Addition',
   },
   orange: {
     name: 'orange',
     color: '#FF8C00',
     tileIndices: [4, 6],
-    skillTheme: 'Subtraction',
   },
   green: {
     name: 'green',
     color: '#2E8B57',
     tileIndices: [9, 14],
-    skillTheme: 'Multiplication',
   },
   purple: {
     name: 'purple',
     color: '#8B5CF6',
     tileIndices: [11, 13],
-    skillTheme: 'Division',
   },
   red: {
     name: 'red',
     color: '#DC143C',
     tileIndices: [17, 18],
-    skillTheme: 'Subtraction',
   },
 };
 
@@ -117,9 +112,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 6,
     type: 'PROPERTY',
-    name: 'Tolak Nook',
+    name: 'Darab Nook',
     colorGroup: 'orange',
-    skillTheme: 'Subtraction',
+    skillTheme: 'Multiplication',
     price: 120,
     baseRent: 35,
     leveledRent: 80,
@@ -245,9 +240,9 @@ export const BOARD_TILES: TileConfig[] = [
   {
     index: 18,
     type: 'PROPERTY',
-    name: 'Tolak Towers',
+    name: 'Bahagi Towers',
     colorGroup: 'red',
-    skillTheme: 'Subtraction',
+    skillTheme: 'Division',
     price: 240,
     baseRent: 80,
     leveledRent: 170,

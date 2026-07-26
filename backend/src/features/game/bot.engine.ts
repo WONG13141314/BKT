@@ -4,19 +4,19 @@
 // No BKT tracking needed — simple probability-of-correct
 // ============================================
 
-import { GameState, PlayerState } from './game.types';
+import { GameState, MathChallenge, PlayerState } from './game.types';
 import {
   startRollPhase,
-  processDiceChallengeAnswer,
+  processRollChallengeAnswer,
   movePlayer,
   resolveTileEvent,
   buyPropertyFullPrice,
   startSmartBuyChallenge,
   processSmartBuyAnswer,
   skipBuy,
-  payFullRent,
-  startRentDefense,
-  processRentDefenseAnswer,
+  submitDuelAnswer,
+  bothDuellistsAnswered,
+  resolveDuel,
   acknowledgeCard,
   processCardChallengeAnswer,
   startJailMathEscape,
@@ -41,32 +41,48 @@ const BOT_CORRECT_PROBABILITY: Record<string, number> = {
 
 // ---- Bot Decision Functions ----
 
-/** Simulate a bot answering a question — returns a selected index */
-function botAnswer(state: GameState): number {
-  const player = getCurrentPlayer(state);
-  const challenge = state.currentChallenge;
-  if (!challenge) return 0;
-
+/** Simulate a bot answering a specific question — returns a selected index */
+function answerAs(player: PlayerState, challenge: MathChallenge): number {
   const probability = BOT_CORRECT_PROBABILITY[player.botDifficulty ?? 'medium'];
 
-  if (Math.random() < probability) {
-    // Bot answers correctly
-    return challenge.correctIndex;
-  } else {
-    // Bot picks a wrong answer
-    const wrongIndices = [0, 1, 2, 3].filter((i) => i !== challenge.correctIndex);
-    return wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
+  if (Math.random() < probability) return challenge.correctIndex;
+
+  const wrongIndices = [0, 1, 2, 3].filter((i) => i !== challenge.correctIndex);
+  return wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
+}
+
+/** Simulate the current player (a bot) answering the active challenge. */
+function botAnswer(state: GameState): number {
+  const challenge = state.currentChallenge;
+  if (!challenge) return 0;
+  return answerAs(getCurrentPlayer(state), challenge);
+}
+
+/**
+ * Submit any duel side belonging to a bot. Called for both the challenger and
+ * the owner, since a bot landlord must fight duels on other players' turns.
+ */
+export function submitBotDuelAnswers(state: GameState): GameState {
+  const duel = state.duelState;
+  if (!duel || duel.resolution) return state;
+
+  let next = state;
+
+  for (const side of [duel.challenger, duel.owner]) {
+    if (side.selectedIndex !== null) continue;
+
+    const player = next.players.find((p) => p.id === side.playerId);
+    if (!player?.isBot) continue;
+
+    next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge), 3000);
   }
+
+  return next;
 }
 
 /** Should bot attempt Smart Buy? Always yes — they always try for the discount */
 function shouldSmartBuy(): boolean {
   return true;
-}
-
-/** Should bot attempt Rent Defense? Yes if rent is significant */
-function shouldDefendRent(rentAmount: number): boolean {
-  return rentAmount > 30;
 }
 
 /** Should bot buy property at full price? */
@@ -126,11 +142,11 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         break;
       }
 
-      case 'DICE_CHALLENGE': {
+      case 'ROLL_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processDiceChallengeAnswer(currentState, answer, 3000);
+        const { newState } = processRollChallengeAnswer(currentState, answer, 3000);
         currentState = newState;
-        steps.push({ state: currentState, action: 'dice_answer', delay: 1500 });
+        steps.push({ state: currentState, action: 'roll_answer', delay: 1500 });
         break;
       }
 
@@ -170,25 +186,16 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         break;
       }
 
-      case 'RENT_PAYMENT': {
-        const event = currentState.pendingTileEvent!;
-        const rent = event.rentAmount!;
+      case 'MATH_DUEL': {
+        currentState = submitBotDuelAnswers(currentState);
+        steps.push({ state: currentState, action: 'duel_answer', delay: 1200 });
 
-        if (shouldDefendRent(rent)) {
-          currentState = startRentDefense(currentState);
-          steps.push({ state: currentState, action: 'rent_defense_start', delay: 500 });
-        } else {
-          currentState = payFullRent(currentState);
-          steps.push({ state: currentState, action: 'pay_rent', delay: 500 });
-        }
-        break;
-      }
+        // A human owner still has to answer. Hand control back and let the
+        // socket layer resume this turn once they do (or the clock expires).
+        if (!bothDuellistsAnswered(currentState)) return steps;
 
-      case 'RENT_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processRentDefenseAnswer(currentState, answer, 4000);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'rent_defense_answer', delay: 1500 });
+        currentState = resolveDuel(currentState).newState;
+        steps.push({ state: currentState, action: 'duel_resolve', delay: 1500 });
         break;
       }
 

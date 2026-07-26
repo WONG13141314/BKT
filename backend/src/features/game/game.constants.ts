@@ -22,15 +22,22 @@ export const MONOPOLY_RENT_MULTIPLIER = 2; // 2× base rent when owning full set
 
 // ---- Math Rewards ----
 
-export const DICE_CHALLENGE_BONUS = 20;       // RM20 for correct dice challenge
+export const ROLL_CHALLENGE_BONUS = 20;       // RM20 for winning your two dice
 export const SMART_BUY_DISCOUNT = 0.20;        // 20% off property price
-export const RENT_DEFENSE_DISCOUNT = 0.50;     // Pay half rent
+
+// ---- Math Duel ----
+// Landing on an owned property disputes it with the owner. Both answer at once.
+// The challenger's stake is the rent; the owner's reward comes from the bank, so
+// winning a duel never takes extra money from the other child.
+
+export const DUEL_TIME_LIMIT = 20;             // Seconds, shared by both duellists
+export const LANDLORD_BONUS = 20;              // RM20 from the bank for a correct owner
+export const DUEL_DRAW_RENT_RATIO = 0.50;      // Both correct → challenger pays half
 
 // ---- Pacing ----
 
 export const MAX_ROUNDS = 12;                  // 12 turns per player
 export const CLOCK_CAP_MINUTES = 18;           // Wall-clock soft cap
-export const DICE_CHALLENGE_PROBABILITY = 0.33; // 1 in 3 rolls trigger a dice challenge
 
 // ---- Jail ----
 
@@ -86,12 +93,12 @@ export const GAME_CONSTANTS = {
   BAIL_COST,
   LEVEL_UP_COST_RATIO,
   MONOPOLY_RENT_MULTIPLIER,
-  DICE_CHALLENGE_BONUS,
+  ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
-  RENT_DEFENSE_DISCOUNT,
+  DUEL_TIME_LIMIT,
+  LANDLORD_BONUS,
   MAX_ROUNDS,
   CLOCK_CAP_MINUTES,
-  DICE_CHALLENGE_PROBABILITY,
   MAX_JAIL_TURNS,
   TOTAL_CARDS,
   LUCK_CARDS_COUNT,

@@ -65,9 +65,9 @@ Bots never touch the database.
 
 ### 2.4 Adaptivity: the question is the toll for the turn
 
-Today, questions are produced by board geometry (dice → tile → *maybe* a
-question), so practice volume is decided by luck and averages ~3 observations per
-skill per session. BKT cannot converge on that.
+Questions used to be produced by board geometry (dice → tile → *maybe* a
+question), so practice volume was decided by luck and averaged ~3 observations
+per skill per session. BKT cannot converge on that. Shipped in Phase 4.
 
 **Roll Challenge** — every turn opens with one BKT-selected question.
 
@@ -75,9 +75,10 @@ skill per session. BKT cannot converge on that.
 - Wrong → roll 1 die. (You still move. Never punished into stalling.)
 
 This yields ~12 guaranteed, BKT-targeted questions per session plus ~6
-opportunistic tile challenges. Tile challenges (Smart Buy / Rent Defense / Level
-Up) keep their property skill theming — good game design — but are no longer the
-only source of evidence.
+opportunistic tile challenges. Tile challenges (Smart Buy / Math Duel / Level Up)
+keep their property skill theming — good game design — but are no longer the only
+source of evidence. The Math Duel (Phase 4B) adds a second stream: it is the only
+mechanic that collects evidence for a player when it is *not* their turn.
 
 ### 2.5 Answers never leave the server
 
@@ -198,22 +199,91 @@ too fast to be meaningful.
 
 ---
 
-### Phase 4 — Adaptivity rebalance
+### Phase 4 — Adaptivity rebalance & the Math Duel ✅ DONE
 
-| # | Change | Files |
+The first phase that changes how the game *plays*. Phases 1–3 were invisible to a
+player; this one is not.
+
+#### 4A — Make the engine adapt
+
+| # | Change | Outcome |
 | --- | --- | --- |
-| 4.1 | **Roll Challenge** — a mandatory BKT-selected question at the start of every turn (§2.4). Replaces the current 1-in-3 dice challenge, which was hard-locked to difficulty 1 on single-digit dice values and was corrupting Addition/Subtraction estimates. | `game.engine.ts`, `game.types.ts`, `bkt.selector.ts`, `GamePage.tsx` |
-| 4.2 | `propertySkillTheme` becomes a **×1.5 weight boost**, not a hard filter. Today it collapses `eligibleSkills` to one skill, so BKT skill selection only ever runs for `CHALLENGE_CARD` and `JAIL_ESCAPE`. | `bkt.selector.ts:129` |
-| 4.3 | `selectWeightedRandom` is actually argmax-with-noise, not weighted random. Replace with a roulette wheel over `(1 − pL)²`. | `bkt.selector.ts:221` |
-| 4.4 | `MASTERY_THRESHOLD` 0.95 → **0.85** (the standard Corbett & Anderson value). 0.95 with pS=0.10 demands near-perfection and is unreachable. | `bkt.defaults.ts` |
-| 4.5 | Individualised prior: on session 2+, seed from the stored P(L) instead of the constant. `params.pL0` is currently dead code — `INITIAL_MASTERY` is used instead. | `bkt.defaults.ts`, `game.engine.ts:82` |
-| 4.6 | Board rebalance: equal tile representation for all 4 skills (Multiplication and Division have only 2 tiles each). Fix the group/tile mismatches — blue group is tagged `Addition` but tile 2 is `Subtraction`; red group is `Subtraction` but tile 17 is `Addition`. | `board.config.ts` |
-| 4.7 | Misconception-based distractors instead of `correct ± random`: forgot-to-carry, borrowed-wrong, place-value-slip. Better pedagogy, and it lets you diagnose *which* error a child makes. | `question.generator.ts:35` |
-| 4.8 | Real hints. `determineHint` returns generic encouragement that never references the question. Replace with step scaffolding tied to the actual missing digit. | `bkt.selector.ts:62` |
+| 4.1 | **Roll Challenge** | Every turn now opens with one BKT-selected question. Correct → 2 dice, wrong → 1. The player always moves: a wrong answer costs distance, never the turn. Replaces the 1-in-3 dice challenge, which was hard-locked to difficulty 1 on dice values and was corrupting Addition/Subtraction estimates. ~7 observations per session → ~18. |
+| 4.2 | Property theme is a **×1.5 boost**, not a filter | It used to collapse the candidate list to one skill, so BKT only ever chose the skill on `CHALLENGE_CARD` and `JAIL_ESCAPE` — the board was deciding, not the learner model. |
+| 4.3 | Real weighted selection | `selectWeightedRandom` was argmax-with-noise despite the name, so the weakest skill won almost every draw. Replaced with a roulette wheel over `(1 − pL)²` plus a floor, so weak skills dominate but nothing disappears and mastered skills resurface for retention. |
+| 4.4 | Difficulty pacing | Bands widened (0.50 / 0.80) **and** gated on evidence: difficulty 2 needs ≥2 observations on that skill, difficulty 3 needs ≥5. `pT` lowered to 0.12/0.10/0.08. Phase 3 measured three correct answers taking P(L) from 0.10 to 0.94 — a child who guessed well three times was being thrown onto the hardest tier. |
+| 4.5 | ~~Individualised prior~~ | Already delivered in Phase 3. Phase 4 extends it: `attemptPriors` now loads too, so a returning player is not re-gated to easy questions. |
 
-**Acceptance:** a simulated player weak in Division receives ≥40% Division
-questions; median questions per session ≥ 15; difficulty escalates for a player
-answering correctly.
+**Also:** `getAdjustedParams` held a second hard-coded copy of the BKT parameter
+table, so tuning `bkt.defaults.ts` had no effect. It now reads the one table.
+`MASTERY_THRESHOLD` 0.95 → 0.85, though note it is only read by `isMastered`,
+which nothing calls yet — Phase 5 wires it up.
+
+#### 4B — The Math Duel
+
+Landing on an owned property now disputes the rent with the owner. Both answer
+**at the same time**, each on a question BKT picked for *them* — same skill (the
+property's theme), own difficulty.
+
+**Why that is fair:** because each question is calibrated to its player, both sit
+at a similar probability of answering correctly, so a duel between the strongest
+and weakest player at the table is close to even while still stretching each of
+them appropriately.
+
+| | Owner correct | Owner wrong |
+| --- | --- | --- |
+| **Challenger correct** | Draw — half rent | Challenger wins — no rent |
+| **Challenger wrong** | Owner wins — full rent | Draw — full rent |
+
+- **Upside-only.** Losing a duel costs exactly the rent that was already due.
+  Nothing a struggling child does can make it worse, so failure never compounds.
+- **The bank pays the landlord.** A correct owner earns `LANDLORD_BONUS` (RM20)
+  from the bank, never from the challenger.
+- **Evidence off-turn.** This is the only mechanic that produces a BKT
+  observation when it is not your turn. A landlord landed on three times
+  contributes three extra observations without waiting for their own turn.
+- **Neither question is visible to the other side** until the result. Seeing an
+  easier-looking question opposite reads as unfair even when both are correctly
+  calibrated.
+- Unanswered sides grade as wrong, so one player's connection never decides
+  another's result. Bots duel as challenger *and* as landlord.
+- Replaces Rent Defense entirely; `RENT_PAYMENT` / `RENT_CHALLENGE` and their
+  handlers, generator and constants are gone.
+
+UI is a Monopoly title-deed under dispute — thick borders, hard offset shadow,
+board green, Impact headings, Courier New numerals, and a rubber-stamp reveal.
+Onlookers see the same card with both questions hidden, so the table watches the
+reveal together.
+
+#### 4C — Teaching quality
+
+| # | Change | Outcome |
+| --- | --- | --- |
+| 4.6 | Board rebalance | Was Subtraction 4, everything else 2. Now Addition 2 / Subtraction 2 / Multiplication 3 / Division 3 — 10 tiles cannot split evenly across 4 skills, so the extra pair goes to the two that were thinnest. `Tolak Nook` → `Darab Nook`, `Tolak Towers` → `Bahagi Towers`. |
+| 4.7 | Misconception distractors | Wrong options were `correct ± random`. They now lead with the answer a child actually reaches: forgot-to-carry, smaller-from-larger, place-value slip, one-group-out. A wrong answer identifies *which* mistake was made. |
+| 4.8 | Question-aware hints | `determineHint` returned three fixed sentences that never mentioned the question. Hints now name the column, row or division step in front of the player and escalate from a nudge to a worked instruction. |
+
+**Correction to the plan as written:** 4.6 claimed a group/tile mismatch bug.
+`ColorGroup.skillTheme` turned out to be read by nothing — it was a stale label,
+not a live defect. The field is deleted rather than corrected; each tile's own
+`skillTheme` is the single source of truth, and colour sets exist only for
+monopoly bonuses.
+
+The carry and borrow distractors were initially unreachable: difficulty 1
+deliberately avoids regrouping, and difficulties 2–3 only targeted operands and
+internal digits, so no question ever asked for a sum that *had* a carry in it.
+Difficulty 3 addition and subtraction gained a full-calculation branch, which is
+also the right question for the hardest tier.
+
+**Verified:** backend + frontend `tsc` clean, production build succeeds, 118 tests
+pass (up from 105). New suites: `duel.test.ts` (payoff matrix, the never-worse-off
+guarantee, off-turn evidence, double-submission and outsider rejection),
+`selection.rebalance.test.ts` (600-draw distribution checks) and
+`pedagogy.test.ts`. A 16-assertion smoke test against live Neon confirmed the
+turn opens with a Roll Challenge, a wrong answer yields `[4,0]` and still moves,
+landing on an owned property opens a duel with one shared skill and two distinct
+questions, the winner pays nothing, and **the landlord's off-turn answer was
+recorded as its own attempt row** and carried into the next session.
 
 ---
 
@@ -223,7 +293,9 @@ Currently there is no way for anyone to ever see mastery. `AppRouter` has three
 routes and the whole dashboard feature is TODO stubs.
 
 - **5.1** Post-game mastery report — per-skill before/after, biggest improvement.
-  `generateMasteryReport` exists but reports zeroes for attempts; wire it to real data.
+  `generateMasteryReport` exists but reports zeroes for attempts; wire it to
+  `PlayerState.skillAttempts` (added in Phase 4) and to `isMastered`, which is
+  still uncalled.
 - **5.2** `/profile` — mastery per skill, total games, accuracy trend, match history.
 - **5.3** Route it: `/`, `/profile`, `/lobby`, `/game`. Add `ProtectedRoute` (exists, unrouted).
 - **5.4** Show adaptive progression *implicitly* — a skill's difficulty band shown

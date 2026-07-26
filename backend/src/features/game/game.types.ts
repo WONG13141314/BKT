@@ -39,11 +39,16 @@ export interface PropertyState {
 
 // ---- Color Groups ----
 
+/**
+ * A colour set, for monopoly bonuses only. It deliberately carries no skill
+ * theme: sets are pairs of adjacent tiles, and with 10 property tiles across 4
+ * skills a set cannot always hold one skill. Each tile's own `skillTheme` is
+ * the single source of truth.
+ */
 export interface ColorGroup {
   name: string;
   color: string;                // CSS hex color
   tileIndices: number[];        // Which tile indices belong to this group
-  skillTheme: SkillName;        // Primary skill for this color set
 }
 
 // ---- Players ----
@@ -66,6 +71,12 @@ export interface PlayerState {
   hasRentShield: boolean;       // Skip next rent payment (from challenge card)
   hasDiscountToken: boolean;    // 30% off next purchase (from challenge card)
   masteryStates: Record<string, number>; // skillName → pMastery [0.01, 0.99]
+  /**
+   * skillName → observations, carried over from previous sessions. Difficulty
+   * selection uses this so a high P(L) built on one lucky answer cannot unlock
+   * the hardest tier.
+   */
+  skillAttempts: Record<string, number>;
   consecutiveFailures: Record<string, number>; // skillName → consecutive wrong count
 
   // Bot-specific
@@ -76,14 +87,13 @@ export interface PlayerState {
 // ---- Turn Flow (State Machine) ----
 
 export type TurnPhase =
-  | 'ROLL_PHASE'            // Waiting for player to roll dice
-  | 'DICE_CHALLENGE'        // Optional dice mini-challenge (1-in-3)
+  | 'ROLL_PHASE'            // Waiting for player to start their turn
+  | 'ROLL_CHALLENGE'        // The turn toll — answer to earn your dice
   | 'MOVING'                // Token animation in progress
   | 'RESOLVE_TILE'          // Processing tile landing
   | 'BUY_DECISION'          // Player choosing to buy / smart-buy / skip
   | 'SMART_BUY_CHALLENGE'   // Answering Smart Buy question
-  | 'RENT_PAYMENT'          // Player choosing to defend or pay full
-  | 'RENT_CHALLENGE'        // Answering Rent Defense question
+  | 'MATH_DUEL'             // Challenger and owner answering simultaneously
   | 'CARD_DRAW'             // Challenge Card drawn, showing effect
   | 'CARD_MATH_CHALLENGE'   // Math challenge card question
   | 'JAIL_DECISION'         // Player choosing escape method
@@ -93,9 +103,9 @@ export type TurnPhase =
   | 'END_TURN';             // Turn wrapping up
 
 export type ChallengeContext =
-  | 'DICE_CHALLENGE'
+  | 'ROLL_CHALLENGE'
+  | 'MATH_DUEL'
   | 'SMART_BUY'
-  | 'RENT_DEFENSE'
   | 'CHALLENGE_CARD'
   | 'JAIL_ESCAPE'
   | 'LEVEL_UP';
@@ -247,6 +257,74 @@ export interface PublicMathChallenge {
   hintContent: string | null;
 }
 
+// ---- Math Duel ----
+//
+// Landing on an owned property starts a duel with the owner. Both answer at the
+// same time, each on a question BKT picked for *them* — same skill (the
+// property's theme), own difficulty. Because each question is calibrated to its
+// player, both have a similar chance of getting theirs right, so a duel between
+// the strongest and weakest player at the table is close to even.
+//
+// The stakes are upside-only: losing a duel costs exactly the rent that would
+// have been due anyway. Nothing a struggling child does can make it worse. The
+// owner's reward is paid by the bank, never taken from the challenger.
+
+export interface DuelSide {
+  /** `PlayerState.id` of this duellist. */
+  playerId: string;
+  challenge: MathChallenge;
+  selectedIndex: number | null;
+  isCorrect: boolean | null;
+  timeMs: number | null;
+  /** BKT transition, filled in when the duel resolves. Needed for the attempt log. */
+  previousMastery: number | null;
+  newMastery: number | null;
+}
+
+export type DuelOutcome = 'CHALLENGER_WINS' | 'OWNER_WINS' | 'DRAW_BOTH' | 'DRAW_NEITHER';
+
+export interface DuelState {
+  tileIndex: number;
+  tileName: string;
+  skillName: SkillName;
+  /** Rent that would be due with no duel — the most the challenger can lose. */
+  rentAmount: number;
+  challenger: DuelSide;
+  owner: DuelSide;
+  startedAt: number;
+  timeLimit: number;      // Seconds, shared by both sides
+  resolution: DuelResolution | null;
+}
+
+export interface DuelResolution {
+  outcome: DuelOutcome;
+  rentPaid: number;
+  landlordBonus: number;
+  challengerCorrect: boolean;
+  ownerCorrect: boolean;
+  headline: string;
+}
+
+/** Client-safe duel: each side's question is redacted, and only their own is sent. */
+export interface PublicDuelSide {
+  playerId: string;
+  hasAnswered: boolean;
+  /** Revealed only once the duel resolves. */
+  isCorrect: boolean | null;
+}
+
+export interface PublicDuelState {
+  tileIndex: number;
+  tileName: string;
+  skillName: SkillName;
+  rentAmount: number;
+  challenger: PublicDuelSide;
+  owner: PublicDuelSide;
+  expiresAt: number;
+  timeLimit: number;
+  resolution: DuelResolution | null;
+}
+
 // ---- Answer Result ----
 
 export interface AnswerResult {
@@ -273,7 +351,7 @@ export interface RewardResult {
 export type RewardType =
   | 'DISCOUNT'         // Smart Buy discount
   | 'BONUS_CASH'       // Dice challenge / card bonus
-  | 'RENT_HALF'        // Rent defense success
+  | 'RENT_HALF'        // Duel draw — rent halved
   | 'LEVEL_UP'         // Property leveled up
   | 'JAIL_BREAK'       // Freed from jail
   | 'NONE';            // No reward (wrong answer — but never a penalty)
@@ -347,7 +425,10 @@ export interface GameState {
   round: number;
   maxRounds: number;
   diceValues: [number, number];
+  /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
+  diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
+  duelState: DuelState | null;
   pendingTileEvent: TileEvent | null;
 
   // Challenge card deck

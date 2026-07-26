@@ -13,33 +13,34 @@ function getPhaseHint(phase: string, isMyTurn: boolean): string | null {
       case 'ROLL_PHASE':
         return 'Roll the dice';
       case 'BUY_DECISION':
-      case 'RENT_PAYMENT':
       case 'JAIL_DECISION':
       case 'LEVEL_UP_OFFER':
       case 'CARD_DRAW':
         return 'Make your move';
-      case 'DICE_CHALLENGE':
+      case 'ROLL_CHALLENGE':
       case 'SMART_BUY_CHALLENGE':
-      case 'RENT_CHALLENGE':
       case 'CARD_MATH_CHALLENGE':
       case 'JAIL_CHALLENGE':
       case 'LEVEL_UP_CHALLENGE':
         return 'Answer the question';
+      case 'MATH_DUEL':
+        return 'Math duel!';
       default:
         return null;
     }
   }
 
   switch (phase) {
-    case 'DICE_CHALLENGE':
+    case 'ROLL_CHALLENGE':
     case 'SMART_BUY_CHALLENGE':
-    case 'RENT_CHALLENGE':
     case 'CARD_MATH_CHALLENGE':
     case 'JAIL_CHALLENGE':
     case 'LEVEL_UP_CHALLENGE':
       return 'Answering';
+    // A duel involves the owner too, so it is never just "their" turn.
+    case 'MATH_DUEL':
+      return 'Math duel';
     case 'BUY_DECISION':
-    case 'RENT_PAYMENT':
     case 'JAIL_DECISION':
     case 'LEVEL_UP_OFFER':
     case 'CARD_DRAW':

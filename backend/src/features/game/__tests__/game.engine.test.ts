@@ -4,7 +4,7 @@ import {
   startRollPhase,
   movePlayer,
   resolveTileEvent,
-  processDiceChallengeAnswer,
+  processRollChallengeAnswer,
   endTurn,
   calculateFinalScores,
   payBail,
@@ -77,25 +77,36 @@ describe('Game Engine — MathOpoly Redesign', () => {
       const newState = startRollPhase(gameState);
 
       // Should either have a dice challenge or move directly
-      expect(['DICE_CHALLENGE', 'MOVING']).toContain(newState.turnPhase);
-      expect(newState.diceValues[0]).toBeGreaterThanOrEqual(1);
-      expect(newState.diceValues[0]).toBeLessThanOrEqual(6);
-      expect(newState.diceValues[1]).toBeGreaterThanOrEqual(1);
-      expect(newState.diceValues[1]).toBeLessThanOrEqual(6);
+      // Every turn now opens with the Roll Challenge — the dice come after it.
+      expect(newState.turnPhase).toBe('ROLL_CHALLENGE');
+      expect(newState.currentChallenge).not.toBeNull();
     });
   });
 
-  describe('processDiceChallengeAnswer', () => {
-    it('should handle correct answer with bonus cash', () => {
-      // Force a dice challenge
-      const rolledState = startRollPhase(gameState);
-      if (rolledState.turnPhase === 'DICE_CHALLENGE' && rolledState.currentChallenge) {
-        const correctIdx = rolledState.currentChallenge.correctIndex;
-        const { result, newState } = processDiceChallengeAnswer(rolledState, correctIdx, 3000);
+  describe('processRollChallengeAnswer', () => {
+    it('awards two dice and a bonus for a correct answer', () => {
+      const opened = startRollPhase(gameState);
+      const correctIdx = opened.currentChallenge!.correctIndex;
+      const { result, newState } = processRollChallengeAnswer(opened, correctIdx, 3000);
 
-        expect(result.isCorrect).toBe(true);
-        expect(result.newMastery).toBeGreaterThanOrEqual(result.previousMastery);
-      }
+      expect(result.isCorrect).toBe(true);
+      expect(result.newMastery).toBeGreaterThanOrEqual(result.previousMastery);
+      expect(newState.diceCount).toBe(2);
+      expect(newState.diceValues[1]).toBeGreaterThanOrEqual(1);
+      expect(newState.turnPhase).toBe('MOVING');
+    });
+
+    it('still moves the player on a wrong answer, but with one die', () => {
+      const opened = startRollPhase(gameState);
+      const wrongIdx = (opened.currentChallenge!.correctIndex + 1) % 4;
+      const { result, newState } = processRollChallengeAnswer(opened, wrongIdx, 3000);
+
+      expect(result.isCorrect).toBe(false);
+      expect(newState.diceCount).toBe(1);
+      expect(newState.diceValues[0]).toBeGreaterThanOrEqual(1);
+      expect(newState.diceValues[1]).toBe(0);
+      // Never stuck on the spot — a wrong answer costs distance, not the turn.
+      expect(newState.turnPhase).toBe('MOVING');
     });
   });
 
@@ -150,7 +161,7 @@ describe('Game Engine — MathOpoly Redesign', () => {
 
       expect(player.isInJail).toBe(false);
       expect(player.jailTurns).toBe(0);
-      expect(['DICE_CHALLENGE', 'MOVING']).toContain(newState.turnPhase);
+      expect(newState.turnPhase).toBe('ROLL_CHALLENGE');
     });
   });
 

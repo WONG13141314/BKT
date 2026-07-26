@@ -10,6 +10,7 @@ import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
+import { MathDuel } from '../components/MathDuel';
 import { BOARD_TILES } from '../config/board.config';
 import { usePlayer } from '../../auth/PlayerContext';
 import { useGameState } from '../hooks/useGameState';
@@ -17,6 +18,7 @@ import { useGameSocket } from '../hooks/useGameSocket';
 import {
   MathChallenge,
   MasteryReport,
+  PublicDuelState,
   formatRM,
 } from '../types/game.types';
 import {
@@ -25,7 +27,6 @@ import {
   Loader2,
   AlertCircle,
   Hourglass,
-  ShieldCheck,
   Zap,
   Star,
   Lock,
@@ -63,6 +64,11 @@ export function GamePage() {
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
   const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
 
+  // Duel state is separate from `gameState`: it is redacted per recipient, so it
+  // arrives on its own channel rather than inside the shared state broadcast.
+  const [duel, setDuel] = useState<PublicDuelState | null>(null);
+  const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
+
   const challengeStartTime = useRef<number>(Date.now());
 
   // Game Flow Pacing States
@@ -72,14 +78,12 @@ export function GamePage() {
 
   const {
     emitRoll,
-    emitDiceAnswer,
+    emitRollAnswer,
     emitBuyFull,
     emitSmartBuy,
     emitSmartBuyAnswer,
     emitSkipBuy,
-    emitPayRent,
-    emitRentDefense,
-    emitRentDefenseAnswer,
+    emitDuelAnswer,
     emitCardAck,
     emitCardAnswer,
     emitJailMath,
@@ -130,7 +134,7 @@ export function GamePage() {
       // Hold the panel open long enough to read the revealed answer.
       const holdMs = isCorrect ? 900 : 1800;
 
-      if (gameState?.turnPhase === 'DICE_CHALLENGE') {
+      if (gameState?.turnPhase === 'ROLL_CHALLENGE') {
         setPacingState('DICE_FEEDBACK');
         setTimeout(() => {
           setActiveChallenge(null);
@@ -145,6 +149,21 @@ export function GamePage() {
           setChallengePlayerId(null);
         }, holdMs);
       }
+    },
+    onDuel: (data) => {
+      setDuel(data.duel);
+      setDuelChallenge(data.myChallenge);
+      if (data.myChallenge) challengeStartTime.current = Date.now();
+    },
+    onDuelResult: (data) => {
+      setDuel(data.duel);
+      setDuelChallenge(null);
+      addNotification(
+        data.resolution.outcome === 'DRAW_NEITHER' ? 'info' : 'reward',
+        data.resolution.headline
+      );
+      // Hold the reveal long enough to read it, then clear for the next turn.
+      setTimeout(() => setDuel(null), 3200);
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
@@ -210,14 +229,11 @@ export function GamePage() {
     if (!gameState) return;
 
     switch (gameState.turnPhase) {
-      case 'DICE_CHALLENGE':
-        emitDiceAnswer(selectedIndex, timeMs);
+      case 'ROLL_CHALLENGE':
+        emitRollAnswer(selectedIndex, timeMs);
         break;
       case 'SMART_BUY_CHALLENGE':
         emitSmartBuyAnswer(selectedIndex, timeMs);
-        break;
-      case 'RENT_CHALLENGE':
-        emitRentDefenseAnswer(selectedIndex, timeMs);
         break;
       case 'CARD_MATH_CHALLENGE':
         emitCardAnswer(selectedIndex, timeMs);
@@ -229,29 +245,40 @@ export function GamePage() {
         emitLevelUpAnswer(selectedIndex, timeMs);
         break;
     }
-  }, [gameState?.turnPhase, emitDiceAnswer, emitSmartBuyAnswer, emitRentDefenseAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
+  }, [gameState?.turnPhase, emitRollAnswer, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
+
+  /**
+   * Duel answers go on their own channel: the property owner answers during
+   * someone else's turn, so this must not be gated on whose turn it is.
+   */
+  const handleDuelAnswer = useCallback((selectedIndex: number) => {
+    emitDuelAnswer(selectedIndex, Date.now() - challengeStartTime.current);
+    setDuelChallenge(null);
+  }, [emitDuelAnswer]);
 
 
 
   // ---- Render helpers ----
   function isChallengePhase(phase: string): boolean {
-    return ['DICE_CHALLENGE', 'SMART_BUY_CHALLENGE', 'RENT_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE', 'LEVEL_UP_CHALLENGE'].includes(phase);
+    return ['ROLL_CHALLENGE', 'SMART_BUY_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE', 'LEVEL_UP_CHALLENGE'].includes(phase);
   }
 
-  function renderQuestion() {
-    if (!activeChallenge) return null;
-
-    const questionData = activeChallenge.questionData;
+  /** Render a question body. Shared by solo challenges and duels. */
+  function renderChallengeBody(
+    challenge: MathChallenge,
+    onAnswer: (index: number) => void,
+    revealedAnswer: string | null,
+    disabled: boolean
+  ) {
     const shared = {
-      options: activeChallenge.options,
-      onAnswer: handleAnswer,
-      disabled: !!answerResult,
-      expiresAt: activeChallenge.expiresAt,
-      timeLimit: activeChallenge.timeLimit,
-      hintContent: activeChallenge.hintContent,
+      options: challenge.options,
+      onAnswer,
+      disabled,
+      expiresAt: challenge.expiresAt,
+      timeLimit: challenge.timeLimit,
+      hintContent: challenge.hintContent,
     };
-    // The server only tells us the answer once it has graded the attempt.
-    const revealedAnswer = answerResult?.correctAnswer ?? null;
+    const questionData = challenge.questionData;
 
     if (questionData.type === 'column') {
       return <ColumnQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
@@ -262,6 +289,26 @@ export function GamePage() {
       );
     }
     return <McqQuestion {...shared} question={questionData} />;
+  }
+
+  function renderQuestion() {
+    if (!activeChallenge) return null;
+    // The server only tells us the answer once it has graded the attempt.
+    return renderChallengeBody(
+      activeChallenge,
+      handleAnswer,
+      answerResult?.correctAnswer ?? null,
+      !!answerResult
+    );
+  }
+
+  /**
+   * A duel question never reveals its answer inline — the verdict is shown on
+   * the duel card once both sides are in, so both players learn the result at
+   * the same moment.
+   */
+  function renderDuelQuestion(challenge: MathChallenge) {
+    return renderChallengeBody(challenge, handleDuelAnswer, null, false);
   }
 
   // ---- Loading / Error states ----
@@ -340,6 +387,7 @@ export function GamePage() {
         <div className="game-sidebar">
           <DiceRoller
             diceValues={gameState.diceValues}
+            diceCount={gameState.diceCount}
             isMyTurn={isMyTurn}
             turnPhase={gameState.turnPhase}
             onRollClick={emitRoll}
@@ -361,21 +409,6 @@ export function GamePage() {
               </button>
               <button className="action-btn action-btn--ghost" onClick={emitSkipBuy}>
                 <SkipForward size={16} /> Skip
-              </button>
-            </div>
-          )}
-
-          {/* RENT_PAYMENT: Pay / Defend */}
-          {renderPhase === 'RENT_PAYMENT' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
-            <div className="game-actions decision-panel">
-              <h3 className="decision-title">
-                Rent: {formatRM(gameState.pendingTileEvent.rentAmount!)}
-              </h3>
-              <button className="action-btn action-btn--primary" onClick={emitRentDefense}>
-                <ShieldCheck size={16} /> Rent Defense (half rent)
-              </button>
-              <button className="action-btn action-btn--secondary" onClick={emitPayRent}>
-                <Banknote size={16} /> Pay Full Rent
               </button>
             </div>
           )}
@@ -451,6 +484,17 @@ export function GamePage() {
         </div>
       </div>
 
+      {/* Math Duel — shown to the whole table, not just the active player. */}
+      {duel && (
+        <MathDuel
+          duel={duel}
+          players={gameState.players}
+          myPlayerId={myPlayerId}
+          isMyTurnToAnswer={!!duelChallenge}
+          questionSlot={duelChallenge ? renderDuelQuestion(duelChallenge) : null}
+        />
+      )}
+
       {/* Math Challenge Panel */}
       {showChallenge && (
         <div className="challenge-overlay">
@@ -524,9 +568,9 @@ export function GamePage() {
 
 function formatContext(context: string): string {
   const labels: Record<string, string> = {
-    DICE_CHALLENGE: 'Dice Challenge',
+    ROLL_CHALLENGE: 'Roll Challenge',
+    MATH_DUEL: 'Math Duel',
     SMART_BUY: 'Smart Buy',
-    RENT_DEFENSE: 'Rent Defense',
     CHALLENGE_CARD: 'Challenge Card',
     JAIL_ESCAPE: 'Jail Escape',
     LEVEL_UP: 'Level Up',

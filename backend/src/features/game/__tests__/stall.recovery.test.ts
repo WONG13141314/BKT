@@ -64,14 +64,13 @@ describe('resolveStalledTurn', () => {
     const state = gameService.getGameSync(gameId)!;
     const challenge = selectChallenge({
       masteryStates: state.players[0].masteryStates,
-      context: 'DICE_CHALLENGE',
+      context: 'ROLL_CHALLENGE',
       consecutiveFailures: {},
-      diceValues: [3, 4],
     });
 
     gameService.replaceState(gameId, {
       ...state,
-      turnPhase: 'DICE_CHALLENGE',
+      turnPhase: 'ROLL_CHALLENGE',
       currentPlayerIndex: 0,
       currentChallenge: challenge,
     });
@@ -90,32 +89,53 @@ describe('resolveStalledTurn', () => {
     expect(after.totalCorrect).toBe(before.totalCorrect);
 
     // And the turn is no longer blocked.
-    expect(outcome!.state.turnPhase).not.toBe('DICE_CHALLENGE');
+    expect(outcome!.state.turnPhase).not.toBe('ROLL_CHALLENGE');
   });
 
-  it('takes the cheapest option when a decision is abandoned', () => {
+  it('settles an abandoned duel at full rent', () => {
     const state = gameService.getGameSync(gameId)!;
-    const withRentDue: GameState = {
+    const duelSide = (playerId: string) => ({
+      playerId,
+      challenge: selectChallenge({
+        masteryStates: state.players[0].masteryStates,
+        context: 'MATH_DUEL' as const,
+        consecutiveFailures: {},
+        forceSkill: 'Addition' as const,
+      }),
+      selectedIndex: null,
+      isCorrect: null,
+      timeMs: null,
+      previousMastery: null,
+      newMastery: null,
+    });
+
+    gameService.replaceState(gameId, {
       ...state,
-      turnPhase: 'RENT_PAYMENT',
+      turnPhase: 'MATH_DUEL',
       currentPlayerIndex: 0,
-      pendingTileEvent: {
-        type: 'PROPERTY',
+      duelState: {
         tileIndex: 1,
         tileName: 'Tambah Alley',
-        propertyOwner: 'p2',
+        skillName: 'Addition',
         rentAmount: 20,
+        challenger: duelSide('p1'),
+        owner: duelSide('p2'),
+        startedAt: Date.now() - 60_000,
+        timeLimit: 20,
+        resolution: null,
       },
-    };
-    gameService.replaceState(gameId, withRentDue);
+    });
 
     const outcome = gameService.resolveStalledTurn(gameId);
 
     expect(outcome).not.toBeNull();
-    expect(outcome!.result).toBeNull();
     expect(outcome!.state.turnPhase).toBe('END_TURN');
-    // Rent still transfers — abandoning a turn must not be a way to dodge it.
+
+    // Neither side answered → neither wins → rent stands. Walking away must not
+    // be a way to dodge it, and must not cost more than it would have.
+    expect(outcome!.state.duelState!.resolution!.outcome).toBe('DRAW_NEITHER');
     expect(outcome!.state.players[0].money).toBe(state.players[0].money - 20);
+    // No landlord bonus: the owner did not answer either.
     expect(outcome!.state.players[1].money).toBe(state.players[1].money + 20);
   });
 
