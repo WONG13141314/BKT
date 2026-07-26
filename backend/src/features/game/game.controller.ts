@@ -7,7 +7,7 @@ import { gameService } from './game.service';
 export const gameController = {
   /**
    * POST /api/games — Create a new game session
-   * Body: { players: [{ id, userId, name, color, order }] }
+   * Body: { players: [{ id, playerId, name, color, order }] }
    */
   create: async (req: Request, res: Response) => {
     try {

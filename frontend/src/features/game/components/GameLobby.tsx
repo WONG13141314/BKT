@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { avatarToken } from '../../auth/avatars';
+import { usePlayer } from '../../auth/PlayerContext';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
 import './GameLobby.css';
@@ -35,19 +37,9 @@ export function GameLobby() {
   const action = searchParams.get('action');
   const codeParam = searchParams.get('code');
 
-  const getMyUserId = useCallback(() => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return null;
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.userId;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const myId = getMyUserId();
-  const isHost = myId === room?.hostId;
+  const { player } = usePlayer();
+  const myId = player?.id ?? null;
+  const isHost = myId !== null && myId === room?.hostId;
 
   useEffect(() => {
     if (!socket) {
@@ -95,7 +87,7 @@ export function GameLobby() {
 
   const toggleReady = () => { if (socket) socket.emit('room:ready'); };
   const startGame = () => { if (socket) socket.emit('room:start'); };
-  const leaveRoom = () => { if (socket) socket.emit('room:leave'); navigate('/join'); };
+  const leaveRoom = () => { if (socket) socket.emit('room:leave'); navigate('/'); };
 
   const addBot = () => {
     if (socket) socket.emit('room:add-bot', { difficulty: botDifficulty });
@@ -138,7 +130,7 @@ export function GameLobby() {
           <div className="lobby-error-state">
             <AlertCircle size={40} className="error-icon" />
             <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={() => navigate('/join')}>Go Back</button>
+            <button className="btn-primary" onClick={() => navigate('/')}>Go Back</button>
           </div>
         </div>
       </div>
@@ -178,7 +170,7 @@ export function GameLobby() {
               key={player.id}
               className={`player-slot ${player.isReady ? 'ready' : 'not-ready'} ${player.id === myId ? 'is-me' : ''} ${player.isBot ? 'is-bot' : ''}`}
             >
-              <div className="player-avatar">{player.avatar}</div>
+              <div className="player-avatar">{avatarToken(player.avatar)}</div>
               <div className="player-details">
                 <span className="player-name">
                   {player.name}

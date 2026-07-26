@@ -2,12 +2,13 @@ import { Server, Socket } from 'socket.io';
 import { roomManager } from './lobby.manager';
 
 export const registerLobbyHandlers = (io: Server, socket: Socket) => {
-  const userId = socket.data.user.id;
-  const userName = socket.data.user.name;
+  const playerId = socket.data.player.id;
+  const playerName = socket.data.player.displayName;
+  const playerAvatar = socket.data.player.avatar;
 
   // Host creates a new room
   socket.on('room:create', () => {
-    const room = roomManager.createRoom(userId, userName);
+    const room = roomManager.createRoom(playerId, playerName, playerAvatar);
     const socketRoom = `room:${room.code}`;
     socket.join(socketRoom);
 
@@ -17,7 +18,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Player joins an existing room by code
   socket.on('room:join', (data: { code: string }) => {
-    const { room, error } = roomManager.joinRoom(data.code, userId, userName);
+    const { room, error } = roomManager.joinRoom(data.code, playerId, playerName, playerAvatar);
 
     if (!room) {
       socket.emit('room:error', { message: error });
@@ -31,7 +32,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Toggle ready status
   socket.on('room:ready', () => {
-    const code = roomManager.toggleReady(userId);
+    const code = roomManager.toggleReady(playerId);
     if (!code) return;
 
     const room = roomManager.getRoom(code);
@@ -43,7 +44,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Host adds a bot
   socket.on('room:add-bot', (data: { difficulty?: 'easy' | 'medium' | 'hard' }) => {
-    const room = roomManager.getRoomForUser(userId);
+    const room = roomManager.getRoomForPlayer(playerId);
     if (!room) {
       socket.emit('room:error', { message: 'You are not in a room.' });
       return;
@@ -51,7 +52,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
     const { room: updatedRoom, error } = roomManager.addBot(
       room.code,
-      userId,
+      playerId,
       data.difficulty ?? 'medium'
     );
 
@@ -66,7 +67,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Host removes a bot
   socket.on('room:remove-bot', (data: { botId: string }) => {
-    const room = roomManager.getRoomForUser(userId);
+    const room = roomManager.getRoomForPlayer(playerId);
     if (!room) {
       socket.emit('room:error', { message: 'You are not in a room.' });
       return;
@@ -74,7 +75,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
     const { room: updatedRoom, error } = roomManager.removeBot(
       room.code,
-      userId,
+      playerId,
       data.botId
     );
 
@@ -89,13 +90,13 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Host starts the game
   socket.on('room:start', () => {
-    const room = roomManager.getRoomForUser(userId);
+    const room = roomManager.getRoomForPlayer(playerId);
     if (!room) {
       socket.emit('room:error', { message: 'You are not in a room.' });
       return;
     }
 
-    if (room.hostId !== userId) {
+    if (room.hostId !== playerId) {
       socket.emit('room:error', { message: 'Only the host can start the game.' });
       return;
     }
@@ -112,7 +113,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
     const gamePlayers = Array.from(room.players.values()).map((p, idx) => ({
       id: p.id,
-      userId: p.id,
+      playerId: p.id,
       name: p.name,
       color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
       order: idx,
@@ -139,7 +140,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
   });
 
   function handleLeave() {
-    const code = roomManager.removePlayer(userId);
+    const code = roomManager.removePlayer(playerId);
     if (!code) return;
 
     const socketRoom = `room:${code}`;

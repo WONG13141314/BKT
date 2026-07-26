@@ -32,9 +32,16 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      # The token is the player's identity — a short expiry would reset
+      # everyone's BKT mastery when it lapsed.
       - key: JWT_EXPIRES_IN
-        value: 7d
+        value: 90d
       - key: CORS_ORIGIN
         sync: false
+      # Neon pooled connection (host contains "-pooler"), used at runtime.
       - key: DATABASE_URL
+        sync: false
+      # Neon direct connection (no "-pooler"), used by `prisma migrate deploy`.
+      # PgBouncer cannot run migrations, so this must be set separately.
+      - key: DIRECT_URL
         sync: false

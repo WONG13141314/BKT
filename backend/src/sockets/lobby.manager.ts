@@ -15,13 +15,14 @@ export interface Room {
   status: 'waiting' | 'playing';
 }
 
-const AVATARS = ['😎', '🤖', '🤠', '👻', '👽', '👾', '🦊', '🐱'];
+/** Fallback token when a bot joins; humans bring their own from their profile. */
+const BOT_AVATARS = ['ship', 'boot', 'thimble', 'iron'] as const;
 const BOT_NAMES = ['Bot Ali', 'Bot Mei', 'Bot Raju', 'Bot Siti'];
 let botCounter = 0;
 
 class RoomManager {
   private rooms: Map<string, Room> = new Map();
-  private userRoomMap: Map<string, string> = new Map();
+  private playerRoomMap: Map<string, string> = new Map();
 
   /** Generate a random 6-character alphanumeric room code */
   private generateCode(): string {
@@ -35,41 +36,44 @@ class RoomManager {
   }
 
   /** Create a new room. The creator becomes the host. */
-  public createRoom(userId: string, userName: string): Room {
-    this.removePlayer(userId);
+  public createRoom(playerId: string, playerName: string, avatar: string): Room {
+    this.removePlayer(playerId);
 
     const code = this.generateCode();
-    const avatar = AVATARS[0];
-    const player: LobbyPlayer = { id: userId, name: userName, isReady: true, avatar, isBot: false };
+    const player: LobbyPlayer = { id: playerId, name: playerName, isReady: true, avatar, isBot: false };
 
     const room: Room = {
       code,
-      hostId: userId,
-      players: new Map([[userId, player]]),
+      hostId: playerId,
+      players: new Map([[playerId, player]]),
       maxPlayers: 4,
       status: 'waiting',
     };
 
     this.rooms.set(code, room);
-    this.userRoomMap.set(userId, code);
+    this.playerRoomMap.set(playerId, code);
     return room;
   }
 
   /** Join an existing room by code */
-  public joinRoom(code: string, userId: string, userName: string): { room: Room | null; error?: string } {
+  public joinRoom(
+    code: string,
+    playerId: string,
+    playerName: string,
+    avatar: string
+  ): { room: Room | null; error?: string } {
     const room = this.rooms.get(code.toUpperCase());
     if (!room) return { room: null, error: 'Room not found. Check the code and try again.' };
     if (room.status === 'playing') return { room: null, error: 'Game already in progress.' };
-    if (room.players.size >= room.maxPlayers && !room.players.has(userId)) {
+    if (room.players.size >= room.maxPlayers && !room.players.has(playerId)) {
       return { room: null, error: 'Room is full (max 4 players).' };
     }
 
-    this.removePlayer(userId);
+    this.removePlayer(playerId);
 
-    const avatar = AVATARS[room.players.size % AVATARS.length];
-    const player: LobbyPlayer = { id: userId, name: userName, isReady: false, avatar, isBot: false };
-    room.players.set(userId, player);
-    this.userRoomMap.set(userId, code.toUpperCase());
+    const player: LobbyPlayer = { id: playerId, name: playerName, isReady: false, avatar, isBot: false };
+    room.players.set(playerId, player);
+    this.playerRoomMap.set(playerId, code.toUpperCase());
     return { room };
   }
 
@@ -93,7 +97,7 @@ class RoomManager {
       id: botId,
       name: botName,
       isReady: true,       // Bots are always ready
-      avatar: '🤖',
+      avatar: BOT_AVATARS[(botCounter - 1) % BOT_AVATARS.length],
       isBot: true,
       botDifficulty: difficulty,
     };
@@ -121,18 +125,18 @@ class RoomManager {
   }
 
   /** Remove a player from whatever room they are in */
-  public removePlayer(userId: string): string | null {
-    const code = this.userRoomMap.get(userId);
+  public removePlayer(playerId: string): string | null {
+    const code = this.playerRoomMap.get(playerId);
     if (!code) return null;
 
     const room = this.rooms.get(code);
     if (!room) {
-      this.userRoomMap.delete(userId);
+      this.playerRoomMap.delete(playerId);
       return null;
     }
 
-    room.players.delete(userId);
-    this.userRoomMap.delete(userId);
+    room.players.delete(playerId);
+    this.playerRoomMap.delete(playerId);
 
     if (room.players.size === 0) {
       this.rooms.delete(code);
@@ -140,7 +144,7 @@ class RoomManager {
     }
 
     // If the host left, reassign to next human player
-    if (room.hostId === userId) {
+    if (room.hostId === playerId) {
       const nextHuman = Array.from(room.players.values()).find((p) => !p.isBot);
       if (nextHuman) {
         room.hostId = nextHuman.id;
@@ -154,13 +158,13 @@ class RoomManager {
     return code;
   }
 
-  public toggleReady(userId: string): string | null {
-    const code = this.userRoomMap.get(userId);
+  public toggleReady(playerId: string): string | null {
+    const code = this.playerRoomMap.get(playerId);
     if (!code) return null;
     const room = this.rooms.get(code);
     if (!room) return null;
 
-    const player = room.players.get(userId);
+    const player = room.players.get(playerId);
     if (player && !player.isBot) {
       player.isReady = !player.isReady;
     }
@@ -171,8 +175,8 @@ class RoomManager {
     return this.rooms.get(code.toUpperCase());
   }
 
-  public getRoomForUser(userId: string): Room | null {
-    const code = this.userRoomMap.get(userId);
+  public getRoomForPlayer(playerId: string): Room | null {
+    const code = this.playerRoomMap.get(playerId);
     if (!code) return null;
     return this.rooms.get(code) ?? null;
   }

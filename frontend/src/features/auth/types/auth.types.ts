@@ -1,12 +1,24 @@
-export interface JoinCredentials {
-  name: string;
+export type { Avatar } from '../avatars';
+
+export interface PublicPlayer {
+  id: string;
+  displayName: string;
+  avatar: string;
+  role: string;
+  isClaimed: boolean;
+  username: string | null;
 }
 
-export interface AuthResponse {
+export interface AuthResult {
+  player: PublicPlayer;
   token: string;
-  user: {
-    id: string;
-    username: string;
-    role: string;
-  };
+}
+
+/** A profile remembered on this device, so shared tablets can switch between them. */
+export interface StoredProfile {
+  id: string;
+  displayName: string;
+  avatar: string;
+  token: string;
+  lastUsedAt: number;
 }

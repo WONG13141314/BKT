@@ -17,10 +17,10 @@ describe('Game Engine — MathOpoly Redesign', () => {
 
   beforeEach(() => {
     gameState = initializeGameState('test-game', [
-      { id: 'p1', userId: 'u1', name: 'Alice', color: '#6366f1', order: 0 },
-      { id: 'p2', userId: 'u2', name: 'Bob', color: '#f59e0b', order: 1 },
-      { id: 'p3', userId: 'u3', name: 'Carol', color: '#10b981', order: 2 },
-      { id: 'p4', userId: 'u4', name: 'Dave', color: '#ef4444', order: 3 },
+      { id: 'p1', playerId: 'u1', name: 'Alice', color: '#6366f1', order: 0 },
+      { id: 'p2', playerId: 'u2', name: 'Bob', color: '#f59e0b', order: 1 },
+      { id: 'p3', playerId: 'u3', name: 'Carol', color: '#10b981', order: 2 },
+      { id: 'p4', playerId: 'u4', name: 'Dave', color: '#ef4444', order: 3 },
     ]);
   });
 

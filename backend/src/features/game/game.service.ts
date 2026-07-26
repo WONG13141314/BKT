@@ -42,7 +42,7 @@ export const gameService = {
 
   createGame: async (
     gameId: string,
-    players: { id: string; userId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
+    players: { id: string; playerId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
   ): Promise<GameState> => {
     const state = initializeGameState(gameId, players);
     activeGames.set(gameId, state);
@@ -59,6 +59,15 @@ export const gameService = {
 
   removeGame: (gameId: string): void => {
     activeGames.delete(gameId);
+  },
+
+  /**
+   * Overwrite a session's state wholesale. Used to rehydrate a game after a
+   * server restart, and by tests to set up a specific phase directly.
+   */
+  replaceState: (gameId: string, state: GameState): GameState => {
+    activeGames.set(gameId, state);
+    return state;
   },
 
   // ---- Roll Phase ----
@@ -301,6 +310,71 @@ export const gameService = {
       activeGames.set(gameId, steps[steps.length - 1].state);
     }
     return steps;
+  },
+
+  // ---- Stall recovery ----
+
+  /**
+   * Force the current phase forward when the active player has run out of time
+   * or vanished. Challenges submit an invalid index (never the correct one);
+   * decisions take the option that costs the player least.
+   *
+   * Without this a single unanswered question or closed browser tab wedges the
+   * room permanently — every other player is left waiting on a turn that will
+   * never end.
+   */
+  resolveStalledTurn: (
+    gameId: string
+  ): { state: GameState; result: AnswerResult | null } | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.phase !== 'PLAYING') return null;
+
+    const timedOut = (
+      outcome: { state: GameState; result: AnswerResult } | null
+    ) => {
+      if (!outcome) return null;
+      return { state: outcome.state, result: { ...outcome.result, timedOut: true } };
+    };
+    const advanced = (next: GameState | null) =>
+      next ? { state: next, result: null } : null;
+
+    // -1 can never equal a correctIndex, so a timeout always grades as incorrect.
+    const NO_ANSWER = -1;
+    const elapsed = state.currentChallenge
+      ? Date.now() - state.currentChallenge.startedAt
+      : 0;
+
+    switch (state.turnPhase) {
+      case 'ROLL_PHASE':
+        return advanced(gameService.startRoll(gameId));
+      case 'DICE_CHALLENGE':
+        return timedOut(gameService.submitDiceChallengeAnswer(gameId, NO_ANSWER, elapsed));
+      case 'SMART_BUY_CHALLENGE':
+        return timedOut(gameService.submitSmartBuyAnswer(gameId, NO_ANSWER, elapsed));
+      case 'RENT_CHALLENGE':
+        return timedOut(gameService.submitRentDefenseAnswer(gameId, NO_ANSWER, elapsed));
+      case 'CARD_MATH_CHALLENGE':
+        return timedOut(gameService.submitCardAnswer(gameId, NO_ANSWER, elapsed));
+      case 'JAIL_CHALLENGE':
+        return timedOut(gameService.submitJailAnswer(gameId, NO_ANSWER, elapsed));
+      case 'LEVEL_UP_CHALLENGE':
+        return timedOut(gameService.submitLevelUpAnswer(gameId, NO_ANSWER, elapsed));
+      case 'BUY_DECISION':
+        return advanced(gameService.skipBuy(gameId));
+      case 'RENT_PAYMENT':
+        return advanced(gameService.payRent(gameId));
+      case 'JAIL_DECISION':
+        return advanced(gameService.waitInJail(gameId));
+      case 'LEVEL_UP_OFFER':
+        return advanced(gameService.declineLevelUp(gameId));
+      case 'CARD_DRAW':
+        return advanced(gameService.acknowledgeCard(gameId));
+      case 'END_TURN':
+        return advanced(gameService.endTurn(gameId));
+      default:
+        // MOVING / RESOLVE_TILE are transient and driven by the server already.
+        return null;
+    }
   },
 
   // ---- Scoring ----

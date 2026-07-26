@@ -44,7 +44,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   }, []);
 
   const connectSocket = useCallback(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('mm.token');
     if (!token) return;
 
     // If a socket already exists with the same token, don't recreate it.
@@ -70,12 +70,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     newSocket.on('connect', () => {
       setIsConnected(true);
-      console.log('✅ Socket connected:', newSocket.id);
+      console.log('Socket connected:', newSocket.id);
     });
 
     newSocket.on('disconnect', () => {
       setIsConnected(false);
-      console.log('❌ Socket disconnected');
+      console.log('Socket disconnected');
     });
 
     newSocket.on('connect_error', (err) => {

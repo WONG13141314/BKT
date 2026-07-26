@@ -1,72 +1,141 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService } from '../services/auth.service';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Dices,
+  DoorOpen,
+  Hash,
+  Loader2,
+  LogIn,
+  ShieldCheck,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useSocket } from '../../../shared/contexts/SocketContext';
-import { UserPlus, ArrowRight, DoorOpen, Hash, ArrowLeft, Loader2, Dices } from 'lucide-react';
+import { AVATARS, Avatar, avatarLabel, avatarToken } from '../avatars';
+import { usePlayer } from '../PlayerContext';
+import { authService } from '../services/auth.service';
+import { StoredProfile } from '../types/auth.types';
 import './LoginPage.css';
 
+type Step = 'welcome' | 'newPlayer' | 'switch' | 'signIn' | 'claim';
+
 export function LoginPage() {
-  const [name, setName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState<'name' | 'choice'>('name');
   const navigate = useNavigate();
-  const { connectSocket, disconnectSocket } = useSocket();
+  const { connectSocket } = useSocket();
+  const { player, isRestoring, setPlayer } = usePlayer();
 
-  // Clear previous session when visiting the login page
-  React.useEffect(() => {
-    localStorage.removeItem('token');
-    disconnectSocket();
-  }, [disconnectSocket]);
+  const [step, setStep] = useState<Step>('newPlayer');
+  const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState<Avatar>('tophat');
+  const [roomCode, setRoomCode] = useState('');
+  const [username, setUsername] = useState('');
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
 
-  const handleNameSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (name.trim().length < 2) {
-      setError('Name must be at least 2 characters.');
-      return;
-    }
+  const profiles = useMemo<StoredProfile[]>(
+    () => authService.getStoredProfiles().filter((p) => p.id !== player?.id),
+    [player?.id]
+  );
+
+  // Once the boot-time restore settles, a known player skips straight to
+  // hosting or joining. No re-typing, no signup.
+  useEffect(() => {
+    if (isRestoring) return;
+    setStep(player ? 'welcome' : 'newPlayer');
+  }, [isRestoring, player]);
+
+  const clearMessages = () => {
     setError('');
-    setStep('choice');
+    setNotice('');
   };
 
-  const doAuth = async (): Promise<boolean> => {
-    setIsLoading(true);
-    setError('');
+  const run = async (task: () => Promise<void>) => {
+    setIsBusy(true);
+    clearMessages();
     try {
-      await authService.joinGame({ name: name.trim() });
-      connectSocket();
-      // Small delay to let socket connect
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return true;
-    } catch (err: any) {
-      setError(err.message || 'Failed to authenticate.');
-      setIsLoading(false);
-      return false;
+      await task();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setIsBusy(false);
     }
   };
 
-  const handleHost = async () => {
-    const ok = await doAuth();
-    if (ok) {
-      navigate('/lobby?action=host');
-    }
+  const handleCreatePlayer = (e: React.FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      const created = await authService.createGuest(name.trim(), avatar);
+      setPlayer(created);
+      setStep('welcome');
+    });
   };
 
-  const handleJoin = async () => {
+  const handleSwitch = (profile: StoredProfile) =>
+    void run(async () => {
+      const switched = await authService.switchTo(profile);
+      if (!switched) throw new Error('That profile has expired. Please sign in again.');
+      setPlayer(switched);
+      setStep('welcome');
+    });
+
+  const handleSignIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      const signedIn = await authService.signIn(username, pin);
+      setPlayer(signedIn);
+      setUsername('');
+      setPin('');
+      setStep('welcome');
+    });
+  };
+
+  const handleClaim = (e: React.FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      const claimed = await authService.claim(username, pin);
+      setPlayer(claimed);
+      setUsername('');
+      setPin('');
+      setStep('welcome');
+      setNotice('Progress saved. You can now play on any device.');
+    });
+  };
+
+  const enterLobby = (target: string) => {
+    connectSocket();
+    // Give the socket a moment to hand over the token before the lobby mounts.
+    window.setTimeout(() => navigate(target), 250);
+  };
+
+  const handleHost = () => enterLobby('/lobby?action=host');
+
+  const handleJoin = () => {
     if (roomCode.trim().length < 4) {
       setError('Please enter a valid room code.');
       return;
     }
-    const ok = await doAuth();
-    if (ok) {
-      navigate(`/lobby?action=join&code=${roomCode.trim().toUpperCase()}`);
-    }
+    enterLobby(`/lobby?action=join&code=${roomCode.trim().toUpperCase()}`);
   };
+
+  // ---- Render ----
+
+  if (isRestoring) {
+    return (
+      <div className="login-page">
+        <div className="login-card login-card--loading">
+          <Loader2 size={28} className="icon-spin" />
+          <p className="login-subtitle">Loading your token…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">
-      <div className="login-bg-pattern" aria-hidden="true" />
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">
@@ -77,9 +146,11 @@ export function LoginPage() {
         </div>
 
         {error && <div className="login-error">{error}</div>}
+        {notice && <div className="login-notice">{notice}</div>}
 
-        {step === 'name' && (
-          <form onSubmit={handleNameSubmit} className="login-form">
+        {/* ---- New player: nickname + token ---- */}
+        {step === 'newPlayer' && (
+          <form onSubmit={handleCreatePlayer} className="login-form">
             <div className="input-group">
               <label htmlFor="name">
                 <UserPlus size={14} />
@@ -90,28 +161,68 @@ export function LoginPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. MathWizard123"
+                placeholder="e.g. MathWizard"
+                maxLength={16}
                 autoFocus
               />
             </div>
-            <button type="submit" className="btn-primary btn-full">
+
+            <div className="input-group">
+              <label>
+                <Dices size={14} />
+                Pick Your Token
+              </label>
+              <div className="token-grid">
+                {AVATARS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={`token-pick ${avatar === option ? 'token-pick--active' : ''}`}
+                    onClick={() => setAvatar(option)}
+                    aria-pressed={avatar === option}
+                    title={avatarLabel(option)}
+                  >
+                    <span aria-hidden="true">{avatarToken(option)}</span>
+                    <span className="sr-only">{avatarLabel(option)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button type="submit" className="btn-primary btn-full" disabled={isBusy}>
               Continue
-              <ArrowRight size={16} />
+              {isBusy ? <Loader2 size={16} className="icon-spin" /> : <ArrowRight size={16} />}
             </button>
+
+            {profiles.length > 0 && (
+              <button type="button" className="btn-back" onClick={() => setStep('switch')}>
+                <Users size={14} />
+                Played here before?
+              </button>
+            )}
+            {profiles.length === 0 && (
+              <button type="button" className="btn-back" onClick={() => { clearMessages(); setStep('signIn'); }}>
+                <LogIn size={14} />
+                I have a username
+              </button>
+            )}
           </form>
         )}
 
-        {step === 'choice' && (
+        {/* ---- Known player: host or join ---- */}
+        {step === 'welcome' && player && (
           <div className="choice-panel">
-            <p className="choice-greeting">
-              Welcome, <strong>{name}</strong>
-            </p>
-            
-            <button
-              className="btn-host btn-full"
-              onClick={handleHost}
-              disabled={isLoading}
-            >
+            <div className="player-chip">
+              <span className="player-chip__token" aria-hidden="true">
+                {avatarToken(player.avatar)}
+              </span>
+              <span className="player-chip__text">
+                <small>Welcome back</small>
+                <strong>{player.displayName}</strong>
+              </span>
+            </div>
+
+            <button className="btn-host btn-full" onClick={handleHost} disabled={isBusy}>
               <span className="btn-icon-wrap">
                 <DoorOpen size={20} />
               </span>
@@ -119,7 +230,6 @@ export function LoginPage() {
                 <strong>Host a Game</strong>
                 <small>Create a room &amp; invite friends</small>
               </span>
-              {isLoading && <Loader2 size={16} className="icon-spin" />}
             </button>
 
             <div className="divider">
@@ -142,11 +252,7 @@ export function LoginPage() {
                   className="code-input"
                 />
               </div>
-              <button
-                className="btn-join btn-full"
-                onClick={handleJoin}
-                disabled={isLoading}
-              >
+              <button className="btn-join btn-full" onClick={handleJoin} disabled={isBusy}>
                 <span className="btn-icon-wrap">
                   <ArrowRight size={20} />
                 </span>
@@ -154,18 +260,179 @@ export function LoginPage() {
                   <strong>Join Game</strong>
                   <small>Enter with a room code</small>
                 </span>
-                {isLoading && <Loader2 size={16} className="icon-spin" />}
               </button>
             </div>
 
+            <div className="login-footer">
+              <button className="btn-back" onClick={() => { clearMessages(); setStep('switch'); }}>
+                <Users size={14} />
+                Not {player.displayName}?
+              </button>
+              {!player.isClaimed && (
+                <button className="btn-back" onClick={() => { clearMessages(); setStep('claim'); }}>
+                  <ShieldCheck size={14} />
+                  Save my progress
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---- Shared device: switch profile ---- */}
+        {step === 'switch' && (
+          <div className="choice-panel">
+            <p className="choice-greeting">Who's playing?</p>
+
+            <div className="profile-list">
+              {profiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  className="profile-row"
+                  onClick={() => handleSwitch(profile)}
+                  disabled={isBusy}
+                >
+                  <span className="profile-row__token" aria-hidden="true">
+                    {avatarToken(profile.avatar)}
+                  </span>
+                  <span className="profile-row__name">{profile.displayName}</span>
+                  <ArrowRight size={16} />
+                </button>
+              ))}
+              {profiles.length === 0 && (
+                <p className="profile-empty">No other players saved on this device.</p>
+              )}
+            </div>
+
             <button
+              className="btn-primary btn-full"
+              onClick={() => { clearMessages(); setName(''); setStep('newPlayer'); }}
+            >
+              <UserPlus size={16} />
+              New Player
+            </button>
+
+            <button className="btn-back" onClick={() => { clearMessages(); setStep('signIn'); }}>
+              <LogIn size={14} />
+              Sign in with a username
+            </button>
+            {player && (
+              <button className="btn-back" onClick={() => { clearMessages(); setStep('welcome'); }}>
+                <ArrowLeft size={14} />
+                Back
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ---- Cross-device sign in ---- */}
+        {step === 'signIn' && (
+          <form onSubmit={handleSignIn} className="login-form">
+            <p className="choice-greeting">Sign in to your saved progress</p>
+
+            <div className="input-group">
+              <label htmlFor="username">
+                <UserPlus size={14} />
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                placeholder="e.g. mathwizard"
+                maxLength={16}
+                autoFocus
+              />
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="pin">
+                <ShieldCheck size={14} />
+                6-Digit PIN
+              </label>
+              <input
+                id="pin"
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••••"
+                maxLength={6}
+                className="code-input"
+              />
+            </div>
+
+            <button type="submit" className="btn-primary btn-full" disabled={isBusy}>
+              Sign In
+              {isBusy ? <Loader2 size={16} className="icon-spin" /> : <ArrowRight size={16} />}
+            </button>
+
+            <button
+              type="button"
               className="btn-back"
-              onClick={() => { setStep('name'); setError(''); }}
+              onClick={() => { clearMessages(); setStep(player ? 'welcome' : 'newPlayer'); }}
             >
               <ArrowLeft size={14} />
-              Change name
+              Back
             </button>
-          </div>
+          </form>
+        )}
+
+        {/* ---- Optional upgrade: claim a username + PIN ---- */}
+        {step === 'claim' && (
+          <form onSubmit={handleClaim} className="login-form">
+            <p className="choice-greeting">
+              Pick a username and PIN so you can play on another device without
+              losing your progress.
+            </p>
+
+            <div className="input-group">
+              <label htmlFor="claimUsername">
+                <UserPlus size={14} />
+                Username
+              </label>
+              <input
+                id="claimUsername"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                placeholder="letters, numbers, underscore"
+                maxLength={16}
+                autoFocus
+              />
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="claimPin">
+                <ShieldCheck size={14} />
+                6-Digit PIN
+              </label>
+              <input
+                id="claimPin"
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••••"
+                maxLength={6}
+                className="code-input"
+              />
+            </div>
+
+            <button type="submit" className="btn-primary btn-full" disabled={isBusy}>
+              Save Progress
+              {isBusy ? <Loader2 size={16} className="icon-spin" /> : <ArrowRight size={16} />}
+            </button>
+
+            <button
+              type="button"
+              className="btn-back"
+              onClick={() => { clearMessages(); setStep('welcome'); }}
+            >
+              <ArrowLeft size={14} />
+              Maybe later
+            </button>
+          </form>
         )}
       </div>
     </div>

@@ -7,22 +7,17 @@
 import {
   GameState,
   PlayerState,
-  PropertyState,
-  TurnPhase,
-  ChallengeContext,
   AnswerResult,
   RewardResult,
   TileEvent,
   FinalScore,
   MasteryReport,
   LuckyBreakReward,
-  ChallengeCard,
   CardEffect,
 } from './game.types';
 import { SKILL_NAMES, SkillName } from './game.constants';
 import {
   BOARD_TILES,
-  COLOR_GROUPS,
   calculateRent,
   calculatePropertyValue,
   calculateLevelUpValue,
@@ -51,7 +46,6 @@ import {
 import { createShuffledDeck, drawCard, getCardById } from './card.deck';
 import { updateMastery } from '../../bkt/bkt.engine';
 import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
-import { clampProbability } from '../../bkt/bkt.utils';
 import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 
 // ============================================
@@ -60,11 +54,11 @@ import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 
 export function initializeGameState(
   gameId: string,
-  players: { id: string; userId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
+  players: { id: string; playerId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
 ): GameState {
   const playerStates: PlayerState[] = players.map((p) => ({
     id: p.id,
-    userId: p.userId,
+    playerId: p.playerId,
     name: p.name,
     position: 0,
     money: STARTING_MONEY,
@@ -224,6 +218,7 @@ export function processDiceChallengeAnswer(
     streakCount: isCorrect ? (player.streak + 1) : 0,
     streakBroken: !isCorrect && player.streak > 0,
     showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
+    timedOut: false,
   };
 
   return {
@@ -276,7 +271,7 @@ export function resolveTileEvent(state: GameState): GameState {
       return resolvePropertyTile(state, player, tile.index);
 
     case 'TAX':
-      return resolveTaxTile(state, player, tile.index);
+      return resolveTaxTile(state, tile.index);
 
     case 'CHALLENGE_CARD':
       return resolveChallengeCardTile(state, player);
@@ -288,7 +283,7 @@ export function resolveTileEvent(state: GameState): GameState {
       return { ...state, turnPhase: 'END_TURN' };
 
     case 'GO_TO_JAIL':
-      return resolveGoToJail(state, player);
+      return resolveGoToJail(state);
 
     case 'JAIL':
       // "Just Visiting"
@@ -584,7 +579,7 @@ function transferRent(state: GameState, rent: number): GameState {
 
 // ---- TAX ----
 
-function resolveTaxTile(state: GameState, player: PlayerState, tileIndex: number): GameState {
+function resolveTaxTile(state: GameState, tileIndex: number): GameState {
   const tile = BOARD_TILES[tileIndex];
   const taxAmount = tile.name === 'Cukai Mewah' ? LUXURY_TAX_AMOUNT : TAX_AMOUNT;
 
@@ -837,7 +832,7 @@ function resolveLuckyBreak(state: GameState, player: PlayerState): GameState {
 
 // ---- JAIL ----
 
-function resolveGoToJail(state: GameState, player: PlayerState): GameState {
+function resolveGoToJail(state: GameState): GameState {
   // Go directly to jail — turn ends. Jail decision happens on player's NEXT turn.
   return {
     ...sendToJail(state, state.currentPlayerIndex),
@@ -1081,7 +1076,7 @@ export function processLevelUpAnswer(
   let updatedProperties = state.properties;
 
   const reward: RewardResult = isCorrect
-    ? { type: 'LEVEL_UP', value: 0, description: `${event.tileName} leveled up! ⭐ Rent increased!` }
+    ? { type: 'LEVEL_UP', value: 0, description: `${event.tileName} leveled up — rent increased!` }
     : { type: 'NONE', value: 0, description: 'Level Up failed. Try again next turn!' };
 
   if (isCorrect) {
@@ -1137,6 +1132,16 @@ export function endTurn(state: GameState, skipLevelUpCheck?: boolean): GameState
 
   // Check bankruptcy
   let updatedState = checkBankruptcy(state);
+
+  // Once the wall-clock cap is hit we finish the current lap, then stop. This is
+  // a flag on the state, not a game-over — returning early here used to skip the
+  // turn advance and strand the current player in END_TURN.
+  if (!updatedState.isFinalRound) {
+    const elapsedMinutes = (Date.now() - updatedState.gameStartTime) / (1000 * 60);
+    if (elapsedMinutes >= CLOCK_CAP_MINUTES) {
+      updatedState = { ...updatedState, isFinalRound: true };
+    }
+  }
 
   // Check game end conditions
   const gameEnd = checkGameEnd(updatedState);
@@ -1216,6 +1221,7 @@ function checkBankruptcy(state: GameState): GameState {
   return { ...state, players: updatedPlayers, properties: updatedProperties };
 }
 
+/** Returns a FINISHED state if the game is over, otherwise null. */
 function checkGameEnd(state: GameState): GameState | null {
   const activePlayers = getActivePlayers(state);
 
@@ -1229,16 +1235,15 @@ function checkGameEnd(state: GameState): GameState | null {
     return { ...state, phase: 'FINISHED' };
   }
 
-  // Clock cap
-  const elapsedMs = Date.now() - state.gameStartTime;
-  const elapsedMinutes = elapsedMs / (1000 * 60);
-  if (elapsedMinutes >= CLOCK_CAP_MINUTES && !state.isFinalRound) {
-    return { ...state, isFinalRound: true };
-  }
-
-  // Final round complete
-  if (state.isFinalRound && state.currentPlayerIndex === state.players.length - 1) {
-    return { ...state, phase: 'FINISHED' };
+  // Clock cap reached and the last active player has now had their turn
+  if (state.isFinalRound) {
+    const lastActiveIdx = state.players.reduce(
+      (last, p, i) => (p.isBankrupt ? last : i),
+      -1
+    );
+    if (state.currentPlayerIndex >= lastActiveIdx) {
+      return { ...state, phase: 'FINISHED' };
+    }
   }
 
   return null;
@@ -1364,5 +1369,6 @@ function buildAnswerResult(
     streakCount: isCorrect ? player.streak + 1 : 0,
     streakBroken: !isCorrect && player.streak > 0,
     showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
+    timedOut: false,
   };
 }

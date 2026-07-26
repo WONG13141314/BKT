@@ -4,7 +4,7 @@ import { socketOptions } from '../config/socket';
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
-import { prisma } from '../config/db';
+import { authService, toPublicPlayer } from '../features/auth/auth.service';
 import { registerLobbyHandlers } from './lobby.handlers';
 import { registerGameHandlers } from './game.handlers';
 
@@ -16,28 +16,28 @@ export const initializeSocket = (server: HttpServer) => {
       const token = socket.handshake.auth.token;
       if (!token) return next(new Error('Authentication error'));
 
-      const decoded = jwt.verify(token, env.JWT_SECRET as string) as { userId: string };
-      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      const decoded = jwt.verify(token, env.JWT_SECRET as string) as { playerId?: string };
+      if (!decoded.playerId) return next(new Error('Authentication error'));
 
-      if (!user) return next(new Error('User not found'));
+      const player = await authService.findById(decoded.playerId);
+      if (!player) return next(new Error('Profile no longer exists'));
 
-      // Attach user to socket data
-      socket.data.user = user;
+      socket.data.player = toPublicPlayer(player);
       next();
-    } catch (err) {
+    } catch {
       next(new Error('Authentication error'));
     }
   });
 
   io.on('connection', (socket) => {
-    console.log(`🔌 New client connected: ${socket.id} (User: ${socket.data.user.name})`);
+    console.log(`Client connected: ${socket.id} (${socket.data.player.displayName})`);
 
     // Register handlers
     registerLobbyHandlers(io, socket);
     registerGameHandlers(io, socket);
 
     socket.on('disconnect', () => {
-      console.log(`🔌 Client disconnected: ${socket.id}`);
+      console.log(`Client disconnected: ${socket.id}`);
     });
   });
 

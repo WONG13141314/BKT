@@ -6,14 +6,6 @@
   padding: 0.75rem 1rem;
 }
 
-.division-header-title {
-  font-size: 1.35rem;
-  font-weight: 900;
-  color: #000;
-  font-family: 'Courier New', Courier, monospace;
-  text-align: center;
-}
-
 .ld-container {
   background: #fff;
   border: 3px solid #000;
@@ -99,6 +91,13 @@
   color: #000;
   justify-content: center;
   width: 36px; /* Align under divisor column */
+}
+
+/* Staircase — one block per completed step */
+.ld-steps,
+.ld-step {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Step Digits */

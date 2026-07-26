@@ -1,0 +1,49 @@
+.challenge-timer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.challenge-timer__track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+}
+
+.challenge-timer__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 200ms linear, background-color 300ms ease;
+}
+
+.challenge-timer__fill--normal {
+  background: #2e8b57;
+}
+
+.challenge-timer__fill--low {
+  background: #d97706;
+}
+
+.challenge-timer__fill--critical {
+  background: #dc2626;
+}
+
+.challenge-timer__value {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.challenge-timer__value--low {
+  color: #b45309;
+}
+
+.challenge-timer__value--critical {
+  color: #b91c1c;
+}

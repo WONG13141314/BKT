@@ -1,11 +1,14 @@
+import { PlayerProvider } from './features/auth/PlayerContext';
 import { AppRouter } from './routes/AppRouter';
 import { SocketProvider } from './shared/contexts/SocketContext';
 
 function App() {
   return (
-    <SocketProvider>
-      <AppRouter />
-    </SocketProvider>
+    <PlayerProvider>
+      <SocketProvider>
+        <AppRouter />
+      </SocketProvider>
+    </PlayerProvider>
   );
 }
 

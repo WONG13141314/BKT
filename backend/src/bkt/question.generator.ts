@@ -4,7 +4,13 @@
 // 100% Vertical Column Layout & Step-by-Step Long Division
 // ============================================
 
-import { ColumnQuestion, LongDivisionQuestion, LongDivisionStep, QuestionData } from '../features/game/game.types';
+import {
+  ColumnQuestion,
+  DivisionTarget,
+  LongDivisionQuestion,
+  LongDivisionStep,
+  QuestionData,
+} from '../features/game/game.types';
 
 // ---- Public Interface ----
 
@@ -477,115 +483,127 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
 // 4. DIVISION — Step-by-Step Long Division format
 // ============================================
 
+/** Walk the long-division algorithm one dividend column at a time. */
+function buildDivisionSteps(dividend: number, divisor: number): LongDivisionStep[] {
+  const steps: LongDivisionStep[] = [];
+  const digits = String(dividend);
+  let currentVal = 0;
+
+  for (let i = 0; i < digits.length; i++) {
+    currentVal = currentVal * 10 + parseInt(digits[i], 10);
+    const quotientDigit = Math.floor(currentVal / divisor);
+    const product = quotientDigit * divisor;
+    const subtractionResult = currentVal - product;
+    steps.push({
+      quotientDigit,
+      product,
+      subtractionResult,
+      broughtDownDigit: i + 1 < digits.length ? parseInt(digits[i + 1], 10) : null,
+    });
+    currentVal = subtractionResult;
+  }
+
+  return steps;
+}
+
+/**
+ * Steps the player can be asked to complete: not a leading column the divisor
+ * doesn't go into, since those are skipped when writing the algorithm by hand.
+ */
+function solvableStepIndices(steps: LongDivisionStep[]): number[] {
+  const first = steps.findIndex((s) => s.quotientDigit > 0);
+  if (first < 0) return [steps.length - 1];
+  return steps.map((_, i) => i).filter((i) => i >= first);
+}
+
 function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let divisor: number;
   let quotient: number;
   let dividend: number;
-  let missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
-  let targetAnswer: number;
-  let text = '';
-  let isDigitTarget = true;
-  let missingBroughtStepIdx: number | undefined;
-  let needsStepCompute = false;
 
   switch (difficulty) {
-    case 1: {
-      // Easy: Basic vertical division missing final quotient digit (3 | 66 = 3?)
+    case 1:
+      // Easy: two-digit quotient, divides exactly.
       divisor = randInt(2, 5);
-      quotient = randInt(11, 33);
+      quotient = randInt(11, 49);
       dividend = divisor * quotient;
-      missingTarget = 'quotient_digit';
-      // Frontend always hides the LAST quotient digit
-      targetAnswer = quotient % 10;
-      text = `${dividend} ÷ ${divisor} = quotient missing digit (?)`;
       break;
-    }
-    case 2: {
-      // Medium: Step-by-step missing last quotient digit or brought-down digit
-      divisor = randInt(2, 5);
-      quotient = randInt(111, 333);
+    case 2:
+      // Medium: three-digit quotient, divides exactly.
+      divisor = randInt(2, 4);
+      quotient = randInt(101, 249);
       dividend = divisor * quotient;
-      missingTarget = Math.random() > 0.5 ? 'quotient_digit' : 'brought_down_digit';
-      if (missingTarget === 'quotient_digit') {
-        // Frontend always hides the LAST quotient digit
-        targetAnswer = quotient % 10;
-      } else {
-        // brought_down_digit: use the last digit of the dividend that gets brought down
-        // Pick a valid step that has a broughtDownDigit (not the last step)
-        const divStr = String(dividend);
-        const lastBroughtIdx = divStr.length - 2; // second-to-last step has a brought-down digit
-        targetAnswer = parseInt(divStr[divStr.length - 1], 10);
-        missingBroughtStepIdx = Math.max(0, lastBroughtIdx);
-      }
-      text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
       break;
-    }
-    case 3: {
-      // Hard: Step-by-step division missing intermediate subtraction result or final remainder
-      divisor = randInt(3, 6);
-      quotient = randInt(12, 45);
-      const remainder = randInt(0, divisor - 1);
-      dividend = divisor * quotient + remainder;
-      missingTarget = Math.random() > 0.5 ? 'subtraction_result' : 'remainder';
-      if (missingTarget === 'remainder') {
-        targetAnswer = remainder;
-      } else {
-        // Will be computed after steps are generated
-        targetAnswer = 0;
-        needsStepCompute = true;
-      }
-      isDigitTarget = false;
-      text = `Long division: missing ${missingTarget} in ${dividend} ÷ ${divisor}`;
+    case 3:
+      // Hard: leaves a remainder.
+      divisor = randInt(3, 7);
+      quotient = randInt(12, 89);
+      dividend = divisor * quotient + randInt(1, divisor - 1);
+      quotient = Math.floor(dividend / divisor);
       break;
-    }
     default:
-      divisor = 3; quotient = 113; dividend = 339;
-      missingTarget = 'quotient_digit'; targetAnswer = 3;
-      text = '339 ÷ 3 = ?';
+      divisor = 3;
+      quotient = 113;
+      dividend = 339;
   }
 
-  const steps: LongDivisionStep[] = [];
-  const divStr = String(dividend);
-  let currentVal = 0;
-  for (let i = 0; i < divStr.length; i++) {
-    const d = parseInt(divStr[i], 10);
-    currentVal = currentVal * 10 + d;
-    const qDigit = Math.floor(currentVal / divisor);
-    const prod = qDigit * divisor;
-    const subRes = currentVal - prod;
-    const nextDigit = i + 1 < divStr.length ? parseInt(divStr[i + 1], 10) : null;
-    steps.push({
-      quotientDigit: qDigit,
-      product: prod,
-      subtractionResult: subRes,
-      broughtDownDigit: nextDigit,
-    });
-    currentVal = subRes;
+  const steps = buildDivisionSteps(dividend, divisor);
+  const remainder = dividend % divisor;
+  const solvable = solvableStepIndices(steps);
+  const lastStep = steps.length - 1;
+
+  // Choose what the player supplies. `brought_down_digit` used to be an option
+  // but the answer is printed in the dividend right above it, so it tested
+  // nothing — `product` replaces it and exercises multiplication inside division.
+  const candidates: DivisionTarget[] = [];
+  if (difficulty === 1) {
+    candidates.push('quotient_digit');
+  } else if (difficulty === 2) {
+    candidates.push('quotient_digit', 'product');
+  } else {
+    candidates.push('subtraction_result', 'product');
+    if (remainder > 0) candidates.push('remainder');
+  }
+  const missingTarget = candidates[randInt(0, candidates.length - 1)];
+
+  // `quotient_digit` and `remainder` are pinned to the final step; the others
+  // pick any step whose work is actually written down.
+  let missingStepIndex: number;
+  if (missingTarget === 'quotient_digit' || missingTarget === 'remainder') {
+    missingStepIndex = lastStep;
+  } else {
+    missingStepIndex = solvable[randInt(0, solvable.length - 1)];
   }
 
-  // Compute missingStepIndex dynamically
-  let computedStepIndex = steps.length - 1; // default to last step
-  if (missingTarget === 'quotient_digit') {
-    computedStepIndex = steps.length - 1; // last step = last quotient digit
-  } else if (missingTarget === 'brought_down_digit') {
-    computedStepIndex = missingBroughtStepIdx ?? Math.max(0, steps.length - 2);
-  } else if (missingTarget === 'subtraction_result') {
-    // Pick a step with a non-trivial subtraction result (prefer step index 1 if available)
-    computedStepIndex = steps.length > 1 ? 1 : 0;
-    if (needsStepCompute) {
-      targetAnswer = steps[computedStepIndex].subtractionResult;
-    }
+  const step = steps[missingStepIndex];
+  let targetAnswer: number;
+  let isDigitTarget = false;
+
+  switch (missingTarget) {
+    case 'quotient_digit':
+      targetAnswer = step.quotientDigit;
+      isDigitTarget = true;
+      break;
+    case 'product':
+      targetAnswer = step.product;
+      break;
+    case 'subtraction_result':
+      targetAnswer = step.subtractionResult;
+      break;
+    case 'remainder':
+      targetAnswer = remainder;
+      break;
   }
 
-  const longDivisionData: LongDivisionQuestion = {
+  const questionData: LongDivisionQuestion = {
     type: 'long_division',
     divisor,
     dividend,
     quotient,
-    remainder: dividend % divisor,
+    remainder,
     steps,
     missingTarget,
-    missingStepIndex: computedStepIndex,
+    missingStepIndex,
   };
 
   const { options, correctIndex } = isDigitTarget
@@ -593,8 +611,8 @@ function generateDivision(difficulty: 1 | 2 | 3): GeneratedQuestion {
     : makeOptions(targetAnswer, String, 3);
 
   return {
-    questionData: longDivisionData,
-    text,
+    questionData,
+    text: `${dividend} ÷ ${divisor} — supply the ${missingTarget.replace(/_/g, ' ')}`,
     options,
     correctIndex,
     difficulty,

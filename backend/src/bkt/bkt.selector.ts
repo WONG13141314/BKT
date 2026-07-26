@@ -1,7 +1,7 @@
 // ============================================
-// BKT Question Selector — Redesigned
-// 4 Skills: Addition, Subtraction, PlaceValue, Money
-// New challenge contexts matching the redesigned turn flow
+// BKT Question Selector
+// 4 Skills: Addition, Subtraction, Multiplication, Division
+// Picks the skill, the difficulty and the hint level for a game context.
 // ============================================
 
 import { ChallengeContext, MathChallenge, QuestionData } from '../features/game/game.types';
@@ -67,19 +67,19 @@ export function determineHint(
   if (consecutiveFailures >= 3 || pMastery < 0.15) {
     return {
       level: 3,
-      content: `💡 Let's work through an example together! Take your time with ${skillName}.`,
+      content: `Let's work through an example together. Take your time with ${skillName}.`,
     };
   }
   if (consecutiveFailures >= 2) {
     return {
       level: 2,
-      content: `💡 Hint: Try breaking this problem into smaller steps!`,
+      content: `Try breaking this problem into smaller steps.`,
     };
   }
   if (consecutiveFailures >= 1) {
     return {
       level: 1,
-      content: `💡 You can do this! Think carefully about ${skillName}.`,
+      content: `Take it one column at a time — think about ${skillName}.`,
     };
   }
   return { level: 0, content: null };
@@ -208,6 +208,7 @@ function buildChallenge(
     correctIndex: generated.correctIndex,
     context,
     timeLimit: getTimeLimit(difficulty),
+    startedAt: Date.now(),
     hintLevel: hint.level,
     hintContent: hint.content,
   };

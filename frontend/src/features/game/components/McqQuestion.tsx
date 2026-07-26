@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { McqQuestion as McqQuestionData } from '../types/game.types';
+import { ChallengeTimer } from './ChallengeTimer';
 import './ColumnQuestion.css'; // Reuse option styling
 
 interface Props {
@@ -7,11 +8,20 @@ interface Props {
   options: string[];
   onAnswer: (selectedIndex: number) => void;
   disabled?: boolean;
+  expiresAt: number;
   timeLimit: number;
   hintContent?: string | null;
 }
 
-export function McqQuestion({ question, options, onAnswer, disabled, timeLimit, hintContent }: Props) {
+export function McqQuestion({
+  question,
+  options,
+  onAnswer,
+  disabled,
+  expiresAt,
+  timeLimit,
+  hintContent,
+}: Props) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
 
@@ -24,22 +34,19 @@ export function McqQuestion({ question, options, onAnswer, disabled, timeLimit, 
 
   return (
     <div className="column-question">
-      {/* Question text */}
+      <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />
+
       <div className="mcq-text">{question.text}</div>
 
-      {/* Hint */}
-      {hintContent && (
-        <div className="column-hint">{hintContent}</div>
-      )}
+      {hintContent && <div className="column-hint">{hintContent}</div>}
 
-      {/* MCQ Options */}
       <div className="column-options">
         {options.map((opt, idx) => (
           <button
             key={idx}
-            className={`column-option ${
-              selectedOption === idx ? 'selected' : ''
-            } ${answered ? 'disabled' : ''}`}
+            className={`column-option ${selectedOption === idx ? 'selected' : ''} ${
+              answered ? 'disabled' : ''
+            }`}
             onClick={() => handleSelect(idx)}
             disabled={disabled || answered}
           >

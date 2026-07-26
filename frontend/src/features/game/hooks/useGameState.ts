@@ -43,7 +43,7 @@ export function useGameState(myPlayerId: string): UseGameStateReturn {
   }, [gameState]);
 
   const isMyTurn = useMemo(() => {
-    return currentPlayer?.userId === myPlayerId || currentPlayer?.id === myPlayerId;
+    return currentPlayer?.playerId === myPlayerId || currentPlayer?.id === myPlayerId;
   }, [currentPlayer, myPlayerId]);
 
   const currentChallenge = gameState?.currentChallenge ?? null;

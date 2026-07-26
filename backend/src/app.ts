@@ -4,7 +4,6 @@ import { env } from './config/env';
 import { corsOptions } from './config/cors';
 
 import { authRoutes } from './features/auth/auth.routes';
-import { userRoutes } from './features/users/user.routes';
 import gameRoutes from './features/game/game.routes';
 
 export const app = express();
@@ -15,7 +14,6 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
 app.use('/api/games', gameRoutes);
 
 // Basic health check route

@@ -1,5 +1,9 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Math Monopoly — database schema
+//
+// Scope note: live game state (positions, money, properties, turn phase) is NOT
+// stored here. It lives in memory in `game.service.ts` for the duration of a
+// match. Postgres holds the things that must outlive a match: who the player is,
+// what the BKT engine believes about them, and the evidence behind that belief.
 
 generator client {
   provider = "prisma-client-js"
@@ -7,59 +11,58 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Pooled connection (Neon: the "-pooler" host) used at runtime.
+  url       = env("DATABASE_URL")
+  // Direct, unpooled connection used for migrations. PgBouncer cannot run them.
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================
 // Enums
 // ============================================
 
-enum Role {
-  STUDENT
+enum PlayerRole {
+  PLAYER
   ADMIN
-  GUEST
-}
-
-enum TileType {
-  GO
-  PROPERTY
-  COMMUNITY_CHEST
-  TAX
-  CHANCE
-  FREE_PARKING
-  JAIL
-  GO_TO_JAIL
 }
 
 enum GameStatus {
-  LOBBY
   PLAYING
   FINISHED
+  ABANDONED
 }
 
 // ============================================
-// User & Authentication
+// Identity
+//
+// Anonymous-first. A Player row is created the first time someone types a
+// nickname and is then remembered on that device forever. Claiming a username
+// and PIN is optional and only exists to move a profile between devices.
 // ============================================
 
-model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String?  @unique
-  password  String?
-  role      Role     @default(STUDENT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Player {
+  id          String     @id @default(uuid())
+  displayName String
+  avatar      String     @default("tophat")
+  role        PlayerRole @default(PLAYER)
 
-  // Relations
+  // Optional cross-device claim. Null until the player opts in.
+  username  String? @unique
+  pinHash   String?
+  isClaimed Boolean @default(false)
+
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
   masteryStates    MasteryState[]
   questionAttempts QuestionAttempt[]
   gamePlayers      GamePlayer[]
 
-  @@map("users")
+  @@map("players")
 }
 
 // ============================================
-// Skills & Questions
+// Skills & the learner model
 // ============================================
 
 model Skill {
@@ -68,124 +71,112 @@ model Skill {
   description String?
   createdAt   DateTime @default(now())
 
-  // Relations
-  questions     Question[]
-  masteryStates MasteryState[]
+  masteryStates    MasteryState[]
+  questionAttempts QuestionAttempt[]
 
   @@map("skills")
 }
 
-model Question {
-  id            String   @id @default(uuid())
-  text          String
-  options       String[] // Array of answer choices
-  correctIndex  Int      // Index of correct answer in options array
-  difficulty    Int      @default(1) // 1 = easy, 2 = medium, 3 = hard
-  skillId       String
-  createdAt     DateTime @default(now())
+/// One BKT chain per (player, skill). This is what makes the game adaptive
+/// across sessions rather than resetting every match.
+model MasteryState {
+  id       String @id @default(uuid())
+  playerId String
+  skillId  String
 
-  // Relations
-  skill    Skill             @relation(fields: [skillId], references: [id])
-  attempts QuestionAttempt[]
+  pMastery Float @default(0.1) // P(L) — probability the player knows the skill
+  attempts Int   @default(0)
+  correct  Int   @default(0)
 
-  @@map("questions")
+  lastPracticedAt DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  skill  Skill  @relation(fields: [skillId], references: [id])
+
+  @@unique([playerId, skillId])
+  @@map("mastery_states")
 }
 
+/// Self-contained record of one answered question.
+///
+/// Questions are generated at runtime, so there is no question bank to point at
+/// — the generated item is stored inline instead. `pMasteryBefore` and
+/// `predictedPCorrect` are the model's prediction *before* it saw the answer and
+/// cannot be reconstructed afterwards, so they are written at answer time.
 model QuestionAttempt {
-  id         String   @id @default(uuid())
-  userId     String
-  questionId String
-  gameId     String?
-  isCorrect  Boolean
-  timeMs     Int?      // Time taken to answer in milliseconds
-  context    String?   // Game context: 'ROLL_DICE', 'BUY_PROPERTY', etc.
-  hintLevel  Int       @default(0) // 0 = no hint, 1-3 = hint levels
-  answeredAt DateTime  @default(now())
+  id       String  @id @default(uuid())
+  playerId String
+  skillId  String
+  gameId   String?
 
-  // Relations
-  user     User     @relation(fields: [userId], references: [id])
-  question Question @relation(fields: [questionId], references: [id])
+  difficulty Int
+  context    String // ROLL_CHALLENGE / SMART_BUY / RENT_DEFENSE / ...
 
+  questionData   Json
+  correctAnswer  String
+  selectedAnswer String? // null when the player ran out of time
+  isCorrect      Boolean
+  timedOut       Boolean @default(false)
+
+  timeMs    Int?
+  hintLevel Int  @default(0)
+
+  pMasteryBefore    Float
+  pMasteryAfter     Float
+  predictedPCorrect Float // pL·(1−pS) + (1−pL)·pG
+  opportunityIndex  Int // 1,2,3… per (player, skill) — the x-axis of a learning curve
+
+  answeredAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  skill  Skill  @relation(fields: [skillId], references: [id])
+
+  @@index([playerId, skillId, opportunityIndex])
+  @@index([gameId])
   @@map("question_attempts")
 }
 
 // ============================================
-// BKT Mastery Tracking
-// ============================================
-
-model MasteryState {
-  id        String   @id @default(uuid())
-  userId    String
-  skillId   String
-  pMastery  Float    @default(0.1) // P(L) — probability of mastery
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user  User  @relation(fields: [userId], references: [id])
-  skill Skill @relation(fields: [skillId], references: [id])
-
-  @@unique([userId, skillId])
-  @@map("mastery_states")
-}
-
-// ============================================
-// Game Sessions
+// Match history
+//
+// A finished-game snapshot for the profile page. Not a live mirror of game state.
 // ============================================
 
 model Game {
-  id        String     @id @default(uuid())
-  status    GameStatus @default(LOBBY)
-  round     Int        @default(0)   // Current round (1-20)
-  maxRounds Int        @default(20)  // Total rounds before game ends
+  id        String     @id // "game_<ROOMCODE>"
+  roomCode  String
+  status    GameStatus @default(PLAYING)
+  round     Int        @default(0)
+  maxRounds Int        @default(12)
   createdAt DateTime   @default(now())
   endedAt   DateTime?
 
-  // Relations
-  players    GamePlayer[]
-  properties GameProperty[]
+  players GamePlayer[]
 
+  @@index([roomCode])
   @@map("games")
 }
 
 model GamePlayer {
-  id             String  @id @default(uuid())
-  gameId         String
-  userId         String
-  position       Int     @default(0)
-  money          Int     @default(1000)  // Starting money $1,000
-  color          String
-  order          Int     // Turn order (0-3)
-  isInJail       Boolean @default(false)
-  jailTurns      Int     @default(0)     // Turns spent in jail (0-3)
-  isInDebt       Boolean @default(false)
-  streak         Int     @default(0)     // Consecutive correct answers
-  totalCorrect   Int     @default(0)
-  totalQuestions  Int     @default(0)
-  movementTokens Int     @default(0)     // Saved +1 movement bonuses
+  id       String  @id @default(uuid())
+  gameId   String
+  playerId String? // null for bots
 
-  // Relations
-  game Game @relation(fields: [gameId], references: [id])
-  user User @relation(fields: [userId], references: [id])
+  name      String
+  isBot     Boolean @default(false)
+  color     String
+  turnOrder Int
 
-  @@unique([gameId, userId])
+  finalCash      Int  @default(0)
+  finalNetWorth  Int  @default(0)
+  rank           Int?
+  totalCorrect   Int  @default(0)
+  totalQuestions Int  @default(0)
+
+  game   Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player Player? @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@unique([gameId, turnOrder])
   @@map("game_players")
-}
-
-// ============================================
-// In-Game Property Ownership
-// ============================================
-
-model GameProperty {
-  id        String  @id @default(uuid())
-  gameId    String
-  tileIndex Int     // Board position (0-27)
-  ownerId   String? // GamePlayer id who owns this property
-  houses    Int     @default(0) // 0-4 houses
-  hasHotel  Boolean @default(false)
-
-  // Relations
-  game Game @relation(fields: [gameId], references: [id])
-
-  @@unique([gameId, tileIndex])
-  @@map("game_properties")
 }

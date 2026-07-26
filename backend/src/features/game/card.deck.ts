@@ -55,7 +55,7 @@ export const CHALLENGE_CARDS: ChallengeCard[] = [
   {
     id: 7,
     name: 'Nasib Baik!',
-    description: 'Lucky you! Gain a free Level Up token! ⭐',
+    description: 'Lucky you! Gain a free Level Up token.',
     isMathCard: false,
     effect: { type: 'FREE_LEVEL_UP_TOKEN' },
   },

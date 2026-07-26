@@ -50,7 +50,7 @@ export interface ColorGroup {
 
 export interface PlayerState {
   id: string;
-  userId: string;
+  playerId: string;
   name: string;
   position: number;             // Tile index (0–19)
   money: number;                // In RM
@@ -133,6 +133,12 @@ export interface LongDivisionStep {
   broughtDownDigit: number | null;
 }
 
+export type DivisionTarget =
+  | 'quotient_digit'
+  | 'product'
+  | 'subtraction_result'
+  | 'remainder';
+
 export interface LongDivisionQuestion {
   type: 'long_division';
   divisor: number;
@@ -140,8 +146,9 @@ export interface LongDivisionQuestion {
   quotient: number;
   remainder: number;
   steps: LongDivisionStep[];
-  missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
-  missingStepIndex?: number;
+  missingTarget: DivisionTarget;
+  /** Index into `steps` of the step the player must complete. */
+  missingStepIndex: number;
 }
 
 /** Standard multiple-choice fallback */
@@ -160,11 +167,82 @@ export interface MathChallenge {
   skillName: SkillName;
   difficulty: 1 | 2 | 3;
   questionData: QuestionData;   // Structured data for rendering
-  text: string;                 // Fallback inline text (e.g. "45 + 23 = ?")
+  text: string;                 // Server-side debug/logging text — never sent to clients
   options: string[];            // 4 MCQ answer options
   correctIndex: number;
   context: ChallengeContext;
   timeLimit: number;            // Seconds
+  startedAt: number;            // Unix ms — when the challenge was issued
+  hintLevel: 0 | 1 | 2 | 3;
+  hintContent: string | null;
+}
+
+// ============================================
+// Client-safe payloads
+//
+// `MathChallenge` and `QuestionData` carry the answer. They must never reach a
+// browser: not via `correctIndex`, not via `answer`/`answerDigits`, not via
+// `quotient`/`remainder`/`steps`, and not via `text` (which interpolates the
+// operands for internal-digit questions). Everything below is the redacted
+// projection the client actually receives — see `challenge.public.ts`.
+// ============================================
+
+/** One cell in a vertical layout: '' = blank, '?' = the value to supply, else a digit. */
+export type DigitCell = string;
+
+export type ColumnPlace = 'hundreds' | 'tens' | 'ones';
+
+export interface PublicColumnQuestion {
+  type: 'column';
+  operation: '+' | '-' | '×';
+  columns: ColumnPlace[];       // Left-to-right; every cell array is parallel to this
+  topCells: DigitCell[];
+  bottomCells: DigitCell[];
+  answerCells: DigitCell[];
+  /** When a whole value is the target, its row renders as one wide '?' box. */
+  hiddenRow: 'top' | 'bottom' | 'answer' | null;
+  /** Carry/borrow scaffold. Only sent when the target is the final answer. */
+  hasRegrouping: boolean;
+}
+
+export interface PublicDivisionStep {
+  productCells: DigitCell[];    // Padded to the dividend width
+  showMinus: boolean;
+  lineFrom: number;             // Inclusive dividend-column span of the underline
+  lineTo: number;
+  /** null = the work stops here; this row is not drawn. */
+  resultCells: DigitCell[] | null;
+}
+
+export interface PublicLongDivisionQuestion {
+  type: 'long_division';
+  divisor: number;
+  dividendCells: DigitCell[];
+  quotientCells: DigitCell[];
+  steps: PublicDivisionStep[];
+  /** null = no remainder row is drawn. */
+  remainderCell: DigitCell | null;
+}
+
+export interface PublicMcqQuestion {
+  type: 'mcq';
+  text: string;
+}
+
+export type PublicQuestionData =
+  | PublicColumnQuestion
+  | PublicLongDivisionQuestion
+  | PublicMcqQuestion;
+
+export interface PublicMathChallenge {
+  id: string;
+  skillName: SkillName;
+  difficulty: 1 | 2 | 3;
+  questionData: PublicQuestionData;
+  options: string[];
+  context: ChallengeContext;
+  timeLimit: number;            // Seconds
+  expiresAt: number;            // Unix ms — client drives its countdown from this
   hintLevel: 0 | 1 | 2 | 3;
   hintContent: string | null;
 }
@@ -180,6 +258,8 @@ export interface AnswerResult {
   streakCount: number;
   streakBroken: boolean;
   showHintNext: boolean;
+  /** True when the server auto-submitted because the timer ran out. */
+  timedOut: boolean;
 }
 
 // ---- Rewards ----

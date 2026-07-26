@@ -109,16 +109,19 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
           }
         } else if (q.questionData.type === 'long_division') {
           const ld = q.questionData;
+          const step = ld.steps[ld.missingStepIndex];
+
+          // The algorithm itself must be internally consistent
+          expect(ld.divisor * ld.quotient + ld.remainder).toBe(ld.dividend);
+
           if (ld.missingTarget === 'quotient_digit') {
-            expect(chosenOption).toBe(ld.quotient % 10);
+            expect(chosenOption).toBe(step.quotientDigit);
+          } else if (ld.missingTarget === 'product') {
+            expect(chosenOption).toBe(step.product);
+          } else if (ld.missingTarget === 'subtraction_result') {
+            expect(chosenOption).toBe(step.subtractionResult);
           } else if (ld.missingTarget === 'remainder') {
             expect(chosenOption).toBe(ld.remainder);
-          } else if (ld.missingTarget === 'subtraction_result') {
-            const stepIdx = ld.missingStepIndex ?? 0;
-            expect(chosenOption).toBe(ld.steps[stepIdx].subtractionResult);
-          } else if (ld.missingTarget === 'brought_down_digit') {
-            const stepIdx = ld.missingStepIndex ?? 0;
-            expect(chosenOption).toBe(ld.steps[stepIdx].broughtDownDigit);
           }
         }
       }

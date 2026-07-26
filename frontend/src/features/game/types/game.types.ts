@@ -77,7 +77,7 @@ export interface ColorGroup {
 
 export interface Player {
   id: string;
-  userId: string;
+  playerId: string;
   name: string;
   position: number;
   money: number;
@@ -126,45 +126,44 @@ export type ChallengeContext =
   | 'LEVEL_UP';
 
 // ---- Question Data Models ----
+//
+// These mirror the server's *public* payloads. The full question — operands,
+// answer, quotient, step results — never leaves the server, so the client only
+// ever receives pre-laid-out cells. See backend `challenge.public.ts`.
+
+/** One cell in a vertical layout: '' = blank, '?' = the value to supply, else a digit. */
+export type DigitCell = string;
+
+export type ColumnPlace = 'hundreds' | 'tens' | 'ones';
 
 export interface ColumnQuestion {
   type: 'column';
   operation: '+' | '-' | '×';
-  topNumber: number;
-  bottomNumber: number;
-  placeValues: {
-    hundreds?: { top: number | null; bottom: number | null };
-    tens: { top: number; bottom: number };
-    ones: { top: number; bottom: number };
-  };
-  answer: number;
+  columns: ColumnPlace[];
+  topCells: DigitCell[];
+  bottomCells: DigitCell[];
+  answerCells: DigitCell[];
+  /** When a whole value is the target, that row renders as one wide '?' box. */
+  hiddenRow: 'top' | 'bottom' | 'answer' | null;
   hasRegrouping: boolean;
-  answerDigits: {
-    hundreds?: number | null;
-    tens: number;
-    ones: number;
-  };
-  missingPosition: 'answer' | 'top_operand' | 'bottom_operand' | 'internal_digit';
-  missingDigitPlace?: 'hundreds' | 'tens' | 'ones';
-  missingDigitRow?: 'top' | 'bottom';
 }
 
-export interface LongDivisionStep {
-  quotientDigit: number;
-  product: number;
-  subtractionResult: number;
-  broughtDownDigit: number | null;
+export interface DivisionStep {
+  productCells: DigitCell[];
+  showMinus: boolean;
+  lineFrom: number;
+  lineTo: number;
+  /** null = the work stops here; this row is not drawn. */
+  resultCells: DigitCell[] | null;
 }
 
 export interface LongDivisionQuestion {
   type: 'long_division';
   divisor: number;
-  dividend: number;
-  quotient: number;
-  remainder: number;
-  steps: LongDivisionStep[];
-  missingTarget: 'quotient_digit' | 'brought_down_digit' | 'subtraction_result' | 'remainder';
-  missingStepIndex?: number;
+  dividendCells: DigitCell[];
+  quotientCells: DigitCell[];
+  steps: DivisionStep[];
+  remainderCell: DigitCell | null;
 }
 
 export interface McqQuestion {
@@ -181,11 +180,11 @@ export interface MathChallenge {
   skillName: SkillName;
   difficulty: 1 | 2 | 3;
   questionData: QuestionData;
-  text: string;
   options: string[];
-  correctIndex: number;
   context: ChallengeContext;
   timeLimit: number;
+  /** Unix ms. The countdown is driven by this, not by a client-side start time. */
+  expiresAt: number;
   hintLevel: 0 | 1 | 2 | 3;
   hintContent: string | null;
 }
@@ -198,6 +197,8 @@ export interface AnswerResult {
   reward: RewardResult;
   streakCount: number;
   streakBroken: boolean;
+  /** True when the server auto-submitted because the timer ran out. */
+  timedOut?: boolean;
   showHintNext: boolean;
 }
 

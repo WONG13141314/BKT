@@ -11,6 +11,7 @@ import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { BOARD_TILES } from '../config/board.config';
+import { usePlayer } from '../../auth/PlayerContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import {
@@ -41,16 +42,8 @@ export function GamePage() {
   const roomCode = searchParams.get('code');
   const gameId = roomCode ? `game_${roomCode}` : null;
 
-  const myUserId = (() => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return '';
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.userId;
-    } catch {
-      return '';
-    }
-  })();
+  const { player } = usePlayer();
+  const myPlayerId = player?.id ?? '';
 
   const {
     gameState,
@@ -64,7 +57,7 @@ export function GamePage() {
     setFinalScores,
     addNotification,
     dismissNotification,
-  } = useGameState(myUserId);
+  } = useGameState(myPlayerId);
 
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
@@ -119,15 +112,24 @@ export function GamePage() {
     },
     onAnswerResult: (data) => {
       setAnswerResult(data.result);
-      const isCorrect = data.result.isCorrect;
-      const type = isCorrect ? 'reward' : 'penalty';
-      const desc = data.result.reward.description ? ` (${data.result.reward.description})` : '';
-      const msg = isCorrect
-        ? `Correct${desc}`
-        : `Incorrect — answer was ${data.result.correctAnswer}${desc}`;
-      addNotification(type, msg);
 
-      // If answering dice challenge, hold feedback briefly before closing & allowing movement
+      const { isCorrect, timedOut, correctAnswer } = data.result;
+      // Onlookers receive the outcome only — no reward or answer details.
+      const desc = data.result.reward?.description ? ` (${data.result.reward.description})` : '';
+
+      let msg: string;
+      if (isCorrect) {
+        msg = `Correct${desc}`;
+      } else if (timedOut) {
+        msg = correctAnswer ? `Time's up — answer was ${correctAnswer}${desc}` : "Time's up";
+      } else {
+        msg = correctAnswer ? `Incorrect — answer was ${correctAnswer}${desc}` : 'Incorrect';
+      }
+      addNotification(isCorrect ? 'reward' : 'penalty', msg);
+
+      // Hold the panel open long enough to read the revealed answer.
+      const holdMs = isCorrect ? 900 : 1800;
+
       if (gameState?.turnPhase === 'DICE_CHALLENGE') {
         setPacingState('DICE_FEEDBACK');
         setTimeout(() => {
@@ -135,14 +137,13 @@ export function GamePage() {
           setAnswerResult(null);
           setChallengePlayerId(null);
           setPacingState('PAWN_MOVING');
-        }, 800);
+        }, holdMs);
       } else {
-        // Auto-close modal smoothly after brief selection display
         setTimeout(() => {
           setActiveChallenge(null);
           setAnswerResult(null);
           setChallengePlayerId(null);
-        }, 600);
+        }, holdMs);
       }
     },
     onGameFinished: (data) => {
@@ -241,40 +242,26 @@ export function GamePage() {
     if (!activeChallenge) return null;
 
     const questionData = activeChallenge.questionData;
+    const shared = {
+      options: activeChallenge.options,
+      onAnswer: handleAnswer,
+      disabled: !!answerResult,
+      expiresAt: activeChallenge.expiresAt,
+      timeLimit: activeChallenge.timeLimit,
+      hintContent: activeChallenge.hintContent,
+    };
+    // The server only tells us the answer once it has graded the attempt.
+    const revealedAnswer = answerResult?.correctAnswer ?? null;
+
     if (questionData.type === 'column') {
+      return <ColumnQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
+    }
+    if (questionData.type === 'long_division') {
       return (
-        <ColumnQuestion
-          question={questionData}
-          options={activeChallenge.options}
-          onAnswer={handleAnswer}
-          disabled={!!answerResult}
-          timeLimit={activeChallenge.timeLimit}
-          hintContent={activeChallenge.hintContent}
-        />
-      );
-    } else if (questionData.type === 'long_division') {
-      return (
-        <LongDivisionQuestion
-          question={questionData}
-          options={activeChallenge.options}
-          onAnswer={handleAnswer}
-          disabled={!!answerResult}
-          timeLimit={activeChallenge.timeLimit}
-          hintContent={activeChallenge.hintContent}
-        />
-      );
-    } else {
-      return (
-        <McqQuestion
-          question={questionData}
-          options={activeChallenge.options}
-          onAnswer={handleAnswer}
-          disabled={!!answerResult}
-          timeLimit={activeChallenge.timeLimit}
-          hintContent={activeChallenge.hintContent}
-        />
+        <LongDivisionQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />
       );
     }
+    return <McqQuestion {...shared} question={questionData} />;
   }
 
   // ---- Loading / Error states ----
@@ -284,7 +271,7 @@ export function GamePage() {
         <div className="game-page__message">
           <AlertCircle size={24} />
           <h2>No Game Room specified.</h2>
-          <button className="action-btn action-btn--primary" onClick={() => navigate('/join')}>Go Back</button>
+          <button className="action-btn action-btn--primary" onClick={() => navigate('/')}>Go Back</button>
         </div>
       </div>
     );
@@ -308,7 +295,7 @@ export function GamePage() {
         scores={finalScores}
         players={gameState.players}
         masteryReports={masteryReports}
-        onExit={() => navigate('/join')}
+        onExit={() => navigate('/')}
       />
     );
   }
@@ -336,7 +323,7 @@ export function GamePage() {
         <PlayerPanel
           players={gameState.players}
           currentPlayerIndex={gameState.currentPlayerIndex}
-          myPlayerId={myUserId}
+          myPlayerId={myPlayerId}
           round={gameState.round}
           maxRounds={gameState.maxRounds}
         />
@@ -344,7 +331,7 @@ export function GamePage() {
         {/* Center: Board */}
         <Board
           gameState={gameState}
-          currentPlayerId={myUserId}
+          currentPlayerId={myPlayerId}
           onMovementChange={handleMovementChange}
           onMovementComplete={handleMovementComplete}
         />
