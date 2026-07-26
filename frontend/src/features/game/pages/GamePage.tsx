@@ -110,6 +110,10 @@ export function GamePage() {
       setActiveChallenge(data.challenge);
       setAnswerResult(null);
       challengeStartTime.current = Date.now();
+      // The duel reveal lingers deliberately so the table can read it, but the
+      // server has already advanced the turn. Drop it the moment the next
+      // question arrives, or it would cover the new player's challenge.
+      setDuel(null);
     },
     onChallengeStarted: (data) => {
       setChallengePlayerId(data.playerId);
