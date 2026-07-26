@@ -31,20 +31,70 @@ import {
   calculateFinalScores,
   generateMasteryReport,
 } from './game.engine';
-import { GameState, FinalScore, MasteryReport, AnswerResult } from './game.types';
+import type { GamePlayerSeed } from './game.engine';
+import { GameState, FinalScore, MasteryReport, AnswerResult, TurnPhase } from './game.types';
 import { executeBotTurn, BotTurnStep } from './bot.engine';
+import { loadMasteryPriors, newGameId, recordAttempt } from './game.persistence';
 
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
 
+/**
+ * Every answer submission has the same shape: check the phase, grade it, store
+ * the new state, log the attempt. Routing all six through here means the
+ * research log cannot drift out of sync with gameplay — including timeouts,
+ * which reach the engine via `resolveStalledTurn` rather than a socket event.
+ */
+function submitAnswer(
+  gameId: string,
+  requiredPhase: TurnPhase,
+  process: (
+    state: GameState,
+    selectedIndex: number,
+    timeMs: number
+  ) => { newState: GameState; result: AnswerResult },
+  selectedIndex: number,
+  timeMs: number
+): { state: GameState; result: AnswerResult } | null {
+  const state = activeGames.get(gameId);
+  if (!state || state.turnPhase !== requiredPhase || !state.currentChallenge) return null;
+
+  // Captured before grading — the engine clears the challenge as it resolves.
+  const challenge = state.currentChallenge;
+  const player = state.players[state.currentPlayerIndex];
+
+  const { newState, result } = process(state, selectedIndex, timeMs);
+  activeGames.set(gameId, newState);
+
+  // Fire-and-forget: gameplay never waits on the database.
+  recordAttempt({
+    player,
+    dbGameId: state.dbGameId,
+    challenge,
+    selectedIndex,
+    timeMs,
+    previousMastery: result.previousMastery,
+    newMastery: result.newMastery,
+    isCorrect: result.isCorrect,
+  });
+
+  return { state: newState, result };
+}
+
 export const gameService = {
   // ---- Lifecycle ----
 
-  createGame: async (
-    gameId: string,
-    players: { id: string; playerId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
-  ): Promise<GameState> => {
-    const state = initializeGameState(gameId, players);
+  createGame: async (gameId: string, players: GamePlayerSeed[]): Promise<GameState> => {
+    // Resume each returning player's BKT chain. Bots have no Player row.
+    const humanIds = players.filter((p) => !p.isBot).map((p) => p.playerId);
+    const priors = await loadMasteryPriors(humanIds);
+
+    const seeded = players.map((p) => ({
+      ...p,
+      masteryPriors: p.isBot ? undefined : priors.get(p.playerId),
+    }));
+
+    const state = initializeGameState(gameId, seeded, newGameId());
     activeGames.set(gameId, state);
     return state;
   },
@@ -87,14 +137,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'DICE_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processDiceChallengeAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'DICE_CHALLENGE', processDiceChallengeAnswer, selectedIndex, timeMs),
 
   // ---- Movement ----
 
@@ -132,14 +176,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'SMART_BUY_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processSmartBuyAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'SMART_BUY_CHALLENGE', processSmartBuyAnswer, selectedIndex, timeMs),
 
   skipBuy: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
@@ -174,14 +212,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'RENT_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processRentDefenseAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'RENT_CHALLENGE', processRentDefenseAnswer, selectedIndex, timeMs),
 
   // ---- Challenge Cards ----
 
@@ -198,14 +230,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'CARD_MATH_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processCardChallengeAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'CARD_MATH_CHALLENGE', processCardChallengeAnswer, selectedIndex, timeMs),
 
   // ---- Jail ----
 
@@ -222,14 +248,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'JAIL_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processJailEscapeAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'JAIL_CHALLENGE', processJailEscapeAnswer, selectedIndex, timeMs),
 
   payBail: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
@@ -264,14 +284,8 @@ export const gameService = {
     gameId: string,
     selectedIndex: number,
     timeMs: number
-  ): { state: GameState; result: AnswerResult } | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'LEVEL_UP_CHALLENGE' || !state.currentChallenge) return null;
-
-    const { newState, result } = processLevelUpAnswer(state, selectedIndex, timeMs);
-    activeGames.set(gameId, newState);
-    return { state: newState, result };
-  },
+  ): { state: GameState; result: AnswerResult } | null =>
+    submitAnswer(gameId, 'LEVEL_UP_CHALLENGE', processLevelUpAnswer, selectedIndex, timeMs),
 
   declineLevelUp: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);

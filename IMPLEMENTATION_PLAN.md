@@ -147,39 +147,54 @@ still pass. No gameplay logic touched.
 
 ---
 
-### Phase 3 — Persistence & attempt logging
+### Phase 3 — Persistence & attempt logging ✅ DONE
 
 The research payload. This is what turns the project from "a game with a
-difficulty dial" into an adaptive learning system.
+difficulty dial" into an adaptive learning system. All of it lives in the new
+`game.persistence.ts`, the single module allowed to touch the database from the
+game feature.
 
-**3.1 `MasteryState`** — `playerId`, `skillId`, `pMastery`, `attempts`,
-`correct`, `lastPracticedAt`. Loaded at game start, upserted after every answer.
+| # | Change | Outcome |
+| --- | --- | --- |
+| 3.1 | `MasteryState` loaded at game start | `createGame` fetches stored P(L) for every human and seeds `PlayerState.masteryStates` through the new `GamePlayerSeed.masteryPriors`. Skills with no history fall back to `INITIAL_MASTERY`, so first-time and returning players share one code path. Bots never load or write. |
+| 3.2 | `QuestionAttempt` per answer | One row per answer carrying `pMasteryBefore`, `pMasteryAfter`, `predictedPCorrect` and `opportunityIndex` — written at answer time because the prediction is unrecoverable once mastery updates. `questionData` stores the **unredacted** item: Phase 1 keeps answers out of browsers, but the research table needs the exact question. |
+| 3.3 | Non-blocking writes | Chained per player, so two answers cannot race on one `MasteryState`, but concurrent across players. Failures are logged and swallowed — a database outage degrades the log, never the game. Nothing in a turn awaits a write. |
+| 3.4 | `Game` / `GamePlayer` snapshot | Written at game end, after the scoreboard has already been emitted. |
 
-**3.2 `QuestionAttempt`** — the table that carries the entire evaluation chapter:
+**Design decisions worth recording:**
 
-```
-playerId, gameId, skillId,
-difficulty, context,               -- DICE_CHALLENGE / SMART_BUY / ROLL_CHALLENGE / ...
-questionData Json,                 -- the exact item shown
-correctAnswer, selectedAnswer, isCorrect,
-timeMs, hintLevel, timedOut,
-pMasteryBefore, pMasteryAfter,     -- cannot be reconstructed later
-predictedPCorrect,                 -- pL·(1−pS) + (1−pL)·pG
-opportunityIndex,                  -- 1,2,3… per (player, skill)
-answeredAt
-```
+- **`opportunityIndex` comes from the upsert.** The `attempts` value returned by
+  the `MasteryState` upsert *is* the index, so the two tables agree by
+  construction with no counting query and no race. Both writes share one
+  transaction, so mastery can never advance without the attempt that caused it.
+- **All six answer paths funnel through `gameService.submitAnswer`.** That covers
+  timeouts too, which reach the engine via `resolveStalledTurn` rather than a
+  socket event — logging at the socket layer would have silently dropped them.
+- **Timeouts are recorded, not dropped.** `selectedIndex === -1` is the server's
+  no-answer sentinel; those rows carry `timedOut: true` and a null
+  `selectedAnswer`. A timeout is usually "didn't know" but sometimes a closed
+  laptop, and the analysis must be able to separate them.
+- **`GameState.dbGameId`.** Room codes are recycled, so `game_<CODE>` cannot
+  identify a match. Each match gets a UUID that attempts and the snapshot share.
+- **Persistence is inert under `NODE_ENV=test`.** `backend/.env` points at real
+  Neon and dotenv loads it in Jest — without this guard, a test run would append
+  to the research dataset. The row-building logic is still fully tested through
+  the pure `buildAttemptData`.
+- **The skill cache loads lazily, not at boot.** A boot-time hard failure would
+  crash-loop the service whenever Neon is asleep. Instead `warmPersistence`
+  reports a missing seed at startup and writes degrade loudly.
 
-`pMasteryBefore` and `predictedPCorrect` **must be written at answer time** — they
-are unrecoverable afterwards, and without them there is no predictive-accuracy
-result.
+**Verified:** backend + frontend `tsc` clean, 82 tests pass (up from 72). A
+23-assertion smoke test against live Neon confirmed the full loop — three correct
+Division answers in session 1 raised stored P(L) from 0.10 to 0.9365, session 2
+resumed at exactly 0.9365 with the other three skills still at 0.10,
+`opportunityIndex` ran 1→4 across both sessions, the BKT chain was continuous
+(`pMasteryAfter[n] == pMasteryBefore[n+1]`), the bot wrote nothing, and a timeout
+landed as a flagged attempt. Test data removed afterwards.
 
-**3.3** Writes are fire-and-forget (queued, non-blocking) so a slow database never
-stalls a turn.
-
-**3.4** Persist `Game` / `GamePlayer` snapshots at game end for the match history.
-
-**Acceptance:** play two sessions as the same profile — session 2 starts from
-session 1's P(L). Every answer produces exactly one attempt row.
+**Noted for Phase 4:** three correct answers took P(L) from 0.10 to 0.94, which
+confirms 4.4 — with `MASTERY_THRESHOLD` at 0.95 the difficulty band escalates far
+too fast to be meaningful.
 
 ---
 

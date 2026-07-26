@@ -4,6 +4,7 @@
 // Level Up system, challenge cards, RM currency
 // ============================================
 
+import { randomUUID } from 'crypto';
 import {
   GameState,
   PlayerState,
@@ -52,9 +53,26 @@ import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 // GAME INITIALIZATION
 // ============================================
 
+export interface GamePlayerSeed {
+  id: string;
+  playerId: string;
+  name: string;
+  color: string;
+  order: number;
+  isBot?: boolean;
+  botDifficulty?: 'easy' | 'medium' | 'hard';
+  /**
+   * Mastery carried over from this player's previous sessions, keyed by skill
+   * name. Absent skills fall back to `INITIAL_MASTERY`, so a first-time player
+   * and a returning one take the same code path.
+   */
+  masteryPriors?: Record<string, number>;
+}
+
 export function initializeGameState(
   gameId: string,
-  players: { id: string; playerId: string; name: string; color: string; order: number; isBot?: boolean; botDifficulty?: 'easy' | 'medium' | 'hard' }[]
+  players: GamePlayerSeed[],
+  dbGameId: string = randomUUID()
 ): GameState {
   const playerStates: PlayerState[] = players.map((p) => ({
     id: p.id,
@@ -73,7 +91,9 @@ export function initializeGameState(
     hasLevelUpToken: false,
     hasRentShield: false,
     hasDiscountToken: false,
-    masteryStates: Object.fromEntries(SKILL_NAMES.map((s) => [s, INITIAL_MASTERY])),
+    masteryStates: Object.fromEntries(
+      SKILL_NAMES.map((s) => [s, p.masteryPriors?.[s] ?? INITIAL_MASTERY])
+    ),
     consecutiveFailures: Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])),
     isBot: p.isBot ?? false,
     botDifficulty: p.botDifficulty,
@@ -88,6 +108,7 @@ export function initializeGameState(
 
   return {
     id: gameId,
+    dbGameId,
     players: playerStates,
     tiles: BOARD_TILES,
     properties: initializeProperties(),

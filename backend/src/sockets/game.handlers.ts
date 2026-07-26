@@ -14,6 +14,7 @@ import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { getCurrentPlayer } from '../features/game/game.engine';
+import { recordGameResult } from '../features/game/game.persistence';
 
 // ---- Deadlines ----
 
@@ -113,6 +114,8 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
   const masteryReports = gameService.getMasteryReports(state.id);
   if (scores) {
     io.to(socketRoom).emit('game:finished', { scores, masteryReports });
+    // Queued, not awaited — the scoreboard is already on its way to the players.
+    recordGameResult(state, scores);
   }
 
   // Keep the state around briefly for late score requests, then release it.

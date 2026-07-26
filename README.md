@@ -167,6 +167,15 @@ SELECT pg_terminate_backend(<pid>);       -- otherwise kill it
 
 Then `npm run db:status` to confirm.
 
+### `[persistence] Skill rows missing from the database`
+
+Mastery and attempt logging are silently inactive until the four `Skill` rows
+exist. The server reports this at boot and again whenever a write is skipped.
+
+```bash
+cd backend && npm run db:seed
+```
+
 ### `P3009 — migrate found failed migrations in the target database`
 
 A migration record exists with no `finished_at`. Check whether it actually

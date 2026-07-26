@@ -330,7 +330,14 @@ export interface LuckyBreakReward {
 // ---- Game State ----
 
 export interface GameState {
+  /** Session id, `game_<ROOMCODE>` — also derives the socket room. */
   id: string;
+  /**
+   * Durable `Game.id` for this match. Distinct from `id` because room codes are
+   * recycled, so two different matches can share one. Every `QuestionAttempt`
+   * points here.
+   */
+  dbGameId: string;
   players: PlayerState[];
   tiles: TileConfig[];
   properties: PropertyState[];
