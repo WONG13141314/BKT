@@ -187,11 +187,18 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
       }
 
       case 'MATH_DUEL': {
+        const beforeAnswers = currentState;
         currentState = submitBotDuelAnswers(currentState);
-        steps.push({ state: currentState, action: 'duel_answer', delay: 1200 });
 
-        // A human owner still has to answer. Hand control back and let the
-        // socket layer resume this turn once they do (or the clock expires).
+        // Only report a step if a bot actually answered. On a repeat call the
+        // bots are already in, and emitting another step would let the caller
+        // believe progress was made and run this turn again.
+        if (currentState !== beforeAnswers) {
+          steps.push({ state: currentState, action: 'duel_answer', delay: 1200 });
+        }
+
+        // A human duellist still has to answer. Hand control back; the socket
+        // layer resumes this turn when they do, or when the clock expires.
         if (!bothDuellistsAnswered(currentState)) return steps;
 
         currentState = resolveDuel(currentState).newState;

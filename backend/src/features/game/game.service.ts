@@ -190,6 +190,22 @@ export const gameService = {
     return resolvedState;
   },
 
+  /**
+   * Resolve the tile the player is already standing on, without moving them.
+   *
+   * Needed because a challenge card can teleport a player ("Lompat!", "Undur!").
+   * `executeMove` would roll them forward again by the dice, which is not what a
+   * card move means.
+   */
+  resolveTile: (gameId: string): GameState | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'RESOLVE_TILE') return null;
+
+    const resolved = resolveTileEvent(state);
+    activeGames.set(gameId, resolved);
+    return resolved;
+  },
+
   // ---- Buy Property ----
 
   buyFull: (gameId: string): GameState | null => {
@@ -245,6 +261,32 @@ export const gameService = {
 
     // A bot landlord answers the moment the challenge reaches it.
     let next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, timeMs));
+
+    if (!bothDuellistsAnswered(next)) {
+      activeGames.set(gameId, next);
+      return { state: next, resolution: null };
+    }
+
+    const settled = resolveDuel(next);
+    activeGames.set(gameId, settled.newState);
+    recordDuelAttempts(settled.duel, settled.newState);
+
+    return { state: settled.newState, resolution: settled.resolution };
+  },
+
+  /**
+   * Submit any duel side belonging to a bot, then settle if that completes it.
+   * Returns null when there is no open duel or no bot left to answer.
+   */
+  submitBotDuelAnswers: (
+    gameId: string
+  ): { state: GameState; resolution: DuelResolution | null } | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
+    if (state.duelState.resolution) return null;
+
+    const next = submitBotDuelAnswers(state);
+    if (next === state) return null; // No bot was waiting.
 
     if (!bothDuellistsAnswered(next)) {
       activeGames.set(gameId, next);

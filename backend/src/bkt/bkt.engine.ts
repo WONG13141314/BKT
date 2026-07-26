@@ -1,5 +1,45 @@
 import { BktParams } from './bkt.types';
 import { clampProbability } from './bkt.utils';
+import { FORGETTING_HALF_LIFE_DAYS, INITIAL_MASTERY } from './bkt.defaults';
+
+/**
+ * Decay a stored mastery estimate toward the prior, based on how long it has
+ * been since the skill was last practised.
+ *
+ * Textbook BKT has no forgetting term — it assumes knowledge only ever goes up.
+ * That is a reasonable simplification for a system used in one sitting, which is
+ * how BKT is usually deployed. This game deliberately remembers a learner across
+ * weeks, which is exactly the case the assumption breaks: a child who mastered
+ * Addition in March would return in June still rated 0.9, be handed the hardest
+ * questions immediately, and fail them.
+ *
+ * The decay is exponential with a half-life: after `FORGETTING_HALF_LIFE_DAYS`
+ * without practice, half the progress *above the starting prior* is gone. It
+ * never decays below the prior — forgetting returns you to a beginner, not to
+ * worse than a beginner.
+ *
+ * Applied at load time only, never mid-session, and never written back. It is a
+ * pure function of elapsed time, so recomputing it on every load is idempotent
+ * and cannot compound.
+ */
+export const applyForgetting = (
+  storedMastery: number,
+  lastPracticedAt: Date | null,
+  now: Date = new Date()
+): number => {
+  if (!lastPracticedAt) return storedMastery;
+
+  const days = (now.getTime() - lastPracticedAt.getTime()) / (1000 * 60 * 60 * 24);
+  if (days <= 0) return storedMastery;
+
+  // Nothing to lose: at or below the prior, forgetting has no further effect.
+  if (storedMastery <= INITIAL_MASTERY) return storedMastery;
+
+  const retained = 0.5 ** (days / FORGETTING_HALF_LIFE_DAYS);
+  const gainAbovePrior = storedMastery - INITIAL_MASTERY;
+
+  return clampProbability(INITIAL_MASTERY + gainAbovePrior * retained);
+};
 
 /**
  * Updates the student's mastery probability based on their answer to a question.

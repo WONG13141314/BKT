@@ -476,7 +476,8 @@ export interface MasteryReport {
     skillName: SkillName;
     mastery: number;              // 0.0 – 1.0
     totalAttempts: number;
-    totalCorrect: number;
+    /** P(L) has passed `MASTERY_THRESHOLD`. */
+    isMastered: boolean;
   }[];
   bestSkill: SkillName;
   weakestSkill: SkillName;

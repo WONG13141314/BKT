@@ -54,6 +54,7 @@ import { createShuffledDeck, drawCard, getCardById } from './card.deck';
 import { updateMastery } from '../../bkt/bkt.engine';
 import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
 import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
+import { checkMastery } from '../../bkt/bkt.utils';
 
 // ============================================
 // GAME INITIALIZATION
@@ -834,7 +835,13 @@ export function processCardChallengeAnswer(
   const effect = (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
   const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
   let stateAfterEffect = { ...state, players: updatedPlayers };
+  const positionBefore = getCurrentPlayer(stateAfterEffect).position;
   stateAfterEffect = applyCardEffect(stateAfterEffect, effect, getCurrentPlayer(stateAfterEffect));
+
+  // A card reward can move the player. Resolve wherever they ended up, unless
+  // the effect was jail, in which case that *is* the outcome.
+  const movedPlayer = getCurrentPlayer(stateAfterEffect);
+  const wasMoved = movedPlayer.position !== positionBefore && !movedPlayer.isInJail;
 
   const cardName = card?.name || 'Challenge Card';
   const reward: RewardResult = isCorrect
@@ -844,7 +851,7 @@ export function processCardChallengeAnswer(
   return {
     newState: {
       ...stateAfterEffect,
-      turnPhase: 'END_TURN',
+      turnPhase: wasMoved ? 'RESOLVE_TILE' : 'END_TURN',
       currentChallenge: null,
       pendingTileEvent: null,
     },
@@ -853,8 +860,27 @@ export function processCardChallengeAnswer(
 }
 
 /** Transition from CARD_DRAW to END_TURN (after player sees the card) */
+/**
+ * Dismiss the drawn card and continue.
+ *
+ * "Lompat!" (advance 3) and "Undur!" (back 2) move the token, and until Phase 6
+ * the turn simply ended there — you could be teleported onto an unowned property
+ * and never be offered it, or onto an opponent's and pay nothing. If the card
+ * moved you, the tile you actually landed on is resolved now.
+ *
+ * Jail is the exception: "Polis!" moves you too, but being sent to jail is the
+ * whole effect and there is nothing further to resolve.
+ */
 export function acknowledgeCard(state: GameState): GameState {
-  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+  const player = getCurrentPlayer(state);
+  const drawnAt = state.pendingTileEvent?.tileIndex;
+  const wasMoved = drawnAt !== undefined && player.position !== drawnAt && !player.isInJail;
+
+  return {
+    ...state,
+    turnPhase: wasMoved ? 'RESOLVE_TILE' : 'END_TURN',
+    pendingTileEvent: null,
+  };
 }
 
 function applyCardEffect(state: GameState, effect: CardEffect, player: PlayerState): GameState {
@@ -1071,15 +1097,15 @@ export function processJailEscapeAnswer(
       ? { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' }
       : { type: 'NONE', value: 0, description: 'Max jail turns reached! Released from jail!' };
 
-    // Re-roll dice for the freed player
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
-
+    // Leaving jail is its own roll, and it is always a full two dice — the
+    // Roll Challenge does not apply on the turn you get out. `diceCount` must be
+    // reset with it, or the board keeps showing last turn's forfeited die.
     return {
       newState: {
         ...state,
         players: updatedPlayers,
-        diceValues: [die1, die2],
+        diceValues: [rollDie(), rollDie()],
+        diceCount: 2,
         turnPhase: 'MOVING',
         currentChallenge: null,
       },
@@ -1122,14 +1148,11 @@ export function payBail(state: GameState): GameState {
     jailTurns: 0,
   }));
 
-  // Re-roll for freed player
-  const die1 = Math.floor(Math.random() * 6) + 1;
-  const die2 = Math.floor(Math.random() * 6) + 1;
-
   return {
     ...state,
     players: updatedPlayers,
-    diceValues: [die1, die2],
+    diceValues: [rollDie(), rollDie()],
+    diceCount: 2,
     turnPhase: 'MOVING',
   };
 }
@@ -1147,13 +1170,11 @@ export function waitInJail(state: GameState): GameState {
       jailTurns: 0,
     }));
 
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
-
     return {
       ...state,
       players: updatedPlayers,
-      diceValues: [die1, die2],
+      diceValues: [rollDie(), rollDie()],
+      diceCount: 2,
       turnPhase: 'MOVING',
     };
   }
@@ -1452,21 +1473,31 @@ export function calculateFinalScores(state: GameState): FinalScore[] {
 }
 
 export function generateMasteryReport(player: PlayerState): MasteryReport {
-  const skills = SKILL_NAMES.map((s) => ({
-    skillName: s,
-    mastery: player.masteryStates[s] ?? INITIAL_MASTERY,
-    totalAttempts: 0, // Would need per-skill tracking; approximate from overall
-    totalCorrect: 0,
-  }));
+  const skills = SKILL_NAMES.map((s) => {
+    const mastery = player.masteryStates[s] ?? INITIAL_MASTERY;
+    return {
+      skillName: s,
+      mastery,
+      // Real per-skill counts. These were hard-coded to zero with a note that
+      // per-skill tracking would be needed; Phase 4 added it.
+      totalAttempts: player.skillAttempts[s] ?? 0,
+      isMastered: checkMastery(mastery),
+    };
+  });
 
-  const sortedSkills = [...skills].sort((a, b) => b.mastery - a.mastery);
+  // Rank only what was actually practised — a skill nobody touched this session
+  // is not the player's "weakest", it is simply unmeasured.
+  const practised = skills.filter((s) => s.totalAttempts > 0);
+  const ranked = [...(practised.length > 0 ? practised : skills)].sort(
+    (a, b) => b.mastery - a.mastery
+  );
 
   return {
     playerId: player.id,
     playerName: player.name,
     skills,
-    bestSkill: sortedSkills[0].skillName,
-    weakestSkill: sortedSkills[sortedSkills.length - 1].skillName,
+    bestSkill: ranked[0].skillName,
+    weakestSkill: ranked[ranked.length - 1].skillName,
     overallAccuracy: player.totalQuestions > 0 ? player.totalCorrect / player.totalQuestions : 0,
   };
 }

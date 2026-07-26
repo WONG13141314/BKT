@@ -287,70 +287,102 @@ recorded as its own attempt row** and carried into the next session.
 
 ---
 
-### Phase 5 — Player-facing progress
+### Phase 5 — Evaluation tooling (the FYP marks)
 
-Currently there is no way for anyone to ever see mastery. `AppRouter` has three
-routes and the whole dashboard feature is TODO stubs.
+> Player-facing progress screens (profile page, mastery dashboard, accuracy
+> trends) were dropped from the plan. They improve the product but contribute
+> almost nothing to the research, and the argument that they would drive return
+> visits does not hold for a scheduled trial, where participants return because
+> they were asked to. The one item from that work that **cannot** be deferred —
+> capturing mastery before a session starts — is 5.1 below, because it is
+> evaluation infrastructure rather than UI.
 
-- **5.1** Post-game mastery report — per-skill before/after, biggest improvement.
-  `generateMasteryReport` exists but reports zeroes for attempts; wire it to
-  `PlayerState.skillAttempts` (added in Phase 4) and to `isMastered`, which is
-  still uncalled.
-- **5.2** `/profile` — mastery per skill, total games, accuracy trend, match history.
-- **5.3** Route it: `/`, `/profile`, `/lobby`, `/game`. Add `ProtectedRoute` (exists, unrouted).
-- **5.4** Show adaptive progression *implicitly* — a skill's difficulty band shown
-  as a subtle scale, never as an "EASY/HARD" badge.
-
----
-
-### Phase 6 — Evaluation tooling (the FYP marks)
-
-- **6.1 Pre/post test** — 10 fixed items across the 4 skills, non-adaptive, shown
+- **5.1 Session-boundary snapshots** — record each player's mastery and attempt
+  count at the moment a match begins. Learning gain, per-session improvement and
+  the pre/post comparison all need a "before", and once a child answers one
+  question their starting value is unrecoverable. Same class of problem as
+  `predictedPCorrect` in Phase 3.
+- **5.2 Pre/post test** — 10 fixed items across the 4 skills, non-adaptive, shown
   before the first session and after the last. Gives normalised learning gain,
   which is the evidence a supervisor asks for by name.
-- **6.2 Ablation flag** — `adaptive` vs `random-difficulty` selection, assigned per
+- **5.3 Ablation flag** — `adaptive` vs `random-difficulty` selection, assigned per
   player. Compare learning curves. **This removes the need for a second control
   classroom**, which is where most FYP trials die.
-- **6.3 Simulated students** — generate synthetic learners with known true pL/pT and
+- **5.4 Simulated students** — generate synthetic learners with known true pL/pT and
   show BKT recovers them. About a day of work, and it means the evaluation chapter
   survives even if a real trial falls through. Build this regardless.
-- **6.4 CSV / JSON export** of `QuestionAttempt` for analysis in R or Python.
-- **6.5 Analysis queries** — learning curves (error rate vs `opportunityIndex`),
-  AUC/RMSE of `predictedPCorrect` vs `isCorrect`, difficulty distribution over time.
+- **5.5 Duel outcome logging** — who duelled, each side's mastery and
+  `predictedPCorrect`, and who won. Phase 4's fairness claim is the project's
+  most distinctive contribution and is currently **unmeasured**: attempts are
+  logged individually, but nothing records that two of them were a contest.
+  Without this the claim can be argued but not shown.
+- **5.6 CSV / JSON export** of `QuestionAttempt` for analysis in R or Python.
+- **5.7 Analysis queries** — learning curves (error rate vs `opportunityIndex`),
+  AUC/RMSE of `predictedPCorrect` vs `isCorrect`, difficulty distribution over
+  time, and duel win rate against ability gap.
+
+**Acceptance:** every claim in the write-up has a query behind it.
 
 ---
 
-### Phase 7 — Cleanup & platform hardening
+### Phase 6 — Repairs & hardening
 
-- **7.1** Shared types package. The frontend hand-copies backend types *and*
+#### 6.0 Post-Phase-4 repairs ✅ DONE
+
+A full read-through after Phase 4 turned up one broken path and several gaps.
+
+| # | Fix | Outcome |
+| --- | --- | --- |
+| 6.0.1 | **Bot duel freeze** | A bot landing on a human's property wedged the game permanently. Bot turns broadcast through a raw emit that skips `emitDuel`, so the owner was never sent their question; the turn had not advanced, so the handler recursed; and each pass cleared the phase timer, destroying the deadline that would have forced a resolution. Bot turns now hand control to the duel handler when they pause, recurse only when the turn actually advanced, and `executeBotTurn` reports no progress on a repeat call. |
+| 6.0.2 | **Stale dice count after jail** | All three jail exits rolled two dice without resetting `diceCount`, so the board showed a forfeited die while the token moved the full distance. |
+| 6.0.3 | **Movement cards resolved nowhere** | `Lompat!` and `Undur!` moved the token and ended the turn, so a player could be teleported onto an unowned property and never be offered it. The destination is now resolved — for luck cards, math-card rewards, and cards that land you on another card. Jail is excluded: being sent there *is* the outcome. New `RESOLVE_TILE` service path, since `executeMove` would have re-applied the dice. |
+| 6.0.4 | **BKT had no forgetting** | Textbook BKT assumes knowledge only ever increases, which is fine for a single sitting and wrong for a system that deliberately remembers a learner across weeks. `applyForgetting` decays mastery toward the prior with a 21-day half-life, applied at load only, never written back, so it is idempotent and cannot compound. `lastPracticedAt` was already stored and read by nothing. |
+| 6.0.5 | **Dead BKT constants** | `pL0` sat in every parameter tier and was read by nothing — `INITIAL_MASTERY` was the real prior. Removed. `MASTERY_THRESHOLD` → `checkMastery` was an unreachable chain; now used by the mastery report, so a skill can finally be recorded as mastered. |
+| 6.0.6 | **Mastery report was half-fake and public** | Per-skill counts were hard-coded to `0` with a note that per-skill tracking would be needed — Phase 4 added it. Reports also went to every player, so the weakest child saw they were bottom of the table in front of their friends. Each player now receives only their own; the money scoreboard stays public. Skills nobody practised are excluded from the best/weakest ranking, and the panel shows questions asked rather than a percentage that reads as a mark out of 100. |
+
+**Also:** all four ad-hoc `if (turnPhase === 'MOVING')` blocks in the socket layer
+replaced by one `advanceServerPhases` funnel that also drives `RESOLVE_TILE`; bot
+duellists now answer on their own ~2.2s timer instead of only at the moment the
+human submits.
+
+**Verified:** tsc clean both sides, production build succeeds, 133 tests (up from
+118). New `repairs.test.ts` covers all three jail exits, movement-card
+resolution including the jail exception, forgetting (half-life, monotonicity,
+floor at the prior, idempotence) and the mastery report. A 16-assertion live
+smoke test confirmed a bot landing on a human property pauses instead of looping,
+a repeat bot turn reports no progress, the human's off-turn answer is logged, and
+a mastery of 0.90 last practised 42 days ago loads as 0.30.
+
+#### 6.1 Remaining hardening
+
+- **6.1** Shared types package. The frontend hand-copies backend types *and*
   constants (`frontend/.../game.types.ts`, `frontend/.../config/board.config.ts`)
   and they are already drifting.
-- **7.2** Delete dead code: `features/questions/*`, the unrouted `useAuth` stub,
+- **6.2** Delete dead code: `features/questions/*`, the unrouted `useAuth` stub,
   the admin stubs orphaned by dropping `Question`.
-- **7.3** Strip decorative emoji from backend strings (`bkt.selector.ts` hints,
+- **6.3** Strip decorative emoji from backend strings (`bkt.selector.ts` hints,
   `game.engine.ts` level-up message).
-- **7.4** Snapshot game state to Postgres on each phase transition so a server
+- **6.4** Snapshot game state to Postgres on each phase transition so a server
   restart (or a Render free-tier sleep) can rehydrate instead of destroying every
   live game. In-memory stays the hot path.
-- **7.5** Platform basics: room-code expiry, rate limit on room creation and guest
+- **6.5** Platform basics: room-code expiry, rate limit on room creation and guest
   signup, nickname profanity filter.
-- **7.6** Game log panel in the sidebar — quiet, append-only, no popups. Doubles as
+- **6.6** Game log panel in the sidebar — quiet, append-only, no popups. Doubles as
   the human-readable event trace for the write-up.
 
 ## 4. Sequencing
 
 ```
-Phase 1  ──────────────►  ships alone, no dependencies
-Phase 2  ──────────────►  needs nothing; unblocks 3
-Phase 3  ──────────────►  needs 2
-Phase 4  ──────────────►  needs 3 (for the individualised prior)
-Phase 5  ──────────────►  needs 3
-Phase 6  ──────────────►  needs 3
-Phase 7  ──────────────►  anytime, fold into the others opportunistically
+Phase 1  ✅  ships alone, no dependencies
+Phase 2  ✅  needs nothing; unblocks 3
+Phase 3  ✅  needs 2
+Phase 4  ✅  needs 3 (for the individualised prior)
+Phase 5  ──►  needs 3 and 4 — the evaluation
+Phase 6  ──►  anytime, fold in opportunistically
 ```
 
-Phases 1–3 are the critical path. If time runs out, 1 + 2 + 3 + 6 is a complete
-FYP; 4 and 5 are what make it a good one.
+Phases 1–4 are done. Phase 5 is where the marks are: it turns the data the game
+has been collecting into the results chapter. Phase 6 is polish.
 
 ## 5. Explicitly out of scope
 
@@ -371,4 +403,4 @@ FYP; 4 and 5 are what make it a good one.
 | Shared devices mix up profiles | Profile switcher (2.5); PIN claim (2.4) for anything that matters |
 | BKT parameters are hand-set, not fitted | Declare as a limitation; optionally fit from Phase 3 data once enough attempts exist |
 | One KC per operation is a simplification | "Find the sum" and "find the missing operand" are arguably different skills. State it in the write-up, or split them as future work |
-| In-memory game state lost on restart | Phase 7.4 snapshotting |
+| In-memory game state lost on restart | Phase 6.4 snapshotting |

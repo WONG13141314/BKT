@@ -462,6 +462,28 @@
   font-weight: 800;
 }
 
+/* Questions asked, rather than a percentage — the mastery figure is a model
+   confidence, and shown as "31%" it reads to a child (and a parent) as a mark
+   out of 100. */
+.mastery-count {
+  width: 68px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: #40534a;
+  text-align: right;
+  font-weight: 700;
+}
+
+.mastery-fill--mastered {
+  background: #2a9d8f;
+}
+
+.mastery-badge {
+  margin-left: 0.3rem;
+  color: #2a9d8f;
+  font-size: 0.9rem;
+}
+
 .mastery-summary {
   margin: var(--space-md) 0 0;
   font-size: 0.9rem;

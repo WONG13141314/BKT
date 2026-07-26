@@ -123,7 +123,7 @@ export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, o
               onClick={() => setShowMastery(!showMastery)}
             >
               <BarChart3 size={16} />
-              {showMastery ? 'Hide' : 'Show'} Learning Report
+              {showMastery ? 'Hide' : 'Show'} My Learning Report
             </button>
 
             {showMastery && (
@@ -134,14 +134,23 @@ export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, o
                     <div className="mastery-skills">
                       {report.skills.map((skill) => (
                         <div key={skill.skillName} className="mastery-bar">
-                          <span className="mastery-label">{skill.skillName}</span>
+                          <span className="mastery-label">
+                            {skill.skillName}
+                            {skill.isMastered && (
+                              <span className="mastery-badge" title="Mastered">★</span>
+                            )}
+                          </span>
                           <div className="mastery-track">
                             <div
-                              className="mastery-fill"
+                              className={`mastery-fill ${skill.isMastered ? 'mastery-fill--mastered' : ''}`}
                               style={{ width: `${Math.round(skill.mastery * 100)}%` }}
                             />
                           </div>
-                          <span className="mastery-pct">{Math.round(skill.mastery * 100)}%</span>
+                          {/* Questions asked, not a percentage: the mastery figure
+                              is a confidence estimate and reads as a test score. */}
+                          <span className="mastery-count">
+                            {skill.totalAttempts > 0 ? `${skill.totalAttempts} asked` : '—'}
+                          </span>
                         </div>
                       ))}
                     </div>

@@ -59,7 +59,6 @@ function getDifficultyFromMastery(pMastery: number, attempts: number): 1 | 2 | 3
 // ---- BKT Parameters by Difficulty ----
 
 export interface AdjustedBktParams {
-  pL0: number;
   pT: number;
   pG: number;
   pS: number;

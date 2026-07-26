@@ -23,6 +23,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
 import { SKILL_NAMES, type SkillName } from './game.constants';
 import { getAdjustedParams } from '../../bkt/bkt.selector';
+import { applyForgetting } from '../../bkt/bkt.engine';
 import type { FinalScore, GameState, MathChallenge, PlayerState } from './game.types';
 
 // `backend/.env` points at the real Neon database, and dotenv loads it in any
@@ -142,15 +143,25 @@ export async function loadMasteryPriors(
 
     const rows = await prisma.masteryState.findMany({
       where: { playerId: { in: playerIds } },
-      select: { playerId: true, skillId: true, pMastery: true, attempts: true },
+      select: {
+        playerId: true,
+        skillId: true,
+        pMastery: true,
+        attempts: true,
+        lastPracticedAt: true,
+      },
     });
+
+    const now = new Date();
 
     for (const row of rows) {
       const skillName = skillNameById?.get(row.skillId);
       if (!skillName) continue;
 
       const priors = result.get(row.playerId) ?? { mastery: {}, attempts: {} };
-      priors.mastery[skillName] = row.pMastery;
+      // Decay toward the prior for time away. A child who has not touched
+      // Division since March should not be handed March's hardest questions.
+      priors.mastery[skillName] = applyForgetting(row.pMastery, row.lastPracticedAt, now);
       priors.attempts[skillName] = row.attempts;
       result.set(row.playerId, priors);
     }

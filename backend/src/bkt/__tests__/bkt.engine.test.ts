@@ -1,5 +1,5 @@
 import { updateMastery } from '../bkt.engine';
-import { DEFAULT_BKT_PARAMS } from '../bkt.defaults';
+import { DEFAULT_BKT_PARAMS, INITIAL_MASTERY } from '../bkt.defaults';
 import { clampProbability, checkMastery } from '../bkt.utils';
 
 describe('BKT Engine', () => {
@@ -17,7 +17,7 @@ describe('BKT Engine', () => {
     });
 
     it('should stay within bounds (0.001 to 0.999) after many correct answers', () => {
-      let p = DEFAULT_BKT_PARAMS.pL0;
+      let p = INITIAL_MASTERY;
       for (let i = 0; i < 20; i++) {
         p = updateMastery(p, true, DEFAULT_BKT_PARAMS);
       }
