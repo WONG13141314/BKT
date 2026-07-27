@@ -311,8 +311,17 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
     return;
   }
 
-  // Bot turns run to completion synchronously.
-  if (state.players[state.currentPlayerIndex].isBot) return;
+  // Bot turns normally run to completion, but errors or edge cases can
+  // leave a bot stranded. Arm a generous safety timer so `resolveStall`
+  // can push the turn forward if `triggerBotTurnIfNeeded` fails.
+  if (state.players[state.currentPlayerIndex].isBot) {
+    const timer = setTimeout(() => {
+      phaseTimers.delete(gameId);
+      void resolveStall(io, gameId);
+    }, overrideMs ?? 15_000);
+    phaseTimers.set(gameId, timer);
+    return;
+  }
 
   let delay: number;
   if (overrideMs !== undefined) {
@@ -414,7 +423,27 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
 
   clearPhaseTimer(gameId);
 
-  const steps = gameService.executeBotTurn(gameId);
+  let steps: ReturnType<typeof gameService.executeBotTurn>;
+  try {
+    steps = gameService.executeBotTurn(gameId);
+  } catch (err) {
+    console.error(`[BotTurn] Error executing bot turn for ${gameId}:`, err);
+    // Force the turn forward so the game isn't permanently stuck.
+    const socketRoom = getSocketRoom(gameId);
+    const stuck = gameService.getGameSync(gameId);
+    if (stuck) {
+      const recovered = gameService.resolveStalledTurn(gameId);
+      if (recovered) {
+        broadcastState(io, socketRoom, recovered.state);
+        advanceServerPhases(io, gameId, socketRoom);
+        await handleEndTurnFlow(io, gameId);
+      } else {
+        broadcastState(io, socketRoom, stuck);
+      }
+    }
+    return;
+  }
+
   const socketRoom = getSocketRoom(gameId);
 
   if (!steps || steps.length === 0) {
@@ -460,6 +489,8 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
     if (advanced && getCurrentPlayer(finalState).isBot) {
       await triggerBotTurnIfNeeded(io, gameId);
     } else {
+      // Broadcast and arm the safety timer. If the bot somehow didn't
+      // advance, the timer will push the turn forward.
       broadcastState(io, socketRoom, finalState);
     }
   }

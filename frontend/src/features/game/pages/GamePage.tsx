@@ -195,6 +195,7 @@ export function GamePage() {
   const [activePhase, setActivePhase] = useState<string | null>(null);
   const [isPawnMoving, setIsPawnMoving] = useState(false);
   const prevPhaseRef = useRef<string | null>(null);
+  const prevPlayerIdxRef = useRef<number | null>(null);
 
   const handleMovementChange = useCallback((isMoving: boolean) => {
     setIsPawnMoving(isMoving);
@@ -220,12 +221,25 @@ export function GamePage() {
     
     const currentPhase = gameState.turnPhase;
     const prevPhase = prevPhaseRef.current;
+    const prevIdx = prevPlayerIdxRef.current;
     
-    if (currentPhase !== prevPhase) {
-      prevPhaseRef.current = currentPhase;
+    // When the active player changes (new turn), reset pacing so the new
+    // player's UI controls aren't blocked by stale animation state from the
+    // previous turn.
+    if (prevIdx !== null && prevIdx !== gameState.currentPlayerIndex) {
+      setPacingState('EVENT_ACTIVE');
+      setIsPawnMoving(false);
+      setActivePhase(currentPhase);
+      if (landingTimerRef.current) {
+        clearTimeout(landingTimerRef.current);
+        landingTimerRef.current = null;
+      }
+    } else if (currentPhase !== prevPhase) {
       setActivePhase(currentPhase);
     }
 
+    prevPhaseRef.current = currentPhase;
+    prevPlayerIdxRef.current = gameState.currentPlayerIndex;
   }, [gameState]);
 
   // Auto-request missing active challenge if in challenge phase
