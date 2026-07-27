@@ -80,6 +80,10 @@ function emitDuel(io: Server, socketRoom: string, state: GameState) {
   const duel = state.duelState;
   if (!duel) return;
 
+  // Resolved duels are broadcast via emitDuelResult; re-sending here would
+  // cause the frontend to re-show the card after the timeout has cleared it.
+  if (duel.resolution) return;
+
   const publicDuel = toPublicDuel(duel);
   const room = io.sockets.adapter.rooms.get(socketRoom);
   if (!room) return;

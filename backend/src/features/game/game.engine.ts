@@ -1372,6 +1372,7 @@ export function endTurn(state: GameState, skipLevelUpCheck?: boolean): GameState
     turnPhase: 'ROLL_PHASE',
     pendingTileEvent: null,
     currentChallenge: null,
+    duelState: null,
   };
 }
 

@@ -104,6 +104,12 @@ export function GamePage() {
       } else if (!isChallengePhase(state.turnPhase)) {
         setChallengePlayerId(null);
       }
+      // The server has moved past the duel — clear it immediately so it
+      // cannot linger into the next player's turn.
+      if (state.turnPhase !== 'MATH_DUEL') {
+        setDuel(null);
+        setDuelChallenge(null);
+      }
     },
     onChallenge: (data) => {
       setChallengePlayerId(data.playerId);
@@ -155,6 +161,9 @@ export function GamePage() {
       }
     },
     onDuel: (data) => {
+      // Ignore re-sent resolved duels — they've already been handled by
+      // onDuelResult and would re-show the card after the timeout cleared it.
+      if (data.duel.resolution) return;
       setDuel(data.duel);
       setDuelChallenge(data.myChallenge);
       if (data.myChallenge) challengeStartTime.current = Date.now();
