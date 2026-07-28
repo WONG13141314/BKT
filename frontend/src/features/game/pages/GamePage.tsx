@@ -382,9 +382,14 @@ export function GamePage() {
 
   const renderPhase = activePhase || gameState.turnPhase;
   const isPacingBusy = isPawnMoving || pacingState === 'PAWN_MOVING' || pacingState === 'TILE_LANDING' || pacingState === 'DICE_FEEDBACK';
-  const isAnimating = isPacingBusy;
+  
+  const isHoldingAnswer = !!answerResult;
+  const isHoldingDuelResult = !!duel?.resolution;
+  
+  const isAnimating = isPacingBusy || isHoldingAnswer || isHoldingDuelResult;
   const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isAnimating;
-  const showChallenge = isChallenge && !!activeChallenge;
+  
+  const showChallenge = (isChallenge && !!activeChallenge) || isHoldingAnswer;
   const showChallengeLoading = isChallenge && !activeChallenge;
   const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isAnimating;
 

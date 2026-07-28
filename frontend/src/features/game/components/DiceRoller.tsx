@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dices } from 'lucide-react';
 import './DiceRoller.css';
 
@@ -46,9 +46,12 @@ export function DiceRoller({
   const [isRolling, setIsRolling] = useState(false);
   const [displayValues, setDisplayValues] = useState<[number, number]>(diceValues);
 
+  const prevDiceValues = useRef<[number, number]>(diceValues);
+  
   // Animate dice when values change
   useEffect(() => {
-    if (diceValues[0] === displayValues[0] && diceValues[1] === displayValues[1]) return;
+    if (diceValues[0] === prevDiceValues.current[0] && diceValues[1] === prevDiceValues.current[1]) return;
+    prevDiceValues.current = diceValues;
 
     setIsRolling(true);
     const interval = setInterval(() => {

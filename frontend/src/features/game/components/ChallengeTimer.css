@@ -3,6 +3,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+  width: 100%;
 }
 
 .challenge-timer__track {
