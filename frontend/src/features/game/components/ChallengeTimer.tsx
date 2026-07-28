@@ -41,9 +41,6 @@ export function ChallengeTimer({ expiresAt, totalSeconds, paused }: Props) {
           style={{ width: `${Math.min(100, Math.max(0, fraction * 100))}%` }}
         />
       </div>
-      <span className={`challenge-timer__value challenge-timer__value--${urgency}`}>
-        {seconds}s
-      </span>
     </div>
   );
 }

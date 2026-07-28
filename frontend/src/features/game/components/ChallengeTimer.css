@@ -31,19 +31,4 @@
   background: #dc2626;
 }
 
-.challenge-timer__value {
-  min-width: 34px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #475569;
-}
 
-.challenge-timer__value--low {
-  color: #b45309;
-}
-
-.challenge-timer__value--critical {
-  color: #b91c1c;
-}

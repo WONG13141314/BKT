@@ -104,10 +104,10 @@ export function GamePage() {
       } else if (!isChallengePhase(state.turnPhase)) {
         setChallengePlayerId(null);
       }
-      // The server has moved past the duel — clear it immediately so it
-      // cannot linger into the next player's turn.
+      // The server has moved past the duel — clear it if it's still unresolved,
+      // but let it linger if we are showing the resolution result.
       if (state.turnPhase !== 'MATH_DUEL') {
-        setDuel(null);
+        setDuel(prev => prev?.resolution ? prev : null);
         setDuelChallenge(null);
       }
     },
@@ -144,17 +144,23 @@ export function GamePage() {
       // Hold the panel open long enough to read the revealed answer.
       const holdMs = isCorrect ? 900 : 1800;
 
+      // Capture the ID of the challenge that was just answered. If a new
+      // challenge arrives before the hold expires (e.g. the player lands on a
+      // Challenge Card right after the Roll Challenge), the timeout must not
+      // wipe the newer challenge from the screen.
+      const answeredId = activeChallenge?.id;
+
       if (gameState?.turnPhase === 'ROLL_CHALLENGE') {
         setPacingState('DICE_FEEDBACK');
         setTimeout(() => {
-          setActiveChallenge(null);
+          setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
           setAnswerResult(null);
           setChallengePlayerId(null);
           setPacingState('PAWN_MOVING');
         }, holdMs);
       } else {
         setTimeout(() => {
-          setActiveChallenge(null);
+          setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
           setAnswerResult(null);
           setChallengePlayerId(null);
         }, holdMs);
@@ -176,7 +182,7 @@ export function GamePage() {
         data.resolution.headline
       );
       // Hold the reveal long enough to read it, then clear for the next turn.
-      setTimeout(() => setDuel(null), 3200);
+      setTimeout(() => setDuel(null), 5000);
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
@@ -512,7 +518,7 @@ export function GamePage() {
       </div>
 
       {/* Math Duel — shown to the whole table, not just the active player. */}
-      {duel && (
+      {duel && pacingState === 'EVENT_ACTIVE' && (
         <MathDuel
           duel={duel}
           players={gameState.players}
