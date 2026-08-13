@@ -20,7 +20,7 @@ interface UseGameStateReturn {
   finalScores: FinalScore[] | null;
   notifications: GameNotificationData[];
   // Setters (called by socket event handlers)
-  setGameState: (state: GameState) => void;
+  setGameState: (state: GameState | null) => void;
   setAnswerResult: (result: AnswerResult | null) => void;
   setFinalScores: (scores: FinalScore[]) => void;
   addNotification: (type: GameNotificationData['type'], message: string) => void;
@@ -33,7 +33,7 @@ export function useGameState(myPlayerId: string): UseGameStateReturn {
   const [finalScores, setFinalScores] = useState<FinalScore[] | null>(null);
   const [notifications, setNotifications] = useState<GameNotificationData[]>([]);
 
-  const setGameState = useCallback((state: GameState) => {
+  const setGameState = useCallback((state: GameState | null) => {
     setGameStateRaw(state);
   }, []);
 

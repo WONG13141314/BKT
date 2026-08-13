@@ -1,11 +1,9 @@
 // ============================================
 // Auth service — anonymous-first identity
 //
-// The token in localStorage IS the player's identity. It is written once and
-// then reused forever; nothing in this file clears it except an explicit
-// sign-out or a server telling us the profile is gone. The old flow wiped the
-// token on every visit to the join screen, which is why every session looked
-// like a different person to the BKT engine.
+// localStorage remembers profiles for the shared device. sessionStorage locks
+// the active identity to one browser tab, so choosing another child in a second
+// tab cannot silently steal an in-progress game seat from the first tab.
 // ============================================
 
 import { apiFetch } from '../../../shared/utils/api';
@@ -13,16 +11,18 @@ import { Avatar } from '../avatars';
 import { AuthResult, PublicPlayer, StoredProfile } from '../types/auth.types';
 
 const TOKEN_KEY = 'mm.token';
+const SESSION_TOKEN_KEY = 'mm.session-token';
 const PROFILES_KEY = 'mm.profiles';
 const MAX_REMEMBERED_PROFILES = 6;
 
 // ---- Local storage ----
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(SESSION_TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY);
 }
 
 function setToken(token: string) {
+  sessionStorage.setItem(SESSION_TOKEN_KEY, token);
   localStorage.setItem(TOKEN_KEY, token);
 }
 
@@ -88,14 +88,18 @@ export const authService = {
    * the UI asks for a nickname.
    */
   restore: async (): Promise<PublicPlayer | null> => {
-    if (!getToken()) return null;
+    const token = getToken();
+    if (!token) return null;
+    // Lock a legacy localStorage-only session to this tab before refreshing it.
+    sessionStorage.setItem(SESSION_TOKEN_KEY, token);
 
     try {
       const result: AuthResult = await apiFetch('/auth/refresh', { method: 'POST' });
       return persist(result);
     } catch {
       // Expired token, or the profile was removed server-side.
-      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      if (localStorage.getItem(TOKEN_KEY) === token) localStorage.removeItem(TOKEN_KEY);
       return null;
     }
   },
@@ -138,6 +142,7 @@ export const authService = {
 
   /** Sign out of the active profile but keep it listed on this device. */
   signOut: () => {
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
     localStorage.removeItem(TOKEN_KEY);
   },
 };

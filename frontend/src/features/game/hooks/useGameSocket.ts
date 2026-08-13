@@ -23,7 +23,8 @@ interface GameSocketEvents {
   onDuelResult: (data: { duel: PublicDuelState; resolution: DuelResolution }) => void;
   onGameFinished: (data: { scores: FinalScore[]; masteryReports: MasteryReport[] | null }) => void;
   onBotAction: (data: { botId: string; botName: string; action: string }) => void;
-  onError: (data: { message: string }) => void;
+  onSeatMismatch: (data: { seats: { playerId: string; name: string }[] }) => void;
+  onError: (data: { message: string; code?: string }) => void;
 }
 
 export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
@@ -42,7 +43,9 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
     const handleFinished = (data: { scores: FinalScore[]; masteryReports: MasteryReport[] | null }) => eventsRef.current.onGameFinished(data);
     const handleBotAction = (data: { botId: string; botName: string; action: string }) => eventsRef.current.onBotAction(data);
-    const handleError = (data: { message: string }) => eventsRef.current.onError(data);
+    const handleSeatMismatch = (data: { seats: { playerId: string; name: string }[] }) => eventsRef.current.onSeatMismatch(data);
+    const handleError = (data: { message: string; code?: string }) => eventsRef.current.onError(data);
+    const requestState = () => socket.emit('game:request-state', { gameId });
 
     socket.on('game:state', handleState);
     socket.on('game:challenge', handleChallenge);
@@ -52,12 +55,14 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     socket.on('game:duel-result', handleDuelResult);
     socket.on('game:finished', handleFinished);
     socket.on('game:bot-action', handleBotAction);
+    socket.on('game:seat-mismatch', handleSeatMismatch);
     socket.on('game:error', handleError);
+    socket.on('connect', requestState);
 
     // Subscribe before requesting state. A local server can answer in the same
     // tick, and registering afterwards occasionally left a refreshed board on
     // its loading screen until the next state change.
-    socket.emit('game:request-state', { gameId });
+    if (socket.connected) requestState();
 
     return () => {
       socket.off('game:state', handleState);
@@ -68,7 +73,9 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
       socket.off('game:duel-result', handleDuelResult);
       socket.off('game:finished', handleFinished);
       socket.off('game:bot-action', handleBotAction);
+      socket.off('game:seat-mismatch', handleSeatMismatch);
       socket.off('game:error', handleError);
+      socket.off('connect', requestState);
     };
   }, [socket, gameId]);
 

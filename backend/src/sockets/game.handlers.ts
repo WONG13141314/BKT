@@ -594,12 +594,30 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
   // ---- Reconnect ----
 
   socket.on('game:request-state', async (data: { gameId: string }) => {
+    const state = await gameService.getGame(data.gameId);
+    if (!state) {
+      socket.emit('game:error', {
+        code: 'GAME_NOT_FOUND',
+        message: 'This game is no longer available. Please return and create a new room.',
+      });
+      return;
+    }
+
+    const viewerSeat = state.players.find((seat) =>
+      seat.playerId === playerId || seat.id === playerId
+    );
+    if (!viewerSeat) {
+      socket.emit('game:seat-mismatch', {
+        seats: state.players
+          .filter((seat) => !seat.isBot)
+          .map((seat) => ({ playerId: seat.playerId, name: seat.name })),
+      });
+      return;
+    }
+
     const socketRoom = getSocketRoom(data.gameId);
     socket.join(socketRoom);
     socket.data.gameId = data.gameId;
-
-    const state = await gameService.getGame(data.gameId);
-    if (!state) return;
 
     socket.emit('game:state', { state: toPublicState(state) });
 

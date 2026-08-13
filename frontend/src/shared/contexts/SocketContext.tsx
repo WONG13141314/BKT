@@ -44,7 +44,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   }, []);
 
   const connectSocket = useCallback(() => {
-    const token = localStorage.getItem('mm.token');
+    const token = sessionStorage.getItem('mm.session-token') ?? localStorage.getItem('mm.token');
     if (!token) return;
 
     // If a socket already exists with the same token, don't recreate it.

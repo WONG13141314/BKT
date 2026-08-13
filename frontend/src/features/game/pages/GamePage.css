@@ -34,6 +34,13 @@
   color: #000;
 }
 
+.seat-recovery-card {
+  max-width: 430px;
+  background: #fff;
+  border: 3px solid #000;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.35);
+}
+
 /* ---- Main Layout ---- */
 
 .game-layout {

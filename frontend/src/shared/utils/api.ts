@@ -15,7 +15,7 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = sessionStorage.getItem('mm.session-token') ?? localStorage.getItem(TOKEN_KEY);
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,

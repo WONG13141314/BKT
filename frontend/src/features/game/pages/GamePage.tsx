@@ -13,6 +13,8 @@ import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { MathDuel } from '../components/MathDuel';
 import { BOARD_TILES, COLOR_GROUPS } from '../config/board.config';
 import { usePlayer } from '../../auth/PlayerContext';
+import { authService } from '../../auth/services/auth.service';
+import { StoredProfile } from '../../auth/types/auth.types';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
@@ -42,8 +44,8 @@ export function GamePage() {
   const roomCode = searchParams.get('code');
   const gameId = roomCode ? `game_${roomCode}` : null;
 
-  const { player } = usePlayer();
-  const { socket, connectSocket } = useSocket();
+  const { player, setPlayer } = usePlayer();
+  const { socket, connectSocket, disconnectSocket } = useSocket();
   const myPlayerId = player?.id ?? '';
 
   // A browser refresh can enter /game directly without passing through the
@@ -73,6 +75,11 @@ export function GamePage() {
   const [selectedTile, setSelectedTile] = useState(0);
   const [auctionSeconds, setAuctionSeconds] = useState(0);
   const [rollRequested, setRollRequested] = useState(false);
+  const [seatRecoveryMessage, setSeatRecoveryMessage] = useState<string | null>(null);
+  const [seatChoices, setSeatChoices] = useState<StoredProfile[]>([]);
+  const [isSeatRecovering, setIsSeatRecovering] = useState(false);
+  const [fatalGameError, setFatalGameError] = useState<string | null>(null);
+  const seatRecoveryRef = useRef(false);
 
   // Duel state is separate from `gameState`: it is redacted per recipient, so it
   // arrives on its own channel rather than inside the shared state broadcast.
@@ -85,6 +92,55 @@ export function GamePage() {
   // authority for the turn. The server phase always controls legal actions.
   const [isDiceRolling, setIsDiceRolling] = useState(false);
   const [isPawnMoving, setIsPawnMoving] = useState(false);
+
+  const switchToGameSeat = useCallback(async (profile: StoredProfile) => {
+    if (seatRecoveryRef.current) return;
+    seatRecoveryRef.current = true;
+    setIsSeatRecovering(true);
+    setSeatChoices([]);
+    setSeatRecoveryMessage(`Restoring ${profile.displayName}'s game seat…`);
+
+    try {
+      const restored = await authService.switchTo(profile);
+      if (!restored) throw new Error('The saved profile has expired.');
+      if (roomCode) sessionStorage.setItem(`mm.game-seat.${roomCode}`, restored.id);
+      // The old socket is authenticated as the wrong profile. Replacing it is
+      // essential; changing React state alone cannot change a socket identity.
+      disconnectSocket();
+      setPlayer(restored);
+      setSeatRecoveryMessage(null);
+    } catch (error) {
+      setSeatRecoveryMessage(
+        error instanceof Error ? error.message : 'Could not restore the player for this game.'
+      );
+    } finally {
+      seatRecoveryRef.current = false;
+      setIsSeatRecovering(false);
+    }
+  }, [disconnectSocket, roomCode, setPlayer]);
+
+  const recoverGameSeat = useCallback((seats: { playerId: string; name: string }[]) => {
+    if (seatRecoveryRef.current) return;
+    // Never leave a stale board visible as WAIT while identity is unresolved.
+    setGameState(null);
+
+    const savedProfiles = authService.getStoredProfiles();
+    const candidates = savedProfiles.filter((profile) =>
+      seats.some((seat) => seat.playerId === profile.id)
+    );
+    const preferredId = roomCode ? sessionStorage.getItem(`mm.game-seat.${roomCode}`) : null;
+    const preferred = candidates.find((profile) => profile.id === preferredId);
+
+    if (preferred || candidates.length === 1) {
+      void switchToGameSeat(preferred ?? candidates[0]);
+      return;
+    }
+
+    setSeatChoices(candidates);
+    setSeatRecoveryMessage(candidates.length > 1
+      ? 'Choose the player who joined this game.'
+      : `${player?.displayName ?? 'This profile'} did not join this game.`);
+  }, [player?.displayName, roomCode, setGameState, switchToGameSeat]);
 
   const {
     emitRoll,
@@ -107,6 +163,19 @@ export function GamePage() {
     emitRequestChallenge,
   } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
+      const mySeat = state.players.find((seat) =>
+        seat.playerId === myPlayerId || seat.id === myPlayerId
+      );
+      if (!mySeat) {
+        recoverGameSeat(state.players
+          .filter((seat) => !seat.isBot)
+          .map((seat) => ({ playerId: seat.playerId, name: seat.name })));
+        return;
+      }
+      if (roomCode) sessionStorage.setItem(`mm.game-seat.${roomCode}`, mySeat.playerId);
+      setFatalGameError(null);
+      setSeatRecoveryMessage(null);
+      setSeatChoices([]);
       setGameState(state);
       if (state.turnPhase !== 'ROLL_PHASE' && state.turnPhase !== 'MOVING') {
         setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
@@ -204,8 +273,13 @@ export function GamePage() {
       // Bot actions are communicated through board animations (dice, piece movement).
       // No text banner needed.
     },
+    onSeatMismatch: (data) => recoverGameSeat(data.seats),
     onError: (data) => {
       setRollRequested(false);
+      if (data.code === 'GAME_NOT_FOUND') {
+        setFatalGameError(data.message);
+        return;
+      }
       addNotification('info', data.message);
     },
   });
@@ -384,6 +458,45 @@ export function GamePage() {
           <AlertCircle size={24} />
           <h2>No Game Room specified.</h2>
           <button className="action-btn action-btn--primary" onClick={() => navigate('/')}>Go Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (fatalGameError) {
+    return (
+      <div className="game-page game-page--center">
+        <div className="game-page__message seat-recovery-card">
+          <AlertCircle size={30} />
+          <h2>{fatalGameError}</h2>
+          <button className="action-btn action-btn--primary" onClick={() => navigate('/')}>
+            Return to Player Select
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (seatRecoveryMessage) {
+    return (
+      <div className="game-page game-page--center">
+        <div className="game-page__message seat-recovery-card">
+          {isSeatRecovering && <Loader2 size={28} className="icon-spin" />}
+          <h2>{seatRecoveryMessage}</h2>
+          {seatChoices.map((profile) => (
+            <button
+              key={profile.id}
+              className="action-btn action-btn--primary"
+              onClick={() => void switchToGameSeat(profile)}
+            >
+              Continue as {profile.displayName}
+            </button>
+          ))}
+          {seatChoices.length === 0 && !isSeatRecovering && (
+            <button className="action-btn action-btn--secondary" onClick={() => navigate('/')}>
+              Return to Player Select
+            </button>
+          )}
         </div>
       </div>
     );

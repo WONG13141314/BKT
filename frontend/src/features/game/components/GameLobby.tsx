@@ -64,6 +64,9 @@ export function GameLobby() {
     const onRoomUpdate = (data: RoomState) => {
       setRoom(data);
       setError(null);
+      if (myId && data.players.some((seat) => seat.id === myId)) {
+        sessionStorage.setItem(`mm.game-seat.${data.code}`, myId);
+      }
     };
     const onRoomError = (data: { message: string }) => setError(data.message);
     const onGameStart = (data: { roomCode: string }) => navigate(`/game?code=${data.roomCode}`);
@@ -83,7 +86,7 @@ export function GameLobby() {
       socket.off('game:start', onGameStart);
       socket.off('room:deleted', onRoomDeleted);
     };
-  }, [socket, navigate]);
+  }, [socket, navigate, myId]);
 
   const toggleReady = () => { if (socket) socket.emit('room:ready'); };
   const startGame = () => { if (socket) socket.emit('room:start'); };
