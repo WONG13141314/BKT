@@ -211,7 +211,9 @@
 
 .board-center {
   position: relative;
-  z-index: 5;
+  /* Above the full-board token canvas so its transparent WebGL surface can
+     never intercept the physical Roll Dice button. */
+  z-index: 25;
   grid-row: 2 / 6;
   grid-column: 2 / 6;
   display: flex;
@@ -256,6 +258,11 @@
   margin-top: 12%;
 }
 
+.physics-dice,
+.physics-dice canvas {
+  pointer-events: none !important;
+}
+
 .physics-dice canvas { width: 100% !important; height: 100% !important; }
 
 .board-center .dice-roll-btn {
@@ -274,7 +281,11 @@
   pointer-events: none;
 }
 
-.board-piece-layer canvas { width: 100% !important; height: 100% !important; }
+.board-piece-layer canvas {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+}
 
 .house-sticker {
   position: absolute;

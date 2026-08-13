@@ -11,21 +11,26 @@ const GRID = [
   [2, 6], [3, 6], [4, 6], [5, 6],
 ];
 
-const SLOT = [-.48, -.16, .16, .48];
+// Four fixed bays centred inside every tile. Keeping the offsets symmetric
+// prevents a full table from piling up on the inner board border at GO.
+const TOKEN_BAYS: [number, number][] = [
+  [-.34, -.27],
+  [.34, -.27],
+  [-.34, .27],
+  [.34, .27],
+];
 const YAWS = { race_car: -.38, battleship: 0, top_hat: -.28, scottie_dog: -.34 };
 const HEIGHTS = { race_car: .08, battleship: .07, top_hat: .065, scottie_dog: .11 };
 const SCALES = { race_car: .27, battleship: .3, top_hat: .26, scottie_dog: .26 };
 
 function tokenBay(tileIndex: number, playerIndex: number): [number, number] {
-  const slot = SLOT[playerIndex] ?? 0;
-  if (tileIndex === 0 || tileIndex === 5) return [slot, .52];
-  if (tileIndex === 10 || tileIndex === 15) return [slot, -.52];
-  // Park pieces on the board-facing edge of each deed. This leaves the tile
-  // name and price readable and makes every model look seated inside its space.
-  if (tileIndex < 5) return [slot, .52];       // bottom
-  if (tileIndex < 10) return [.52, -slot];     // left
-  if (tileIndex < 15) return [-slot, -.52];    // top
-  return [-.52, slot];                         // right
+  const [across, depth] = TOKEN_BAYS[playerIndex] ?? [0, 0];
+  // Rotate the same 2x2 bay layout with the track. Every model remains fully
+  // inside the physical tile instead of straddling the centre/edge border.
+  if (tileIndex <= 5) return [across, depth];
+  if (tileIndex <= 10) return [-depth, across];
+  if (tileIndex <= 15) return [-across, -depth];
+  return [depth, -across];
 }
 
 function boardPoint(tileIndex: number, playerIndex: number, z: number) {
@@ -50,6 +55,7 @@ export function BoardPiecesScene({ players }: { players: Player[] }) {
         orthographic
         shadows
         dpr={[1, 2]}
+        style={{ pointerEvents: 'none' }}
         camera={{ position: [0, 0, 12], zoom: 48, near: .1, far: 40 }}
         gl={{ antialias: true, alpha: true }}
       >

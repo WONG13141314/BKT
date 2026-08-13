@@ -45,6 +45,7 @@ export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
       <Canvas
         shadows
         dpr={[1, 2]}
+        style={{ pointerEvents: 'none' }}
         camera={{ position: [0, 6.2, 7.7], fov: 29, near: .1, far: 50 }}
         gl={{ antialias: true, alpha: true }}
         onCreated={({ camera }) => camera.lookAt(0, .6, 0)}
