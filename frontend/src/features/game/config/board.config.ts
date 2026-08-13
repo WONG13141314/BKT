@@ -28,24 +28,23 @@ export const BOARD_TILES: TileConfig[] = [
   // Corner: Jail
   { index: 5,  type: 'JAIL',           name: 'Penjara',        colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
   // Left column: Bottom to Top (indices 6–9)
-  { index: 6,  type: 'PROPERTY',       name: 'Darab Nook',     colorGroup: 'orange', skillTheme: 'Multiplication',  price: 120, baseRent: 35, leveledRent: 80 },
+  { index: 6,  type: 'PROPERTY',       name: 'Tambah Nook',    colorGroup: 'orange', skillTheme: 'Addition',       price: 120, baseRent: 35, leveledRent: 80 },
   { index: 7,  type: 'TAX',            name: 'Cukai',          colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
   { index: 8,  type: 'CHALLENGE_CARD', name: 'Challenge Card', colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
-  { index: 9,  type: 'PROPERTY',       name: 'Darab Towers',   colorGroup: 'green',  skillTheme: 'Multiplication', price: 160, baseRent: 50, leveledRent: 110 },
+  { index: 9,  type: 'PROPERTY',       name: 'Tolak Towers',   colorGroup: 'green',  skillTheme: 'Subtraction',    price: 160, baseRent: 50, leveledRent: 110 },
   // Corner: Lucky Break
   { index: 10, type: 'LUCKY_BREAK',    name: 'Lucky Break',    colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
   // Top row: Left to Right (indices 11–14)
-  { index: 11, type: 'PROPERTY',       name: 'Bahagi Bazaar',  colorGroup: 'purple', skillTheme: 'Division',     price: 160, baseRent: 50, leveledRent: 110 },
+  { index: 11, type: 'PROPERTY',       name: 'Tambah Bazaar',  colorGroup: 'purple', skillTheme: 'Addition',     price: 160, baseRent: 50, leveledRent: 110 },
   { index: 12, type: 'CHALLENGE_CARD', name: 'Challenge Card', colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
-  { index: 13, type: 'PROPERTY',       name: 'Bahagi Drive',   colorGroup: 'purple', skillTheme: 'Division',     price: 200, baseRent: 65, leveledRent: 140 },
-  { index: 14, type: 'PROPERTY',       name: 'Darab Corner',   colorGroup: 'green',  skillTheme: 'Multiplication', price: 200, baseRent: 65, leveledRent: 140 },
+  { index: 13, type: 'PROPERTY',       name: 'Tolak Drive',    colorGroup: 'purple', skillTheme: 'Subtraction',  price: 200, baseRent: 65, leveledRent: 140 },
+  { index: 14, type: 'PROPERTY',       name: 'Tambah Corner',  colorGroup: 'green',  skillTheme: 'Addition',     price: 200, baseRent: 65, leveledRent: 140 },
   // Corner: Go to Jail
   { index: 15, type: 'GO_TO_JAIL',     name: 'Ke Penjara',     colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
   // Right column: Top to Bottom (indices 16–19)
   { index: 16, type: 'CHALLENGE_CARD', name: 'Challenge Card', colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
   { index: 17, type: 'PROPERTY',       name: 'Tambah Row',     colorGroup: 'red',    skillTheme: 'Addition',     price: 240, baseRent: 80, leveledRent: 170 },
-  { index: 18, type: 'PROPERTY',       name: 'Bahagi Towers',   colorGroup: 'red',    skillTheme: 'Subtraction',  price: 240, baseRent: 80, leveledRent: 170 },
-  { index: 19, type: 'TAX',            name: 'Cukai Mewah',    colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
+  { index: 18, type: 'PROPERTY',       name: 'Tolak Towers',   colorGroup: 'red',    skillTheme: 'Subtraction',  price: 240, baseRent: 80, leveledRent: 170 },
   { index: 19, type: 'TAX',            name: 'Cukai Mewah',    colorGroup: null,     skillTheme: null,           price: 0,   baseRent: 0,  leveledRent: 0 },
 ];
 

@@ -16,7 +16,7 @@ import {
 interface GameSocketEvents {
   onStateUpdate: (state: GameState) => void;
   onChallenge: (data: { challenge: MathChallenge; playerId: string }) => void;
-  onChallengeStarted: (data: { playerId: string; skillName: string; context: string }) => void;
+  onChallengeStarted: (data: { playerId: string; context: string }) => void;
   onAnswerResult: (data: { result: AnswerResult; playerId: string }) => void;
   /** Duel opened or updated. `myChallenge` is null for onlookers and once answered. */
   onDuel: (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => void;
@@ -34,11 +34,9 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   useEffect(() => {
     if (!socket || !gameId) return;
 
-    socket.emit('game:request-state', { gameId });
-
     const handleState = (data: { state: GameState }) => eventsRef.current.onStateUpdate(data.state);
     const handleChallenge = (data: { challenge: MathChallenge; playerId: string }) => eventsRef.current.onChallenge(data);
-    const handleChallengeStarted = (data: { playerId: string; skillName: string; context: string }) => eventsRef.current.onChallengeStarted(data);
+    const handleChallengeStarted = (data: { playerId: string; context: string }) => eventsRef.current.onChallengeStarted(data);
     const handleAnswerResult = (data: { result: AnswerResult; playerId: string }) => eventsRef.current.onAnswerResult(data);
     const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => eventsRef.current.onDuel(data);
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
@@ -55,6 +53,11 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     socket.on('game:finished', handleFinished);
     socket.on('game:bot-action', handleBotAction);
     socket.on('game:error', handleError);
+
+    // Subscribe before requesting state. A local server can answer in the same
+    // tick, and registering afterwards occasionally left a refreshed board on
+    // its loading screen until the next state change.
+    socket.emit('game:request-state', { gameId });
 
     return () => {
       socket.off('game:state', handleState);
@@ -90,6 +93,11 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emit('game:smart-buy-answer', { selectedIndex, timeMs }), [emit]);
   const emitSkipBuy = useCallback(() => emit('game:skip-buy'), [emit]);
 
+  // Auctions are table-wide: every human player may bid, even when another
+  // player is taking the turn.
+  const emitAuctionBid = useCallback((amount: number) =>
+    emit('game:auction-bid', { amount }), [emit]);
+
   // Math Duel — sent by either duellist. The owner answers on another player's
   // turn, so this is deliberately not gated on whose turn it is.
   const emitDuelAnswer = useCallback((selectedIndex: number, timeMs: number) =>
@@ -119,6 +127,11 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   // End Turn
   const emitEndTurn = useCallback(() => emit('game:end-turn'), [emit]);
 
+  // Building is a deliberate board action performed after landing events have
+  // resolved. The server remains authoritative over ownership and group checks.
+  const emitBuildHouse = useCallback((tileIndex: number) =>
+    emit('game:build-house', { tileIndex }), [emit]);
+
   return {
     emitRoll,
     emitRollAnswer,
@@ -126,6 +139,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitSmartBuy,
     emitSmartBuyAnswer,
     emitSkipBuy,
+    emitAuctionBid,
     emitDuelAnswer,
     emitCardAck,
     emitCardAnswer,
@@ -137,6 +151,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitLevelUpAnswer,
     emitLevelUpDecline,
     emitEndTurn,
+    emitBuildHouse,
     emitRequestChallenge,
   };
 }

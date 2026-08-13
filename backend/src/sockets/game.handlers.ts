@@ -19,7 +19,7 @@ import { recordGameResult } from '../features/game/game.persistence';
 // ---- Deadlines ----
 
 /** How long a player may sit on a decision (buy, jail, level up, end turn). */
-const DECISION_TIMEOUT_MS = 45_000;
+const DECISION_TIMEOUT_MS = 90_000;
 /** Slack on top of a challenge's own time limit, to cover latency. */
 const CHALLENGE_GRACE_MS = 3_000;
 /** Reconnect window before a disconnected player's turn is auto-resolved. */
@@ -43,7 +43,17 @@ function getSocketRoom(gameId: string): string {
  * redacted per recipient.
  */
 function toPublicState(state: GameState): GameState {
-  return { ...state, currentChallenge: null, duelState: null };
+  return {
+    ...state,
+    players: state.players.map((player) => ({
+      ...player,
+      masteryStates: {},
+      skillAttempts: {},
+      consecutiveFailures: {},
+    })),
+    currentChallenge: null,
+    duelState: null,
+  };
 }
 
 /**
@@ -62,7 +72,6 @@ function toPublicDuel(duel: DuelState): PublicDuelState {
   return {
     tileIndex: duel.tileIndex,
     tileName: duel.tileName,
-    skillName: duel.skillName,
     rentAmount: duel.rentAmount,
     challenger: side(duel.challenger),
     owner: side(duel.owner),
@@ -132,7 +141,6 @@ function emitChallengeToPlayer(io: Server, socketRoom: string, state: GameState)
     } else {
       s.emit('game:challenge-started', {
         playerId: activePlayer.id,
-        skillName: state.currentChallenge.skillName,
         context: state.currentChallenge.context,
       });
     }
@@ -191,7 +199,7 @@ function scheduleBotDuelAnswer(io: Server, gameId: string) {
 
     if (outcome.resolution) {
       emitDuelResult(io, socketRoom, outcome.state);
-      void handleEndTurnFlow(io, gameId);
+      if (getCurrentPlayer(outcome.state).isBot) void handleEndTurnFlow(io, gameId);
     }
   }, BOT_DUEL_THINK_MS);
 
@@ -225,10 +233,20 @@ function emitAnswerResult(
       s.data?.player?.id === activePlayer.playerId || s.data?.player?.id === activePlayer.id;
 
     // Onlookers learn the outcome, not the answer or the mastery numbers.
+    const publicResult = isActivePlayer
+      ? {
+          isCorrect: result.isCorrect,
+          correctAnswer: result.correctAnswer,
+          reward: result.reward,
+          streakCount: result.streakCount,
+          streakBroken: result.streakBroken,
+          showHintNext: result.showHintNext,
+          timedOut: result.timedOut,
+        }
+      : { isCorrect: result.isCorrect, timedOut: result.timedOut };
+
     s.emit('game:answer-result', {
-      result: isActivePlayer
-        ? result
-        : { isCorrect: result.isCorrect, timedOut: result.timedOut },
+      result: publicResult,
       playerId: activePlayer.id,
     });
   }
@@ -241,7 +259,6 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
   clearBotDuelTimer(state.id);
 
   const scores = gameService.getScores(state.id);
-  const masteryReports = gameService.getMasteryReports(state.id);
   if (scores) {
     // The money scoreboard is public — that is the Monopoly half, and it is meant
     // to be compared. Mastery is not: showing every player's learning numbers
@@ -254,11 +271,7 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
       const s = io.sockets.sockets.get(socketId);
       if (!s) continue;
 
-      const viewerId = s.data?.player?.id;
-      const seat = state.players.find((p) => p.playerId === viewerId || p.id === viewerId);
-      const mine = masteryReports?.filter((r) => r.playerId === seat?.id) ?? null;
-
-      s.emit('game:finished', { scores, masteryReports: mine });
+      s.emit('game:finished', { scores, masteryReports: null });
     }
 
     // Queued, not awaited — the scoreboard is already on its way to the players.
@@ -298,6 +311,15 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   // MOVING and RESOLVE_TILE are driven by the server, not by a human.
   if (state.turnPhase === 'MOVING' || state.turnPhase === 'RESOLVE_TILE') return;
 
+  if (state.turnPhase === 'AUCTION' && state.auctionState) {
+    const timer = setTimeout(() => {
+      phaseTimers.delete(gameId);
+      void resolveStall(io, gameId);
+    }, Math.max(500, state.auctionState.endsAt - Date.now()));
+    phaseTimers.set(gameId, timer);
+    return;
+  }
+
   // A duel waits on the owner as well as the active player, so it still needs a
   // deadline when a bot is the one taking the turn.
   if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
@@ -326,7 +348,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   let delay: number;
   if (overrideMs !== undefined) {
     delay = overrideMs;
-  } else if (state.currentChallenge) {
+  } else if (state.currentChallenge && state.currentChallenge.timeLimit > 0) {
     const deadline =
       state.currentChallenge.startedAt +
       state.currentChallenge.timeLimit * 1000 +
@@ -362,7 +384,11 @@ async function resolveStall(io: Server, gameId: string) {
   // A timed-out roll or jail escape leaves the player mid-move.
   advanceServerPhases(io, gameId, socketRoom);
 
-  await handleEndTurnFlow(io, gameId);
+  const live = gameService.getGameSync(gameId);
+  if (live && getCurrentPlayer(live).isBot) {
+    if (live.turnPhase === 'END_TURN') await handleEndTurnFlow(io, gameId);
+    else if (live.turnPhase === 'ROLL_PHASE') await triggerBotTurnIfNeeded(io, gameId);
+  }
 }
 
 // ---- Turn advancement ----
@@ -533,15 +559,13 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const socketRoom = getSocketRoom(gameId);
     broadcastState(io, socketRoom, state);
     advanceServerPhases(io, gameId, socketRoom);
-    void handleEndTurnFlow(io, gameId);
   }
 
   /**
    * Wrap an answer submission: validate, grade, report, advance.
    *
-   * `autoEnd` mirrors the original pacing — a challenge that resolves the whole
-   * turn rolls straight on, but one that only unlocks movement stops so the
-   * player can see where they landed before ending the turn themselves.
+   * Human outcomes remain visible until the player deliberately ends their
+   * turn. `autoEnd` is reserved for server-controlled recovery paths.
    */
   function runAnswer(
     gameId: string,
@@ -564,7 +588,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     // challenge card may have teleported them.
     advanceServerPhases(io, gameId, socketRoom);
 
-    if (opts.autoEnd !== false) void handleEndTurnFlow(io, gameId);
+    if (opts.autoEnd === true) void handleEndTurnFlow(io, gameId);
   }
 
   // ---- Reconnect ----
@@ -660,7 +684,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     if (outcome.resolution) {
       emitDuelResult(io, socketRoom, outcome.state);
-      void handleEndTurnFlow(io, d.gameId);
+      // A human landlord may be the last respondent during a bot's turn. The
+      // bot has nothing left to review or click, so hand play back immediately.
+      // Human challengers keep the result visible until they end their turn.
+      if (getCurrentPlayer(outcome.state).isBot) void handleEndTurnFlow(io, d.gameId);
     }
   });
 
@@ -708,6 +735,31 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
   socket.on('game:skip-buy', (d: { gameId: string }) =>
     runAction(d.gameId, gameService.skipBuy));
 
+  socket.on('game:auction-bid', (d: { gameId: string; amount: number }) => {
+    const state = gameService.getGameSync(d.gameId);
+    if (!state || state.turnPhase !== 'AUCTION') return;
+    const seat = state.players.find((player) => player.playerId === playerId || player.id === playerId);
+    if (!seat) return;
+
+    const next = gameService.placeAuctionBid(d.gameId, seat.id, Math.floor(d.amount));
+    if (!next) {
+      socket.emit('game:error', { message: 'Bid must be higher and within your available cash' });
+      return;
+    }
+    broadcastState(io, getSocketRoom(d.gameId), next);
+  });
+
+  socket.on('game:build-house', (d: { gameId: string; tileIndex: number }) => {
+    if (!validateTurn(d.gameId)) return;
+    const state = gameService.buildHouse(d.gameId, d.tileIndex);
+    if (!state) {
+      socket.emit('game:error', { message: 'This property cannot build a house right now' });
+      return;
+    }
+    const socketRoom = getSocketRoom(d.gameId);
+    broadcastState(io, socketRoom, state);
+  });
+
   socket.on('game:card-ack', (d: { gameId: string }) =>
     runAction(d.gameId, gameService.acknowledgeCard));
 
@@ -723,7 +775,6 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const socketRoom = getSocketRoom(d.gameId);
     broadcastState(io, socketRoom, state);
     advanceServerPhases(io, d.gameId, socketRoom);
-    void handleEndTurnFlow(io, d.gameId);
   });
 
   socket.on('game:jail-wait', (d: { gameId: string }) => {
@@ -735,7 +786,6 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const socketRoom = getSocketRoom(d.gameId);
     broadcastState(io, socketRoom, state);
     advanceServerPhases(io, d.gameId, socketRoom);
-    void handleEndTurnFlow(io, d.gameId);
   });
 
   socket.on('game:level-up-decline', (d: { gameId: string }) =>

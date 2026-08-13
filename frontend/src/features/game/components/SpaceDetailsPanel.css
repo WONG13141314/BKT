@@ -1,0 +1,54 @@
+.space-details {
+  position: relative;
+  overflow: hidden;
+  color: #000;
+  background: #fff;
+  border: 3px solid #000;
+  border-radius: 4px;
+  box-shadow: 6px 6px 0 rgba(0,0,0,.28);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.space-details__ribbon {
+  padding: .35rem .65rem;
+  color: #fff;
+  background: #111;
+  text-align: center;
+  font: 800 .65rem Arial, sans-serif;
+  letter-spacing: 1.4px;
+}
+
+.space-details__header {
+  margin: .65rem;
+  padding: .65rem .5rem;
+  background: var(--deed-color);
+  border: 3px solid #000;
+  box-shadow: 3px 3px 0 rgba(0,0,0,.18);
+  text-align: center;
+}
+
+.space-details__header small,
+.space-details__header span { display: block; font: 800 .62rem Arial, sans-serif; text-transform: uppercase; }
+.space-details__header h2 { margin: .25rem 0; font: 1.55rem/1 Impact, 'Arial Black', sans-serif; text-transform: uppercase; }
+.space-details__header span { width: fit-content; margin: .35rem auto 0; padding: .2rem .45rem; background: rgba(255,255,255,.76); border: 1px solid #000; }
+.space-details__body { padding: 0 .85rem .9rem; }
+.space-details__facts { margin: 0; }
+.space-details__facts div { display: flex; justify-content: space-between; gap: .5rem; padding: .5rem 0; border-bottom: 2px dashed #000; }
+.space-details__facts dt { font-size: .72rem; }
+.space-details__facts dd { margin: 0; font-weight: 900; }
+
+.space-details__house { margin-top: .75rem; padding: .55rem; display: flex; align-items: center; gap: .7rem; background: #eeeae0; border: 2px solid #000; }
+.space-details__house.is-built { background: #d8f3dc; }
+.space-details__house small,.space-details__house strong { display: block; }
+.space-details__house small { font-size: .58rem; }.space-details__house strong { font-size: .78rem; }
+.space-details__house-icon { position: relative; width: 24px; height: 18px; background: #198754; border: 2px solid #071d0f; }
+.space-details__house-icon::before { content: ''; position: absolute; left: -4px; top: -12px; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 12px solid #20a963; }
+.space-details__description { min-height: 100px; margin: .3rem 0; padding: 1rem; background: #fffdf5; border: 2px dashed #000; font-weight: 700; line-height: 1.5; }
+.space-details__actions { margin-top: .8rem; display: grid; gap: .5rem; }
+.space-details__actions .action-btn { width: 100%; }
+.space-details__actions .decision-panel {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}

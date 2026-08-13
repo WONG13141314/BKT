@@ -4,12 +4,12 @@
 // distribution rather than on any single pick.
 
 import { selectChallenge } from '../bkt.selector';
-import { SKILL_NAMES, type SkillName } from '../../features/game/game.constants';
+import { ACTIVE_SKILL_NAMES, type SkillName } from '../../features/game/game.constants';
 
 const DRAWS = 600;
 
 function tally(pick: () => SkillName): Record<string, number> {
-  const counts: Record<string, number> = Object.fromEntries(SKILL_NAMES.map((s) => [s, 0]));
+  const counts: Record<string, number> = Object.fromEntries(ACTIVE_SKILL_NAMES.map((s) => [s, 0]));
   for (let i = 0; i < DRAWS; i++) counts[pick()]++;
   return counts;
 }
@@ -17,18 +17,16 @@ function tally(pick: () => SkillName): Record<string, number> {
 const NO_FAILURES: Record<string, number> = {};
 
 describe('Skill selection', () => {
-  const weakAtDivision = {
+  const weakAtSubtraction = {
     Addition: 0.85,
-    Subtraction: 0.80,
-    Multiplication: 0.75,
-    Division: 0.10,
+    Subtraction: 0.10,
   };
 
   it('targets the weakest skill without monopolising the session', () => {
     const counts = tally(
       () =>
         selectChallenge({
-          masteryStates: weakAtDivision,
+          masteryStates: weakAtSubtraction,
           context: 'ROLL_CHALLENGE',
           consecutiveFailures: NO_FAILURES,
         }).skillName
@@ -36,14 +34,14 @@ describe('Skill selection', () => {
 
     // The acceptance target for Phase 4: a player weak in Division sees it at
     // least 40% of the time.
-    expect(counts.Division / DRAWS).toBeGreaterThan(0.4);
+    expect(counts.Subtraction / DRAWS).toBeGreaterThan(0.4);
 
     // But the old picker took the argmax every draw, which buried a child in
     // their worst subject. Every skill must keep a real share.
-    for (const skill of SKILL_NAMES) {
+    for (const skill of ACTIVE_SKILL_NAMES) {
       expect(counts[skill]).toBeGreaterThan(0);
     }
-    expect(counts.Division / DRAWS).toBeLessThan(0.95);
+    expect(counts.Subtraction / DRAWS).toBeLessThan(0.95);
   });
 
   it('still surfaces a mastered skill occasionally, so retention is visible', () => {
@@ -61,7 +59,7 @@ describe('Skill selection', () => {
         }).skillName
     );
 
-    for (const skill of SKILL_NAMES) {
+    for (const skill of ACTIVE_SKILL_NAMES) {
       expect(counts[skill]).toBeGreaterThan(0);
     }
   });
@@ -73,21 +71,19 @@ describe('Skill selection', () => {
           masteryStates: {
             Addition: 0.5,
             Subtraction: 0.5,
-            Multiplication: 0.5,
-            Division: 0.5,
           },
           context: 'LEVEL_UP',
           consecutiveFailures: NO_FAILURES,
-          propertySkillTheme: 'Multiplication',
+          propertySkillTheme: 'Addition',
         }).skillName
     );
 
     // Boosted, so clearly ahead of an even 25% split...
-    expect(counts.Multiplication / DRAWS).toBeGreaterThan(0.3);
+    expect(counts.Addition / DRAWS).toBeGreaterThan(0.55);
     // ...but not the hard filter it used to be, which collapsed the candidate
     // list to one skill and left BKT with nothing to decide.
-    expect(counts.Multiplication / DRAWS).toBeLessThan(0.85);
-    for (const skill of SKILL_NAMES) {
+    expect(counts.Addition / DRAWS).toBeLessThan(0.95);
+    for (const skill of ACTIVE_SKILL_NAMES) {
       expect(counts[skill]).toBeGreaterThan(0);
     }
   });
@@ -95,7 +91,7 @@ describe('Skill selection', () => {
   it('honours a forced skill exactly, for duels', () => {
     for (let i = 0; i < 50; i++) {
       const challenge = selectChallenge({
-        masteryStates: weakAtDivision,
+        masteryStates: weakAtSubtraction,
         context: 'MATH_DUEL',
         consecutiveFailures: NO_FAILURES,
         forceSkill: 'Addition',

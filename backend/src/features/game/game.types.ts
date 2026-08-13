@@ -60,6 +60,7 @@ export interface PlayerState {
   position: number;             // Tile index (0–19)
   money: number;                // In RM
   color: string;                // CSS color
+  tokenType: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
   properties: number[];         // Tile indices owned
   isInJail: boolean;
   jailTurns: number;            // 0–2
@@ -92,6 +93,7 @@ export type TurnPhase =
   | 'MOVING'                // Token animation in progress
   | 'RESOLVE_TILE'          // Processing tile landing
   | 'BUY_DECISION'          // Player choosing to buy / smart-buy / skip
+  | 'AUCTION'               // All players may bid for a declined property
   | 'SMART_BUY_CHALLENGE'   // Answering Smart Buy question
   | 'MATH_DUEL'             // Challenger and owner answering simultaneously
   | 'CARD_DRAW'             // Challenge Card drawn, showing effect
@@ -246,14 +248,11 @@ export type PublicQuestionData =
 
 export interface PublicMathChallenge {
   id: string;
-  skillName: SkillName;
-  difficulty: 1 | 2 | 3;
   questionData: PublicQuestionData;
   options: string[];
   context: ChallengeContext;
   timeLimit: number;            // Seconds
   expiresAt: number;            // Unix ms — client drives its countdown from this
-  hintLevel: 0 | 1 | 2 | 3;
   hintContent: string | null;
 }
 
@@ -316,7 +315,6 @@ export interface PublicDuelSide {
 export interface PublicDuelState {
   tileIndex: number;
   tileName: string;
-  skillName: SkillName;
   rentAmount: number;
   challenger: PublicDuelSide;
   owner: PublicDuelSide;
@@ -367,6 +365,8 @@ export interface TileEvent {
   rentAmount?: number;
   isMonopoly?: boolean;
   isLeveledUp?: boolean;
+  bankOfferAttempted?: boolean;
+  bankOfferApproved?: boolean;
   taxAmount?: number;
   card?: ChallengeCard;
   luckyBreakReward?: LuckyBreakReward;
@@ -425,6 +425,7 @@ export interface GameState {
   round: number;
   maxRounds: number;
   diceValues: [number, number];
+  diceRollId: number;
   /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
   diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
@@ -447,7 +448,7 @@ export interface AuctionState {
   tileIndex: number;
   currentBid: number;
   currentBidderId: string | null;
-  timeRemaining: number;          // Seconds
+  endsAt: number;
   isActive: boolean;
 }
 

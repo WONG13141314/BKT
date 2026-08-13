@@ -1,185 +1,184 @@
-import { useState, useEffect, useRef } from 'react';
-import { GameState, Player, PropertyState, formatRM } from '../types/game.types';
+import { useEffect, useRef, useState } from 'react';
+import { Dices } from 'lucide-react';
+import { GameState, formatRM } from '../types/game.types';
 import { BOARD_TILES, COLOR_GROUPS, getGridPosition } from '../config/board.config';
+import { BoardPiecesScene } from './BoardPiecesScene';
+import { PhysicsDice } from './PhysicsDice';
 import './Board.css';
+import './DiceRoller.css';
 
 interface Props {
   gameState: GameState;
-  currentPlayerId: string;
+  selectedTile: number;
+  onTileSelect: (tileIndex: number) => void;
+  isMyTurn: boolean;
+  rollRequested: boolean;
+  onRollClick: () => void;
+  onDiceRollingChange?: (rolling: boolean) => void;
   onMovementChange?: (isMoving: boolean) => void;
   onMovementComplete?: () => void;
 }
 
-// Tile type icons
 const TILE_ICONS: Record<string, string> = {
-  GO: '🚀',
-  JAIL: '🔒',
-  GO_TO_JAIL: '🚔',
-  LUCKY_BREAK: '🍀',
-  TAX: '💰',
-  CHALLENGE_CARD: '⚡',
-  REST: '☕',
+  GO: 'GO',
+  JAIL: 'JAIL',
+  GO_TO_JAIL: 'GO TO JAIL',
+  LUCKY_BREAK: 'LUCKY',
+  TAX: 'TAX',
+  CHALLENGE_CARD: '?',
+  REST: 'REST',
 };
 
-export function Board({ gameState, currentPlayerId, onMovementChange, onMovementComplete }: Props) {
+export function Board({
+  gameState,
+  selectedTile,
+  onTileSelect,
+  isMyTurn,
+  rollRequested,
+  onRollClick,
+  onDiceRollingChange,
+  onMovementChange,
+  onMovementComplete,
+}: Props) {
   const { players, properties } = gameState;
-  
-  // Track visual positions for animations
-  const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() => {
-    const initial: Record<string, number> = {};
-    players.forEach(p => { initial[p.id] = p.position; });
-    return initial;
-  });
-
-  // Target positions ref so we can update without triggering useEffect re-runs
+  const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() =>
+    Object.fromEntries(players.map((player) => [player.id, player.position]))
+  );
+  const visualPositionsRef = useRef(visualPositions);
   const targetPositions = useRef<Record<string, number>>({});
-  const wasMovingRef = useRef(false);
-  
-  useEffect(() => {
-    // Update target positions from game state
-    players.forEach(p => {
-      targetPositions.current[p.id] = p.position;
-      // Initialize if new player joins mid-game
-      setVisualPositions(prev => {
-        if (prev[p.id] === undefined) return { ...prev, [p.id]: p.position };
-        return prev;
-      });
-    });
-  }, [players]);
+  const wasMoving = useRef(false);
+  const lastRollId = useRef(gameState.diceRollId);
+  const movementBlockedUntil = useRef(0);
 
-  // Animation loop
+  useEffect(() => {
+    if (gameState.diceRollId !== lastRollId.current) {
+      lastRollId.current = gameState.diceRollId;
+      movementBlockedUntil.current = Date.now() + 2200;
+    }
+
+    const applyTargets = () => {
+      const next = { ...visualPositionsRef.current };
+      players.forEach((player) => {
+        targetPositions.current[player.id] = player.position;
+        if (next[player.id] === undefined) next[player.id] = player.position;
+      });
+      visualPositionsRef.current = next;
+      setVisualPositions(next);
+    };
+
+    const remaining = Math.max(0, movementBlockedUntil.current - Date.now());
+    const timer = setTimeout(applyTargets, remaining);
+    return () => clearTimeout(timer);
+  }, [gameState.diceRollId, players]);
+
   useEffect(() => {
     const interval = setInterval(() => {
-      setVisualPositions(prev => {
-        let changed = false;
-        let stillMoving = false;
-        const next = { ...prev };
+      const current = visualPositionsRef.current;
+      let changed = false;
+      let moving = false;
+      const next = { ...current };
 
-        for (const [id, targetPos] of Object.entries(targetPositions.current)) {
-          const currentPos = next[id];
-          if (currentPos !== undefined && currentPos !== targetPos) {
-            // Calculate distance forward
-            const distForward = (targetPos - currentPos + BOARD_TILES.length) % BOARD_TILES.length;
-            
-            // If distance > 12, it's a teleport (e.g., Go To Jail), so jump instantly.
-            // Max dice roll is 12.
-            if (distForward > 12) {
-              next[id] = targetPos;
-            } else {
-              // Move 1 step forward
-              next[id] = (currentPos + 1) % BOARD_TILES.length;
-              if (next[id] !== targetPos) {
-                stillMoving = true;
-              }
-            }
-            changed = true;
-          }
+      for (const [id, target] of Object.entries(targetPositions.current)) {
+        const position = next[id];
+        if (position === undefined || position === target) continue;
+        const forward = (target - position + BOARD_TILES.length) % BOARD_TILES.length;
+        next[id] = forward > 12 ? target : (position + 1) % BOARD_TILES.length;
+        changed = true;
+        if (next[id] !== target) moving = true;
+      }
+
+      if (changed) {
+        visualPositionsRef.current = next;
+        setVisualPositions(next);
+      }
+
+      if (changed || moving) {
+        if (!wasMoving.current) {
+          wasMoving.current = true;
+          onMovementChange?.(true);
         }
-
-        if (changed || stillMoving) {
-          if (!wasMovingRef.current) {
-            wasMovingRef.current = true;
-            onMovementChange?.(true);
-          }
-        } else if (wasMovingRef.current) {
-          wasMovingRef.current = false;
-          onMovementChange?.(false);
-          onMovementComplete?.();
-        }
-
-        return changed ? next : prev;
-      });
-    }, 200); // 200ms per tile step
+      } else if (wasMoving.current) {
+        wasMoving.current = false;
+        onMovementChange?.(false);
+        onMovementComplete?.();
+      }
+    }, 280);
 
     return () => clearInterval(interval);
   }, [onMovementChange, onMovementComplete]);
 
+  const visualPlayers = players.map((player) => ({
+    ...player,
+    position: visualPositions[player.id] ?? player.position,
+  }));
+  const canRoll = isMyTurn && gameState.turnPhase === 'ROLL_PHASE' && !rollRequested;
+  const centerActionLabel = rollRequested
+    ? 'Rolling…'
+    : canRoll
+      ? 'Roll Dice'
+      : gameState.turnPhase === 'MOVING'
+        ? 'Rolling…'
+        : !isMyTurn
+          ? 'Wait'
+          : gameState.turnPhase === 'BUY_DECISION'
+            ? 'Choose on Deed'
+            : gameState.turnPhase === 'JAIL_DECISION'
+              ? 'Choose Jail Action'
+              : gameState.turnPhase === 'END_TURN'
+                ? 'Review & End Turn'
+                : gameState.turnPhase === 'AUCTION'
+                  ? 'Auction in Progress'
+                  : 'Action in Progress';
+
   return (
     <div className="board-grid">
       {BOARD_TILES.map((tile) => {
-        const pos = getGridPosition(tile.index);
-        const colorGroup = tile.colorGroup ? COLOR_GROUPS[tile.colorGroup] : null;
-        const property = properties.find((p) => p.tileIndex === tile.index);
-        const owner = property?.ownerId
-          ? players.find((p) => p.id === property.ownerId)
-          : null;
-          
-        // Use visualPositions instead of p.position
-        const playersOnTile = players.filter((p) => visualPositions[p.id] === tile.index && !p.isBankrupt);
-
-        // Determine rotation class based on position
-        let rotationClass = '';
-        if (tile.index >= 0 && tile.index <= 5) rotationClass = 'tile-rotate-bottom';
-        else if (tile.index >= 6 && tile.index <= 9) rotationClass = 'tile-rotate-left';
-        else if (tile.index >= 10 && tile.index <= 15) rotationClass = 'tile-rotate-top';
-        else if (tile.index >= 16 && tile.index <= 19) rotationClass = 'tile-rotate-right';
+        const position = getGridPosition(tile.index);
+        const group = tile.colorGroup ? COLOR_GROUPS[tile.colorGroup] : null;
+        const property = properties.find((item) => item.tileIndex === tile.index);
+        const owner = property?.ownerId ? players.find((player) => player.id === property.ownerId) : null;
+        const side = tile.index <= 5 ? 'bottom' : tile.index <= 9 ? 'left' : tile.index <= 15 ? 'top' : 'right';
 
         return (
-          <div
+          <button
+            type="button"
             key={tile.index}
-            className={`board-tile tile-${tile.type.toLowerCase().replace('_', '-')} ${rotationClass} ${
-              tile.index === players.find((p) => p.id === currentPlayerId)?.position
-                ? 'current-tile'
-                : ''
-            }`}
+            className={`board-tile tile-${tile.type.toLowerCase().replace('_', '-')} tile-rotate-${side} ${selectedTile === tile.index ? 'selected-tile' : ''}`}
             style={{
-              gridRow: pos.gridRow,
-              gridColumn: pos.gridColumn,
-              '--color-group': colorGroup?.color ?? 'transparent',
+              gridRow: position.gridRow,
+              gridColumn: position.gridColumn,
+              '--color-group': group?.color ?? 'transparent',
             } as React.CSSProperties}
+            onClick={() => onTileSelect(tile.index)}
+            aria-label={`View ${tile.name}`}
           >
-            {/* Color strip for properties */}
-            {colorGroup && <div className="tile-color-strip" style={{ background: colorGroup.color }} />}
-
-            {/* Tile content */}
+            {group && <div className="tile-color-strip" style={{ background: group.color }} />}
             <div className="tile-content">
-              <span className="tile-icon">
-                {tile.type === 'PROPERTY'
-                  ? (property?.isLeveledUp ? '⭐' : '')
-                  : (TILE_ICONS[tile.type] ?? '')}
-              </span>
+              <span className="tile-icon">{tile.type === 'PROPERTY' ? '' : TILE_ICONS[tile.type]}</span>
               <span className="tile-name">{tile.name}</span>
-              {tile.type === 'PROPERTY' && (
-                <span className="tile-price">{formatRM(tile.price)}</span>
-              )}
-              {tile.type === 'TAX' && (
-                <span className="tile-price">
-                  {tile.name === 'Cukai Mewah' ? formatRM(75) : formatRM(50)}
-                </span>
-              )}
+              {tile.type === 'PROPERTY' && <span className="tile-price">{formatRM(tile.price)}</span>}
+              {tile.type === 'TAX' && <span className="tile-price">{formatRM(tile.name === 'Cukai Mewah' ? 75 : 50)}</span>}
             </div>
-
-            {/* Owner indicator */}
-            {owner && (
-              <div className="tile-owner" style={{ background: owner.color }}>
-                {owner.isBot ? '🤖' : owner.name.charAt(0)}
-              </div>
-            )}
-
-            {/* Player tokens */}
-            {playersOnTile.length > 0 && (
-              <div className="tile-players">
-                {playersOnTile.map((p) => (
-                  <div
-                    key={p.id}
-                    className={`player-token ${p.id === currentPlayerId ? 'my-token' : ''}`}
-                    style={{ background: p.color }}
-                    title={p.name}
-                  >
-                    {p.isBot ? '🤖' : p.name.charAt(0)}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            {property?.isLeveledUp && <span className="house-sticker" aria-label="House built"><i /><b /></span>}
+            {owner && <span className="tile-owner" style={{ background: owner.color }}>{owner.name.charAt(0)}</span>}
+          </button>
         );
       })}
 
-      {/* Center area */}
       <div className="board-center">
-        <h2 className="board-title">MathOpoly</h2>
-        <p className="board-subtitle">Standard 1 KSSR</p>
+        <div className="board-brand"><strong>MATHOPOLY</strong><span>STANDARD 1 KSSR</span></div>
+        <PhysicsDice
+          values={gameState.diceValues}
+          rollId={gameState.diceRollId}
+          onRollingChange={onDiceRollingChange}
+        />
+        <button className={`dice-roll-btn ${canRoll ? 'dice-roll-btn--active' : ''}`} onClick={onRollClick} disabled={!canRoll}>
+          <Dices size={18} />
+          {centerActionLabel}
+        </button>
       </div>
+
+      <BoardPiecesScene players={visualPlayers} />
     </div>
   );
 }

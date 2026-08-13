@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Board } from '../components/Board';
-import { DiceRoller } from '../components/DiceRoller';
 import { PlayerPanel } from '../components/PlayerPanel';
+import { SpaceDetailsPanel } from '../components/SpaceDetailsPanel';
 import { TurnIndicator } from '../components/TurnIndicator';
 import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
@@ -11,8 +11,9 @@ import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { MathDuel } from '../components/MathDuel';
-import { BOARD_TILES } from '../config/board.config';
+import { BOARD_TILES, COLOR_GROUPS } from '../config/board.config';
 import { usePlayer } from '../../auth/PlayerContext';
+import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import {
@@ -28,14 +29,12 @@ import {
   AlertCircle,
   Hourglass,
   Zap,
-  Star,
   Lock,
   DollarSign,
-  SkipForward,
+  Gavel,
+  House,
 } from 'lucide-react';
 import './GamePage.css';
-
-type PacingState = 'IDLE' | 'DICE_FEEDBACK' | 'PAWN_MOVING' | 'TILE_LANDING' | 'EVENT_ACTIVE';
 
 export function GamePage() {
   const [searchParams] = useSearchParams();
@@ -44,7 +43,15 @@ export function GamePage() {
   const gameId = roomCode ? `game_${roomCode}` : null;
 
   const { player } = usePlayer();
+  const { socket, connectSocket } = useSocket();
   const myPlayerId = player?.id ?? '';
+
+  // A browser refresh can enter /game directly without passing through the
+  // lobby. Restore the authenticated socket here as well so reconnect never
+  // leaves the board permanently on "Loading Game".
+  useEffect(() => {
+    if (player && !socket) connectSocket();
+  }, [player, socket, connectSocket]);
 
   const {
     gameState,
@@ -63,6 +70,9 @@ export function GamePage() {
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
   const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
+  const [selectedTile, setSelectedTile] = useState(0);
+  const [auctionSeconds, setAuctionSeconds] = useState(0);
+  const [rollRequested, setRollRequested] = useState(false);
 
   // Duel state is separate from `gameState`: it is redacted per recipient, so it
   // arrives on its own channel rather than inside the shared state broadcast.
@@ -71,10 +81,10 @@ export function GamePage() {
 
   const challengeStartTime = useRef<number>(Date.now());
 
-  // Game Flow Pacing States
-  const [pacingState, setPacingState] = useState<PacingState>('EVENT_ACTIVE');
-
-  const landingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Visual motion may delay a modal briefly, but it must never become the
+  // authority for the turn. The server phase always controls legal actions.
+  const [isDiceRolling, setIsDiceRolling] = useState(false);
+  const [isPawnMoving, setIsPawnMoving] = useState(false);
 
   const {
     emitRoll,
@@ -83,6 +93,7 @@ export function GamePage() {
     emitSmartBuy,
     emitSmartBuyAnswer,
     emitSkipBuy,
+    emitAuctionBid,
     emitDuelAnswer,
     emitCardAck,
     emitCardAnswer,
@@ -90,14 +101,16 @@ export function GamePage() {
     emitJailAnswer,
     emitJailBail,
     emitJailWait,
-    emitLevelUp,
     emitLevelUpAnswer,
-    emitLevelUpDecline,
     emitEndTurn,
+    emitBuildHouse,
     emitRequestChallenge,
   } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
       setGameState(state);
+      if (state.turnPhase !== 'ROLL_PHASE' && state.turnPhase !== 'MOVING') {
+        setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
+      }
       if (state.currentChallenge) {
         setActiveChallenge(state.currentChallenge);
         challengeStartTime.current = Date.now();
@@ -125,6 +138,15 @@ export function GamePage() {
       setChallengePlayerId(data.playerId);
     },
     onAnswerResult: (data) => {
+      const answeringSeat = gameState?.players.find((seat) => seat.id === data.playerId);
+      const isMyAnswer = !!answeringSeat
+        && (answeringSeat.playerId === myPlayerId || answeringSeat.id === myPlayerId);
+
+      // Other players receive an outcome-only event for table synchronisation.
+      // It must not open our private question card (which we never received)
+      // or spam us with every bot's learning feedback.
+      if (!isMyAnswer) return;
+
       setAnswerResult(data.result);
 
       const { isCorrect, timedOut, correctAnswer } = data.result;
@@ -150,21 +172,11 @@ export function GamePage() {
       // wipe the newer challenge from the screen.
       const answeredId = activeChallenge?.id;
 
-      if (gameState?.turnPhase === 'ROLL_CHALLENGE') {
-        setPacingState('DICE_FEEDBACK');
-        setTimeout(() => {
-          setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
-          setAnswerResult(null);
-          setChallengePlayerId(null);
-          setPacingState('PAWN_MOVING');
-        }, holdMs);
-      } else {
-        setTimeout(() => {
-          setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
-          setAnswerResult(null);
-          setChallengePlayerId(null);
-        }, holdMs);
-      }
+      setTimeout(() => {
+        setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
+        setAnswerResult(null);
+        setChallengePlayerId(null);
+      }, holdMs);
     },
     onDuel: (data) => {
       // Ignore re-sent resolved duels — they've already been handled by
@@ -193,67 +205,87 @@ export function GamePage() {
       // No text banner needed.
     },
     onError: (data) => {
+      setRollRequested(false);
       addNotification('info', data.message);
     },
   });
 
-  // ---- Pacing Logic (Delaying UI for animations) ----
-  const [activePhase, setActivePhase] = useState<string | null>(null);
-  const [isPawnMoving, setIsPawnMoving] = useState(false);
-  const prevPhaseRef = useRef<string | null>(null);
+  // ---- Visual pacing (never blocks the server state machine) ----
   const prevPlayerIdxRef = useRef<number | null>(null);
 
   const handleMovementChange = useCallback((isMoving: boolean) => {
     setIsPawnMoving(isMoving);
-    if (isMoving) {
-      setPacingState('PAWN_MOVING');
-    }
   }, []);
 
   const handleMovementComplete = useCallback(() => {
     setIsPawnMoving(false);
     if (!gameState) return;
 
-    setPacingState('TILE_LANDING');
-
-    if (landingTimerRef.current) clearTimeout(landingTimerRef.current);
-    landingTimerRef.current = setTimeout(() => {
-      setPacingState('EVENT_ACTIVE');
-    }, 850);
+    setSelectedTile(gameState.players[gameState.currentPlayerIndex]?.position ?? 0);
   }, [gameState]);
+
+  const handleDiceRollingChange = useCallback((rolling: boolean) => {
+    setIsDiceRolling(rolling);
+  }, []);
+
+  const handleRollClick = useCallback(() => {
+    if (!gameState || !isMyTurn || gameState.turnPhase !== 'ROLL_PHASE' || rollRequested) return;
+    setRollRequested(true);
+    emitRoll();
+  }, [gameState, isMyTurn, rollRequested, emitRoll]);
 
   useEffect(() => {
     if (!gameState) return;
-    
-    const currentPhase = gameState.turnPhase;
-    const prevPhase = prevPhaseRef.current;
+    if (gameState.turnPhase !== 'ROLL_PHASE') setRollRequested(false);
     const prevIdx = prevPlayerIdxRef.current;
-    
-    // When the active player changes (new turn), reset pacing so the new
-    // player's UI controls aren't blocked by stale animation state from the
-    // previous turn.
+
     if (prevIdx !== null && prevIdx !== gameState.currentPlayerIndex) {
-      setPacingState('EVENT_ACTIVE');
+      setSelectedTile(gameState.players[gameState.currentPlayerIndex]?.position ?? 0);
+      setIsDiceRolling(false);
       setIsPawnMoving(false);
-      setActivePhase(currentPhase);
-      if (landingTimerRef.current) {
-        clearTimeout(landingTimerRef.current);
-        landingTimerRef.current = null;
-      }
-    } else if (currentPhase !== prevPhase) {
-      setActivePhase(currentPhase);
+    } else if (prevIdx === null) {
+      setSelectedTile(gameState.players[gameState.currentPlayerIndex]?.position ?? 0);
     }
 
-    prevPhaseRef.current = currentPhase;
     prevPlayerIdxRef.current = gameState.currentPlayerIndex;
   }, [gameState]);
 
+  useEffect(() => {
+    if (!rollRequested) return;
+    const recovery = setTimeout(() => setRollRequested(false), 3500);
+    return () => clearTimeout(recovery);
+  }, [rollRequested]);
+
+  // WebGL can be paused by a background tab or low-power browser. A missed
+  // animation callback must never hide the controls for the rest of a turn.
+  useEffect(() => {
+    if (!isDiceRolling && !isPawnMoving) return;
+    const safety = setTimeout(() => {
+      setIsDiceRolling(false);
+      setIsPawnMoving(false);
+    }, 6000);
+    return () => clearTimeout(safety);
+  }, [isDiceRolling, isPawnMoving, gameState?.diceRollId]);
+
+  useEffect(() => {
+    if (!gameState?.auctionState?.isActive) {
+      setAuctionSeconds(0);
+      return;
+    }
+    const update = () => setAuctionSeconds(Math.max(0, Math.ceil(
+      (gameState.auctionState!.endsAt - Date.now()) / 1000
+    )));
+    update();
+    const timer = setInterval(update, 250);
+    return () => clearInterval(timer);
+  }, [gameState?.auctionState?.endsAt, gameState?.auctionState?.isActive]);
+
   // Auto-request missing active challenge if in challenge phase
   useEffect(() => {
-    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge && pacingState === 'EVENT_ACTIVE') {
+    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge) {
       emitRequestChallenge();
     }
-  }, [gameState?.turnPhase, isMyTurn, activeChallenge, pacingState, emitRequestChallenge]);
+  }, [gameState?.turnPhase, isMyTurn, activeChallenge, emitRequestChallenge]);
 
 
   // ---- Answer Handler ----
@@ -380,18 +412,55 @@ export function GamePage() {
     );
   }
 
-  const renderPhase = activePhase || gameState.turnPhase;
-  const isPacingBusy = isPawnMoving || pacingState === 'PAWN_MOVING' || pacingState === 'TILE_LANDING' || pacingState === 'DICE_FEEDBACK';
-  
+  const renderPhase = gameState.turnPhase;
+  const isBoardAnimating = isDiceRolling || isPawnMoving;
   const isHoldingAnswer = !!answerResult;
   const isHoldingDuelResult = !!duel?.resolution;
+  const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isBoardAnimating;
   
-  const isAnimating = isPacingBusy || isHoldingAnswer || isHoldingDuelResult;
-  const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isAnimating;
-  
-  const showChallenge = (isChallenge && !!activeChallenge) || isHoldingAnswer;
+  const showChallenge = ((isChallenge && !!activeChallenge) || isHoldingAnswer) && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
-  const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isAnimating;
+  const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isBoardAnimating;
+
+  const selectedBoardTile = BOARD_TILES[selectedTile] ?? BOARD_TILES[0];
+  const selectedProperty = gameState.properties.find((property) => property.tileIndex === selectedTile);
+  const selectedGroup = selectedBoardTile.colorGroup ? COLOR_GROUPS[selectedBoardTile.colorGroup] : null;
+  const ownsSelectedGroup = !!currentPlayer && !!selectedGroup && selectedGroup.tileIndices.every((tileIndex) =>
+    gameState.properties.find((property) => property.tileIndex === tileIndex)?.ownerId === currentPlayer.id
+  );
+  const houseCost = Math.floor(selectedBoardTile.price * .5);
+  const canBuildHouse = isMyTurn
+    && renderPhase === 'END_TURN'
+    && selectedBoardTile.type === 'PROPERTY'
+    && selectedProperty?.ownerId === currentPlayer?.id
+    && selectedProperty?.isLeveledUp === false
+    && ownsSelectedGroup
+    && !!currentPlayer
+    && (currentPlayer.hasLevelUpToken || currentPlayer.money >= houseCost);
+  const forcePendingDetails = !!gameState.pendingTileEvent && [
+    'BUY_DECISION',
+    'SMART_BUY_CHALLENGE',
+    'AUCTION',
+    'MATH_DUEL',
+    'CARD_DRAW',
+    'CARD_MATH_CHALLENGE',
+  ].includes(renderPhase);
+  const detailTileIndex = forcePendingDetails
+    ? gameState.pendingTileEvent!.tileIndex
+    : renderPhase === 'END_TURN' && isBoardAnimating
+      ? currentPlayer?.position ?? selectedTile
+      : selectedTile;
+  const showingLandedTile = detailTileIndex === currentPlayer?.position;
+  const auction = gameState.auctionState;
+  const auctionLeader = auction?.currentBidderId
+    ? gameState.players.find((candidate) => candidate.id === auction.currentBidderId)
+    : null;
+  const myPlayer = gameState.players.find((candidate) => candidate.id === myPlayerId);
+  const nextAuctionBid = (auction?.currentBid ?? 0) + (auction?.currentBidderId ? 10 : 0);
+  const listedDecisionPrice = gameState.pendingTileEvent?.propertyPrice ?? 0;
+  const effectiveDecisionPrice = currentPlayer?.hasDiscountToken
+    ? Math.floor(listedDecisionPrice * .7)
+    : listedDecisionPrice;
 
 
   return (
@@ -416,43 +485,62 @@ export function GamePage() {
         {/* Center: Board */}
         <Board
           gameState={gameState}
-          currentPlayerId={myPlayerId}
+          selectedTile={detailTileIndex}
+          onTileSelect={setSelectedTile}
+          isMyTurn={isMyTurn}
+          onRollClick={handleRollClick}
+          rollRequested={rollRequested}
+          onDiceRollingChange={handleDiceRollingChange}
           onMovementChange={handleMovementChange}
           onMovementComplete={handleMovementComplete}
         />
 
-        {/* Right Panel: Dice + Actions */}
+        {/* Right Panel: selected Monopoly space + its available actions. */}
         <div className="game-sidebar">
-          <DiceRoller
-            diceValues={gameState.diceValues}
-            diceCount={gameState.diceCount}
-            isMyTurn={isMyTurn}
-            turnPhase={gameState.turnPhase}
-            onRollClick={emitRoll}
-          />
+          <SpaceDetailsPanel gameState={gameState} tileIndex={detailTileIndex} landed={showingLandedTile}>
 
           {/* === DECISION UIs (only for active human player when movement animation completes) === */}
 
           {/* BUY_DECISION: Buy / Smart Buy / Skip */}
-          {renderPhase === 'BUY_DECISION' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
+          {renderPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
             <div className="game-actions decision-panel">
-              <h3 className="decision-title">
-                {gameState.pendingTileEvent.tileName} — {formatRM(gameState.pendingTileEvent.propertyPrice!)}
-              </h3>
-              <button className="action-btn action-btn--primary" onClick={emitSmartBuy}>
-                <Zap size={16} /> Smart Buy (20% off)
-              </button>
-              <button className="action-btn action-btn--secondary" onClick={emitBuyFull}>
-                <DollarSign size={16} /> Buy Full Price
+              {!gameState.pendingTileEvent.bankOfferAttempted && (
+                <button className="action-btn action-btn--primary" onClick={emitSmartBuy}>
+                  <Zap size={16} /> Answer for Bank Offer
+                </button>
+              )}
+              <button
+                className="action-btn action-btn--secondary"
+                onClick={emitBuyFull}
+                disabled={(currentPlayer?.money ?? 0) < effectiveDecisionPrice}
+              >
+                <DollarSign size={16} /> {gameState.pendingTileEvent.bankOfferApproved ? 'Accept Offer' : 'Buy Property'} · {formatRM(effectiveDecisionPrice)}
               </button>
               <button className="action-btn action-btn--ghost" onClick={emitSkipBuy}>
-                <SkipForward size={16} /> Skip
+                <Gavel size={16} /> Send to Auction
               </button>
             </div>
           )}
 
+          {/* Table-wide auction: every human player may bid. */}
+          {renderPhase === 'AUCTION' && auction?.isActive && (
+            <div className="game-actions decision-panel auction-panel">
+              <h3 className="decision-title"><Gavel size={16} /> Property Auction</h3>
+              <p className="decision-subtitle">
+                {auctionLeader ? `${auctionLeader.name}: ${formatRM(auction.currentBid)}` : `Opening bid: ${formatRM(auction.currentBid)}`}
+                {' '}· {auctionSeconds}s
+              </p>
+              {myPlayer && !myPlayer.isBankrupt && myPlayer.money >= nextAuctionBid && auction.currentBidderId !== myPlayerId && (
+                <button className="action-btn action-btn--primary" onClick={() => emitAuctionBid(nextAuctionBid)}>
+                  Bid {formatRM(nextAuctionBid)}
+                </button>
+              )}
+              {auction.currentBidderId === myPlayerId && <p className="auction-leading">You have the highest bid.</p>}
+            </div>
+          )}
+
           {/* JAIL_DECISION: Math / Bail / Wait */}
-          {renderPhase === 'JAIL_DECISION' && isMyTurn && !isAnimating && (
+          {renderPhase === 'JAIL_DECISION' && isMyTurn && (
             <div className="game-actions decision-panel">
               <h3 className="decision-title">
                 <Lock size={16} /> You're in Jail!
@@ -469,61 +557,26 @@ export function GamePage() {
             </div>
           )}
 
-          {/* LEVEL_UP_OFFER: Accept / Decline */}
-          {renderPhase === 'LEVEL_UP_OFFER' && isMyTurn && !isAnimating && gameState.pendingTileEvent && (
-            <div className="game-actions decision-panel">
-              <h3 className="decision-title">
-                <Star size={16} /> Level Up: {gameState.pendingTileEvent.tileName}
-              </h3>
-              <p className="decision-subtitle">
-                Cost: {currentPlayer?.hasLevelUpToken ? 'FREE (token)' : formatRM(gameState.pendingTileEvent.propertyPrice!)}
-              </p>
-              <button className="action-btn action-btn--primary" onClick={emitLevelUp}>
-                <Star size={16} /> Accept Challenge
-              </button>
-              <button className="action-btn action-btn--ghost" onClick={emitLevelUpDecline}>
-                <SkipForward size={16} /> Decline
-              </button>
-            </div>
-          )}
-
           {/* END_TURN */}
-          {renderPhase === 'END_TURN' && isMyTurn && !isAnimating && (
+          {renderPhase === 'END_TURN' && isMyTurn && (
             <div className="game-actions">
-              <button className="action-btn action-btn--end" onClick={emitEndTurn}>
-                End Turn <ArrowRight size={16} />
+              {canBuildHouse && (
+                <button className="action-btn action-btn--secondary" onClick={() => emitBuildHouse(selectedTile)}>
+                  <House size={16} /> Build House ({currentPlayer?.hasLevelUpToken ? 'Free token' : formatRM(houseCost)})
+                </button>
+              )}
+              <button className="action-btn action-btn--end" onClick={emitEndTurn} disabled={isBoardAnimating || isHoldingDuelResult}>
+                {isBoardAnimating ? 'Piece Moving…' : isHoldingDuelResult ? 'Showing Result…' : 'End Turn'} <ArrowRight size={16} />
               </button>
             </div>
           )}
 
-          {/* Current Player Quick Stats */}
-          {currentPlayer && (
-            <div className="game-quick-stats">
-              <div className="quick-stat">
-                <span className="quick-stat__label"><Banknote size={16} /> Money</span>
-                <span className={`quick-stat__value ${currentPlayer.money < 0 ? 'money--negative' : 'money--positive'}`}>
-                  {formatRM(currentPlayer.money)}
-                </span>
-              </div>
-              <div className="quick-stat">
-                <span className="quick-stat__label"><Zap size={16} /> Streak</span>
-                <span className="quick-stat__value">
-                  {currentPlayer.streak > 0 ? currentPlayer.streak : '—'}
-                </span>
-              </div>
-              <div className="quick-stat">
-                <span className="quick-stat__label"><Star size={16} /> Position</span>
-                <span className="quick-stat__value">
-                  {BOARD_TILES[currentPlayer.position]?.name || `Tile ${currentPlayer.position}`}
-                </span>
-              </div>
-            </div>
-          )}
+          </SpaceDetailsPanel>
         </div>
       </div>
 
       {/* Math Duel — shown to the whole table, not just the active player. */}
-      {duel && pacingState === 'EVENT_ACTIVE' && (
+      {duel && !isBoardAnimating && (
         <MathDuel
           duel={duel}
           players={gameState.players}
@@ -539,7 +592,6 @@ export function GamePage() {
           <div className="challenge-panel">
             <div className="challenge-header">
               <span className="challenge-context">{formatContext(activeChallenge!.context)}</span>
-              <span className="challenge-skill">{activeChallenge!.skillName}</span>
             </div>
             {renderQuestion()}
           </div>
@@ -607,8 +659,8 @@ export function GamePage() {
 function formatContext(context: string): string {
   const labels: Record<string, string> = {
     ROLL_CHALLENGE: 'Roll Challenge',
-    MATH_DUEL: 'Math Duel',
-    SMART_BUY: 'Smart Buy',
+    MATH_DUEL: 'Rent Defence',
+    SMART_BUY: 'Bank Offer',
     CHALLENGE_CARD: 'Challenge Card',
     JAIL_ESCAPE: 'Jail Escape',
     LEVEL_UP: 'Level Up',

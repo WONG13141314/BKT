@@ -5,8 +5,6 @@
 
 import {
   initializeGameState,
-  startRollPhase,
-  processRollChallengeAnswer,
   startJailMathEscape,
   processJailEscapeAnswer,
   payBail,
@@ -27,15 +25,11 @@ const PLAYERS = [
 /** Put the current player in jail with a failed Roll Challenge behind them. */
 function jailedAfterFailedRoll(): GameState {
   const base = initializeGameState('game_JAIL', PLAYERS);
-  const opened = startRollPhase(base);
-  const wrong = (opened.currentChallenge!.correctIndex + 1) % 4;
-  const { newState } = processRollChallengeAnswer(opened, wrong, 3000);
-
-  expect(newState.diceCount).toBe(1); // The state we are guarding against.
-
   return {
-    ...newState,
-    players: newState.players.map((p, i) =>
+    ...base,
+    diceCount: 1,
+    diceValues: [4, 0],
+    players: base.players.map((p, i) =>
       i === 0 ? { ...p, isInJail: true, jailTurns: 0 } : p
     ),
   };

@@ -209,14 +209,11 @@ export function redactQuestionData(data: QuestionData): PublicQuestionData {
 export function toPublicChallenge(challenge: MathChallenge): PublicMathChallenge {
   return {
     id: challenge.id,
-    skillName: challenge.skillName,
-    difficulty: challenge.difficulty,
     questionData: redactQuestionData(challenge.questionData),
     options: challenge.options,
     context: challenge.context,
     timeLimit: challenge.timeLimit,
     expiresAt: challenge.startedAt + challenge.timeLimit * 1000,
-    hintLevel: challenge.hintLevel,
     hintContent: challenge.hintContent,
   };
 }

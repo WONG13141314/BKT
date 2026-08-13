@@ -65,6 +65,7 @@ export interface GamePlayerSeed {
   playerId: string;
   name: string;
   color: string;
+  tokenType?: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
   order: number;
   isBot?: boolean;
   botDifficulty?: 'easy' | 'medium' | 'hard';
@@ -94,6 +95,7 @@ export function initializeGameState(
     position: 0,
     money: STARTING_MONEY,
     color: p.color,
+    tokenType: p.tokenType ?? (['race_car', 'battleship', 'top_hat', 'scottie_dog'][p.order % 4] as PlayerState['tokenType']),
     properties: [],
     isInJail: false,
     jailTurns: 0,
@@ -134,6 +136,7 @@ export function initializeGameState(
     round: 1,
     maxRounds: MAX_ROUNDS,
     diceValues: [1, 1],
+    diceRollId: 0,
     diceCount: 2,
     currentChallenge: null,
     duelState: null,
@@ -187,17 +190,13 @@ export function startRollPhase(state: GameState): GameState {
     return { ...state, turnPhase: 'JAIL_DECISION' };
   }
 
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'ROLL_CHALLENGE',
-    consecutiveFailures: player.consecutiveFailures,
-    skillAttempts: player.skillAttempts,
-  });
-
   return {
     ...state,
-    turnPhase: 'ROLL_CHALLENGE',
-    currentChallenge: challenge,
+    diceValues: [rollDie(), rollDie()],
+    diceRollId: state.diceRollId + 1,
+    diceCount: 2,
+    turnPhase: 'MOVING',
+    currentChallenge: null,
   };
 }
 
@@ -330,7 +329,7 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
 
   // UNOWNED → buy decision
   if (property.ownerId === null) {
-    if (player.money >= tile.price && !player.isBankrupt) {
+    if (!player.isBankrupt) {
       const event: TileEvent = {
         type: 'PROPERTY',
         tileIndex,
@@ -344,7 +343,7 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
         pendingTileEvent: event,
       };
     }
-    // Can't afford → skip (no auction in simplified version for now)
+    // A bankrupt player cannot enter a purchase decision.
     return { ...state, turnPhase: 'END_TURN' };
   }
 
@@ -648,6 +647,7 @@ export function buyPropertyFullPrice(state: GameState): GameState {
 export function startSmartBuyChallenge(state: GameState): GameState {
   const player = getCurrentPlayer(state);
   const event = state.pendingTileEvent!;
+  if (event.bankOfferAttempted) return state;
   const tile = BOARD_TILES[event.tileIndex];
 
   const challenge = selectChallenge({
@@ -686,58 +686,101 @@ export function processSmartBuyAnswer(
   const finalPrice = isCorrect ? discountedPrice : fullPrice;
 
   const reward: RewardResult = isCorrect
-    ? { type: 'DISCOUNT', value: SMART_BUY_DISCOUNT * 100, description: `Smart Buy! 20% off — you pay ${formatRM(discountedPrice)} instead of ${formatRM(fullPrice)}!` }
-    : { type: 'NONE', value: 0, description: `Full price: ${formatRM(fullPrice)}` };
+    ? { type: 'DISCOUNT', value: SMART_BUY_DISCOUNT * 100, description: `Bank offer approved! You may buy for ${formatRM(discountedPrice)} instead of ${formatRM(fullPrice)}.` }
+    : { type: 'NONE', value: 0, description: `The bank keeps the listed price of ${formatRM(fullPrice)}.` };
 
-  if (player.money < finalPrice) {
-    // Can't afford even after discount/full price — skip purchase
-    const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
-    return {
-      newState: { ...state, players: updatedPlayers, turnPhase: 'END_TURN', currentChallenge: null, pendingTileEvent: null },
-      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
-    };
-  }
+  // Return to the deed decision. Even when the player cannot afford the offer,
+  // they can decline it and open the property to the rest of the table.
+  const actualPrice = finalPrice;
 
-  // Apply discount token stack if available
-  let actualPrice = finalPrice;
-  let useDiscountToken = false;
-  const currentPlayer = state.players[state.currentPlayerIndex];
-  if (currentPlayer.hasDiscountToken) {
-    actualPrice = Math.floor(actualPrice * 0.70);
-    useDiscountToken = true;
-  }
-
-  const updatedPlayers = updatePlayerInList(
-    updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery),
-    state.currentPlayerIndex,
-    (p) => ({
-      ...p,
-      money: p.money - actualPrice,
-      properties: [...p.properties, event.tileIndex],
-      hasDiscountToken: useDiscountToken ? false : p.hasDiscountToken,
-    })
-  );
-
-  const updatedProperties = state.properties.map((prop) =>
-    prop.tileIndex === event.tileIndex ? { ...prop, ownerId: player.id } : prop
-  );
+  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
 
   return {
     newState: {
       ...state,
       players: updatedPlayers,
-      properties: updatedProperties,
-      turnPhase: 'END_TURN',
+      turnPhase: 'BUY_DECISION',
       currentChallenge: null,
-      pendingTileEvent: null,
+      pendingTileEvent: {
+        ...event,
+        propertyPrice: actualPrice,
+        bankOfferAttempted: true,
+        bankOfferApproved: isCorrect,
+      },
     },
     result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
   };
 }
 
-/** Player skips buying */
+/** Declining an unowned property opens a short multiplayer auction. */
 export function skipBuy(state: GameState): GameState {
-  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null };
+  const event = state.pendingTileEvent;
+  if (!event || event.type !== 'PROPERTY') return { ...state, turnPhase: 'END_TURN' };
+
+  return {
+    ...state,
+    turnPhase: 'AUCTION',
+    auctionState: {
+      tileIndex: event.tileIndex,
+      currentBid: Math.max(10, Math.floor((event.propertyPrice ?? 0) * 0.25)),
+      currentBidderId: null,
+      endsAt: Date.now() + 10_000,
+      isActive: true,
+    },
+  };
+}
+
+export function placeAuctionBid(state: GameState, playerId: string, amount: number): GameState {
+  const auction = state.auctionState;
+  const player = state.players.find((item) => item.id === playerId);
+  const minimumBid = auction ? auction.currentBid + (auction.currentBidderId ? 10 : 0) : Infinity;
+  if (
+    state.turnPhase !== 'AUCTION' ||
+    !auction?.isActive ||
+    !player ||
+    player.isBankrupt ||
+    amount < minimumBid ||
+    amount > player.money
+  ) return state;
+
+  return {
+    ...state,
+    auctionState: {
+      ...auction,
+      currentBid: amount,
+      currentBidderId: player.id,
+      endsAt: Date.now() + 5_000,
+    },
+  };
+}
+
+export function resolveAuction(state: GameState): GameState {
+  const auction = state.auctionState;
+  if (!auction) return { ...state, turnPhase: 'END_TURN' };
+
+  const winnerIndex = state.players.findIndex((player) => player.id === auction.currentBidderId);
+  const hasWinner = winnerIndex >= 0 && state.players[winnerIndex].money >= auction.currentBid;
+
+  return {
+    ...state,
+    players: hasWinner
+      ? updatePlayerInList(state.players, winnerIndex, (player) => ({
+          ...player,
+          money: player.money - auction.currentBid,
+          properties: [...player.properties, auction.tileIndex],
+        }))
+      : state.players,
+    properties: hasWinner
+      ? state.properties.map((property) =>
+          property.tileIndex === auction.tileIndex
+            ? { ...property, ownerId: state.players[winnerIndex].id }
+            : property
+        )
+      : state.properties,
+    turnPhase: 'END_TURN',
+    auctionState: null,
+    pendingTileEvent: null,
+  };
 }
 
 // ---- RENT ----
@@ -1105,6 +1148,7 @@ export function processJailEscapeAnswer(
         ...state,
         players: updatedPlayers,
         diceValues: [rollDie(), rollDie()],
+        diceRollId: state.diceRollId + 1,
         diceCount: 2,
         turnPhase: 'MOVING',
         currentChallenge: null,
@@ -1152,6 +1196,7 @@ export function payBail(state: GameState): GameState {
     ...state,
     players: updatedPlayers,
     diceValues: [rollDie(), rollDie()],
+    diceRollId: state.diceRollId + 1,
     diceCount: 2,
     turnPhase: 'MOVING',
   };
@@ -1174,6 +1219,7 @@ export function waitInJail(state: GameState): GameState {
       ...state,
       players: updatedPlayers,
       diceValues: [rollDie(), rollDie()],
+      diceRollId: state.diceRollId + 1,
       diceCount: 2,
       turnPhase: 'MOVING',
     };
@@ -1227,6 +1273,48 @@ export function checkLevelUpEligibility(state: GameState): GameState {
 
   // No eligible property → skip
   return state;
+}
+
+/** Build the game's single house directly as a Monopoly property action. */
+export function buildHouse(state: GameState, tileIndex: number): GameState {
+  const player = getCurrentPlayer(state);
+  const tile = BOARD_TILES[tileIndex];
+  const property = state.properties.find((item) => item.tileIndex === tileIndex);
+
+  if (
+    !tile ||
+    tile.type !== 'PROPERTY' ||
+    !tile.colorGroup ||
+    !property ||
+    property.ownerId !== player.id ||
+    property.isLeveledUp ||
+    !ownsFullColorGroup(player.properties, tile.colorGroup)
+  ) return state;
+
+  const cost = getLevelUpCost(tile);
+  const useToken = player.hasLevelUpToken;
+  if (!useToken && player.money < cost) return state;
+
+  return {
+    ...state,
+    players: updatePlayerInList(state.players, state.currentPlayerIndex, (current) => ({
+      ...current,
+      money: useToken ? current.money : current.money - cost,
+      hasLevelUpToken: useToken ? false : current.hasLevelUpToken,
+    })),
+    properties: state.properties.map((item) =>
+      item.tileIndex === tileIndex ? { ...item, isLeveledUp: true } : item
+    ),
+    pendingTileEvent: {
+      type: 'PROPERTY',
+      tileIndex,
+      tileName: tile.name,
+      propertyPrice: cost,
+      propertyOwner: player.id,
+      isLeveledUp: true,
+    },
+    turnPhase: 'END_TURN',
+  };
 }
 
 /** Player accepts Level Up challenge */
@@ -1313,15 +1401,7 @@ export function declineLevelUp(state: GameState): GameState {
 export function endTurn(state: GameState, skipLevelUpCheck?: boolean): GameState {
   // Check Level Up eligibility before truly ending —
   // BUT skip if we just came from a Level Up answer/decline to prevent infinite loop
-  const shouldSkipLevelUp = skipLevelUpCheck || (state as any)._skipLevelUpCheck;
-  if (!shouldSkipLevelUp &&
-      state.turnPhase !== 'LEVEL_UP_OFFER' &&
-      state.turnPhase !== 'LEVEL_UP_CHALLENGE') {
-    const levelUpState = checkLevelUpEligibility(state);
-    if (levelUpState.turnPhase === 'LEVEL_UP_OFFER') {
-      return levelUpState;
-    }
-  }
+  void skipLevelUpCheck;
 
   // Check bankruptcy
   let updatedState = checkBankruptcy(state);

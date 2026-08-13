@@ -58,7 +58,7 @@ export function ColumnQuestion({
 
   return (
     <div className="column-question">
-      <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />
+      {timeLimit > 0 && <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />}
 
       <div className="column-stack">
         <div className="column-row column-top">

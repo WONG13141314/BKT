@@ -164,7 +164,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         const price = event.propertyPrice!;
 
         if (shouldBuyProperty(player, price)) {
-          if (shouldSmartBuy()) {
+          if (shouldSmartBuy() && !event.bankOfferAttempted) {
             currentState = startSmartBuyChallenge(currentState);
             steps.push({ state: currentState, action: 'smart_buy_start', delay: 500 });
           } else {
@@ -184,6 +184,12 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         currentState = newState;
         steps.push({ state: currentState, action: 'smart_buy_answer', delay: 1500 });
         break;
+      }
+
+      case 'AUCTION': {
+        // Auctions belong to the whole table. Pause the bot turn and let the
+        // shared phase timer collect human bids before the server resolves it.
+        return steps;
       }
 
       case 'MATH_DUEL': {

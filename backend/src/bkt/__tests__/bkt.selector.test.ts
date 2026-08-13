@@ -28,7 +28,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
       expect(challenge.context).toBe('ROLL_CHALLENGE');
-      expect(challenge.timeLimit).toBeGreaterThan(0);
+      expect(challenge.timeLimit).toBe(0);
     });
 
     it('should use contextual skills for SMART_BUY', () => {
@@ -39,7 +39,8 @@ describe('BKT Question Selector', () => {
         propertyPrice: 200,
       });
 
-      expect(['Subtraction', 'Multiplication']).toContain(challenge.skillName);
+      expect(['Addition', 'Subtraction']).toContain(challenge.skillName);
+      expect(challenge.timeLimit).toBe(15);
     });
 
     it('should reduce difficulty for JAIL_ESCAPE', () => {
@@ -55,7 +56,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.difficulty).toBeLessThanOrEqual(2);
     });
 
-    it('should set appropriate time limits by difficulty', () => {
+    it('keeps solo questions untimed regardless of difficulty', () => {
       const easyMastery: Record<string, number> = {};
       for (const s of SKILL_NAMES) easyMastery[s] = 0.1;
 
@@ -66,7 +67,7 @@ describe('BKT Question Selector', () => {
       });
 
       expect(challenge.difficulty).toBe(1);
-      expect(challenge.timeLimit).toBe(20);
+      expect(challenge.timeLimit).toBe(0);
     });
   });
 

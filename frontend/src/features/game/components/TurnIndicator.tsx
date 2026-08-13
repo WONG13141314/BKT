@@ -13,10 +13,20 @@ function getPhaseHint(phase: string, isMyTurn: boolean): string | null {
       case 'ROLL_PHASE':
         return 'Roll the dice';
       case 'BUY_DECISION':
+        return 'Choose: offer, buy or auction';
       case 'JAIL_DECISION':
+        return 'Choose how to leave jail';
       case 'LEVEL_UP_OFFER':
+        return 'Choose whether to build';
       case 'CARD_DRAW':
-        return 'Make your move';
+        return 'Open the card';
+      case 'AUCTION':
+        return 'Property auction';
+      case 'MOVING':
+      case 'RESOLVE_TILE':
+        return 'Moving your token';
+      case 'END_TURN':
+        return 'Review the board, then end turn';
       case 'ROLL_CHALLENGE':
       case 'SMART_BUY_CHALLENGE':
       case 'CARD_MATH_CHALLENGE':

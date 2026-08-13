@@ -11,7 +11,7 @@ import {
   MathChallenge,
   QuestionData,
 } from '../features/game/game.types';
-import { SKILL_NAMES, SkillName, TIME_LIMIT_EASY, TIME_LIMIT_MEDIUM, TIME_LIMIT_HARD } from '../features/game/game.constants';
+import { ACTIVE_SKILL_NAMES as SKILL_NAMES, BANK_OFFER_TIME_LIMIT, DUEL_TIME_LIMIT, SkillName } from '../features/game/game.constants';
 import {
   generateQuestion,
   generateSmartBuyQuestion,
@@ -28,6 +28,10 @@ const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
   JAIL_ESCAPE: SKILL_NAMES,                               // All, reduced difficulty
   LEVEL_UP: SKILL_NAMES,                                  // Matched to property skill theme
 };
+
+// The submitted Standard 1 study evaluates addition and subtraction only.
+// Keep the dormant generators compiled, but never select them in live play.
+CONTEXT_SKILL_MAP.SMART_BUY = SKILL_NAMES;
 
 // ---- Difficulty from Mastery ----
 //
@@ -299,7 +303,11 @@ function buildChallenge(
     options: generated.options,
     correctIndex: generated.correctIndex,
     context,
-    timeLimit: getTimeLimit(difficulty),
+    timeLimit: context === 'MATH_DUEL'
+      ? DUEL_TIME_LIMIT
+      : context === 'SMART_BUY'
+        ? BANK_OFFER_TIME_LIMIT
+        : 0,
     startedAt: Date.now(),
     hintLevel: hint.level,
     hintContent: hint.content,
@@ -318,7 +326,9 @@ function buildChallenge(
  * eligible skill a real chance. `MIN_WEIGHT` means even a mastered skill
  * resurfaces occasionally, which is what makes retention visible in the data.
  */
-const MIN_WEIGHT = 0.02;
+// With only the two proposal skills active, a larger floor prevents the weaker
+// skill from occupying virtually every question while still strongly favouring it.
+const MIN_WEIGHT = 0.08;
 
 function selectSkillWeighted(
   masteryStates: Record<string, number>,
@@ -343,12 +353,4 @@ function selectSkillWeighted(
   }
 
   return eligibleSkills[eligibleSkills.length - 1];
-}
-
-function getTimeLimit(difficulty: 1 | 2 | 3): number {
-  switch (difficulty) {
-    case 1: return TIME_LIMIT_EASY;
-    case 2: return TIME_LIMIT_MEDIUM;
-    case 3: return TIME_LIMIT_HARD;
-  }
 }

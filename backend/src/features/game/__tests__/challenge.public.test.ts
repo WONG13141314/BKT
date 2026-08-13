@@ -56,7 +56,9 @@ describe('Challenge redaction', () => {
     expect(publicChallenge.correctIndex).toBeUndefined();
     expect(publicChallenge.text).toBeUndefined();
     expect(publicChallenge.options).toHaveLength(4);
-    expect(publicChallenge.expiresAt).toBeGreaterThan(Date.now());
+    expect(publicChallenge.expiresAt).toBe(challenge.startedAt);
+    expect(publicChallenge.skillName).toBeUndefined();
+    expect(publicChallenge.difficulty).toBeUndefined();
   });
 
   describe('long division does not render its own answer', () => {

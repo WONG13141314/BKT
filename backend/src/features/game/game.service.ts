@@ -12,9 +12,12 @@ import {
   movePlayer,
   resolveTileEvent,
   buyPropertyFullPrice,
+  buildHouse,
   startSmartBuyChallenge,
   processSmartBuyAnswer,
   skipBuy,
+  placeAuctionBid,
+  resolveAuction,
   submitDuelAnswer,
   bothDuellistsAnswered,
   resolveDuel,
@@ -222,6 +225,7 @@ export const gameService = {
     if (!state || state.turnPhase !== 'BUY_DECISION') return null;
 
     const newState = startSmartBuyChallenge(state);
+    if (newState === state) return null;
     activeGames.set(gameId, newState);
     return newState;
   },
@@ -238,6 +242,33 @@ export const gameService = {
     if (!state || state.turnPhase !== 'BUY_DECISION') return null;
 
     const newState = skipBuy(state);
+    activeGames.set(gameId, newState);
+    return newState;
+  },
+
+  placeAuctionBid: (gameId: string, playerId: string, amount: number): GameState | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'AUCTION') return null;
+    const newState = placeAuctionBid(state, playerId, amount);
+    if (newState === state) return null;
+    activeGames.set(gameId, newState);
+    return newState;
+  },
+
+  resolveAuction: (gameId: string): GameState | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'AUCTION') return null;
+    const newState = resolveAuction(state);
+    activeGames.set(gameId, newState);
+    return newState;
+  },
+
+  buildHouse: (gameId: string, tileIndex: number): GameState | null => {
+    const state = activeGames.get(gameId);
+    if (!state || state.turnPhase !== 'END_TURN') return null;
+
+    const newState = buildHouse(state, tileIndex);
+    if (newState === state) return null;
     activeGames.set(gameId, newState);
     return newState;
   },
@@ -472,6 +503,8 @@ export const gameService = {
         return timedOut(gameService.submitLevelUpAnswer(gameId, NO_ANSWER, elapsed));
       case 'BUY_DECISION':
         return advanced(gameService.skipBuy(gameId));
+      case 'AUCTION':
+        return advanced(gameService.resolveAuction(gameId));
       case 'MATH_DUEL':
         return advanced(gameService.forceResolveDuel(gameId)?.state ?? null);
       case 'JAIL_DECISION':

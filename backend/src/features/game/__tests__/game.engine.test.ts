@@ -8,9 +8,16 @@ import {
   endTurn,
   calculateFinalScores,
   payBail,
+  skipBuy,
+  placeAuctionBid,
+  resolveAuction,
+  buildHouse,
+  startSmartBuyChallenge,
+  processSmartBuyAnswer,
 } from '../game.engine';
 import { GameState } from '../game.types';
 import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS } from '../game.constants';
+import { selectChallenge } from '../../../bkt/bkt.selector';
 
 describe('Game Engine — MathOpoly Redesign', () => {
   let gameState: GameState;
@@ -76,16 +83,17 @@ describe('Game Engine — MathOpoly Redesign', () => {
     it('should roll dice and transition to appropriate phase', () => {
       const newState = startRollPhase(gameState);
 
-      // Should either have a dice challenge or move directly
-      // Every turn now opens with the Roll Challenge — the dice come after it.
-      expect(newState.turnPhase).toBe('ROLL_CHALLENGE');
-      expect(newState.currentChallenge).not.toBeNull();
+      // Normal turns now roll directly; questions belong to board events.
+      expect(newState.turnPhase).toBe('MOVING');
+      expect(newState.currentChallenge).toBeNull();
+      expect(newState.diceCount).toBe(2);
+      expect(newState.diceValues.every((value) => value >= 1 && value <= 6)).toBe(true);
     });
   });
 
   describe('processRollChallengeAnswer', () => {
     it('awards two dice and a bonus for a correct answer', () => {
-      const opened = startRollPhase(gameState);
+      const opened = openLegacyRollChallenge(gameState);
       const correctIdx = opened.currentChallenge!.correctIndex;
       const { result, newState } = processRollChallengeAnswer(opened, correctIdx, 3000);
 
@@ -97,7 +105,7 @@ describe('Game Engine — MathOpoly Redesign', () => {
     });
 
     it('still moves the player on a wrong answer, but with one die', () => {
-      const opened = startRollPhase(gameState);
+      const opened = openLegacyRollChallenge(gameState);
       const wrongIdx = (opened.currentChallenge!.correctIndex + 1) % 4;
       const { result, newState } = processRollChallengeAnswer(opened, wrongIdx, 3000);
 
@@ -161,7 +169,8 @@ describe('Game Engine — MathOpoly Redesign', () => {
 
       expect(player.isInJail).toBe(false);
       expect(player.jailTurns).toBe(0);
-      expect(newState.turnPhase).toBe('ROLL_CHALLENGE');
+      expect(newState.turnPhase).toBe('MOVING');
+      expect(newState.currentChallenge).toBeNull();
     });
   });
 
@@ -185,4 +194,104 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(aliceScore.netWorth).toBeGreaterThanOrEqual(2000);
     });
   });
+
+  describe('property actions', () => {
+    it('still offers the deed when the landing player cannot afford list price', () => {
+      const landed: GameState = {
+        ...gameState,
+        turnPhase: 'RESOLVE_TILE',
+        players: gameState.players.map((player, index) => index === 0
+          ? { ...player, position: 1, money: 0 }
+          : player),
+      };
+
+      const offered = resolveTileEvent(landed);
+
+      expect(offered.turnPhase).toBe('BUY_DECISION');
+      expect(offered.pendingTileEvent?.tileIndex).toBe(1);
+    });
+
+    it('allows only one bank offer attempt for the same deed', () => {
+      const offered: GameState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+      };
+
+      const challenge = startSmartBuyChallenge(offered);
+      const answered = processSmartBuyAnswer(
+        challenge,
+        challenge.currentChallenge!.correctIndex,
+        1_000
+      ).newState;
+
+      expect(answered.turnPhase).toBe('BUY_DECISION');
+      expect(answered.pendingTileEvent?.bankOfferAttempted).toBe(true);
+      expect(startSmartBuyChallenge(answered)).toBe(answered);
+    });
+
+    it('opens an auction and transfers the deed to the highest bidder', () => {
+      const offered: GameState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+      };
+
+      const auction = skipBuy(offered);
+      expect(auction.turnPhase).toBe('AUCTION');
+      const bid = placeAuctionBid(auction, 'p2', auction.auctionState!.currentBid);
+      const settled = resolveAuction(bid);
+
+      expect(settled.turnPhase).toBe('END_TURN');
+      expect(settled.properties.find((property) => property.tileIndex === 1)?.ownerId).toBe('p2');
+      expect(settled.players[1].properties).toContain(1);
+      expect(settled.players[1].money).toBe(STARTING_MONEY - auction.auctionState!.currentBid);
+    });
+
+    it('builds a house only after completing the colour set', () => {
+      const owned: GameState = {
+        ...gameState,
+        turnPhase: 'END_TURN',
+        players: gameState.players.map((player, index) => index === 0
+          ? { ...player, properties: [1, 2] }
+          : player),
+        properties: gameState.properties.map((property) => [1, 2].includes(property.tileIndex)
+          ? { ...property, ownerId: 'p1' }
+          : property),
+      };
+
+      const built = buildHouse(owned, 1);
+      expect(built.properties.find((property) => property.tileIndex === 1)?.isLeveledUp).toBe(true);
+      expect(built.players[0].money).toBe(STARTING_MONEY - 40);
+
+      const incomplete = { ...owned, players: owned.players.map((player, index) => index === 0
+        ? { ...player, properties: [1] }
+        : player) };
+      expect(buildHouse(incomplete, 1)).toBe(incomplete);
+    });
+  });
 });
+
+function openLegacyRollChallenge(state: GameState): GameState {
+  const player = state.players[state.currentPlayerIndex];
+  return {
+    ...state,
+    turnPhase: 'ROLL_CHALLENGE',
+    currentChallenge: selectChallenge({
+      masteryStates: player.masteryStates,
+      context: 'ROLL_CHALLENGE',
+      consecutiveFailures: player.consecutiveFailures,
+      skillAttempts: player.skillAttempts,
+    }),
+  };
+}

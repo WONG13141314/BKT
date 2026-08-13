@@ -26,10 +26,11 @@ export const GAME_CONSTANTS = {
   TAX_AMOUNT: 50,
   LUXURY_TAX_AMOUNT: 75,
   BAIL_COST: 50,
-  ROLL_CHALLENGE_BONUS: 20,
+  ROLL_CHALLENGE_BONUS: 0,
   SMART_BUY_DISCOUNT: 0.20,
   DUEL_TIME_LIMIT: 20,
-  LANDLORD_BONUS: 20,
+  BANK_OFFER_TIME_LIMIT: 15,
+  LANDLORD_BONUS: 0,
   MAX_JAIL_TURNS: 2,
   QUESTION_TIME_LIMIT_EASY: 20,
   QUESTION_TIME_LIMIT_MEDIUM: 15,
@@ -88,6 +89,7 @@ export interface Player {
   position: number;
   money: number;
   color: string;
+  tokenType: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
   properties: number[];
   isInJail: boolean;
   jailTurns: number;
@@ -98,8 +100,6 @@ export interface Player {
   hasLevelUpToken: boolean;
   hasRentShield: boolean;
   hasDiscountToken: boolean;
-  masteryStates: Record<string, number>;
-  consecutiveFailures: Record<string, number>;
   isBot: boolean;
   botDifficulty?: 'easy' | 'medium' | 'hard';
 }
@@ -112,6 +112,7 @@ export type TurnPhase =
   | 'MOVING'
   | 'RESOLVE_TILE'
   | 'BUY_DECISION'
+  | 'AUCTION'
   | 'SMART_BUY_CHALLENGE'
   | 'MATH_DUEL'
   | 'CARD_DRAW'
@@ -182,23 +183,18 @@ export type QuestionData = ColumnQuestion | LongDivisionQuestion | McqQuestion;
 
 export interface MathChallenge {
   id: string;
-  skillName: SkillName;
-  difficulty: 1 | 2 | 3;
   questionData: QuestionData;
   options: string[];
   context: ChallengeContext;
   timeLimit: number;
   /** Unix ms. The countdown is driven by this, not by a client-side start time. */
   expiresAt: number;
-  hintLevel: 0 | 1 | 2 | 3;
   hintContent: string | null;
 }
 
 export interface AnswerResult {
   isCorrect: boolean;
   correctAnswer: string;
-  newMastery: number;
-  previousMastery: number;
   reward: RewardResult;
   streakCount: number;
   streakBroken: boolean;
@@ -218,6 +214,8 @@ export interface TileEvent {
   rentAmount?: number;
   isMonopoly?: boolean;
   isLeveledUp?: boolean;
+  bankOfferAttempted?: boolean;
+  bankOfferApproved?: boolean;
   taxAmount?: number;
   card?: ChallengeCard;
   luckyBreakReward?: LuckyBreakReward;
@@ -280,6 +278,7 @@ export interface GameState {
   round: number;
   maxRounds: number;
   diceValues: [number, number];
+  diceRollId: number;
   /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
   diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
@@ -317,7 +316,6 @@ export interface PublicDuelSide {
 export interface PublicDuelState {
   tileIndex: number;
   tileName: string;
-  skillName: string;
   rentAmount: number;
   challenger: PublicDuelSide;
   owner: PublicDuelSide;
@@ -330,7 +328,7 @@ export interface AuctionState {
   tileIndex: number;
   currentBid: number;
   currentBidderId: string | null;
-  timeRemaining: number;
+  endsAt: number;
   isActive: boolean;
 }
 

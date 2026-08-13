@@ -111,11 +111,13 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     const socketRoom = `room:${room.code}`;
     const gameId = `game_${room.code}`;
     const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
+    const PLAYER_TOKENS = ['race_car', 'battleship', 'top_hat', 'scottie_dog'] as const;
     const gamePlayers = Array.from(room.players.values()).map((p, idx) => ({
       id: p.id,
       playerId: p.id,
       name: p.name,
       color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
+      tokenType: PLAYER_TOKENS[idx % PLAYER_TOKENS.length],
       order: idx,
       isBot: p.isBot,
       botDifficulty: p.botDifficulty,
@@ -124,7 +126,18 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     import('../features/game/game.service').then(({ gameService }) => {
       gameService.createGame(gameId, gamePlayers).then((state) => {
         io.to(socketRoom).emit('game:start', { roomCode: room.code });
-        io.to(socketRoom).emit('game:state', { state });
+        io.to(socketRoom).emit('game:state', {
+          state: {
+            ...state,
+            currentChallenge: null,
+            players: state.players.map((player) => ({
+              ...player,
+              masteryStates: {},
+              skillAttempts: {},
+              consecutiveFailures: {},
+            })),
+          },
+        });
       });
     });
   });

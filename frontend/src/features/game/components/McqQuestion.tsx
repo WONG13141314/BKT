@@ -34,7 +34,7 @@ export function McqQuestion({
 
   return (
     <div className="column-question">
-      <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />
+      {timeLimit > 0 && <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />}
 
       <div className="mcq-text">{question.text}</div>
 

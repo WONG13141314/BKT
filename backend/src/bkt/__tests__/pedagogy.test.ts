@@ -10,7 +10,7 @@ import {
 } from '../question.generator';
 import { determineHint, selectChallenge } from '../bkt.selector';
 import { BOARD_TILES } from '../../features/game/board.config';
-import { SKILL_NAMES } from '../../features/game/game.constants';
+import { ACTIVE_SKILL_NAMES, SKILL_NAMES } from '../../features/game/game.constants';
 import type { ColumnQuestion, LongDivisionQuestion } from '../../features/game/game.types';
 
 describe('Misconception distractors', () => {
@@ -170,25 +170,22 @@ describe('Hints', () => {
       if (challenge.hintContent) seen.add(challenge.hintContent);
     }
 
-    expect(seen.size).toBeGreaterThan(3);
+    expect(seen.size).toBeGreaterThan(1);
   });
 });
 
 describe('Board balance', () => {
   const properties = BOARD_TILES.filter((t) => t.type === 'PROPERTY');
 
-  it('gives every skill a fair share of property tiles', () => {
+  it('splits the board evenly across the current Addition/Subtraction syllabus', () => {
     const counts = Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])) as Record<string, number>;
     for (const tile of properties) {
       if (tile.skillTheme) counts[tile.skillTheme]++;
     }
 
-    // 10 tiles cannot split evenly across 4 skills, so the spread is 2 or 3.
-    // Before Phase 4 Subtraction had 4 and everything else had 2.
-    for (const skill of SKILL_NAMES) {
-      expect(counts[skill]).toBeGreaterThanOrEqual(2);
-      expect(counts[skill]).toBeLessThanOrEqual(3);
-    }
+    for (const skill of ACTIVE_SKILL_NAMES) expect(counts[skill]).toBe(5);
+    expect(counts.Multiplication).toBe(0);
+    expect(counts.Division).toBe(0);
 
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(properties.length);
   });

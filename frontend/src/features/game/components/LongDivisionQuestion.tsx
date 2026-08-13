@@ -56,7 +56,7 @@ export function LongDivisionQuestion({
 
   return (
     <div className="long-division-question">
-      <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />
+      {timeLimit > 0 && <ChallengeTimer expiresAt={expiresAt} totalSeconds={timeLimit} paused={answered} />}
 
       <div className="ld-container">
         {/* Quotient sits above the dividend, one digit per column */}
