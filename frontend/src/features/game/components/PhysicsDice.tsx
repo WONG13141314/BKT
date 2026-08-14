@@ -26,6 +26,12 @@ const FACES = [
 // the floor instead of floating after their visual size is reduced.
 const DIE_SCALE = 1.02;
 const DIE_REST_Y = .56;
+const ROLL_DURATION = 2.35;
+
+function rollNoise(seed: number, index: number, salt: number) {
+  const value = Math.sin((seed + 1) * 91.733 + (index + 1) * 47.231 + salt * 19.117) * 43758.5453;
+  return value - Math.floor(value);
+}
 
 interface Props {
   values: [number, number];
@@ -101,16 +107,28 @@ function AnimatedDie({
   const group = useRef<Group>(null);
   const elapsed = useRef(0);
   const reported = useRef(false);
-  const startX = index === 0 ? -1.72 : 1.72;
-  const endX = index === 0 ? -.78 : .78;
-  const endZ = index === 0 ? .08 : -.08;
-  const yaw = ((rollId * 37 + index * 71) % 100) / 100 * Math.PI * 2;
+  const direction = index === 0 ? -1 : 1;
+  // This seed affects visuals only; the server-provided dice values remain
+  // authoritative. Fresh entropy prevents the first roll of every room from
+  // replaying an identical throw path.
+  const visualSeed = useMemo(() => rollId * 97 + value * 31 + index * 53 + Math.random() * 10_000, [index, rollId, value]);
+  const motion = useMemo(() => ({
+    startX: direction * (1.82 + rollNoise(visualSeed, index, 1) * .42),
+    startY: 3.65 + rollNoise(visualSeed, index, 2) * .65,
+    startZ: -direction * (.52 + rollNoise(visualSeed, index, 3) * .48),
+    endX: direction * (.62 + rollNoise(visualSeed, index, 4) * .22),
+    endZ: (rollNoise(visualSeed, index, 5) - .5) * .48,
+    curveX: (rollNoise(visualSeed, index, 6) - .5) * 2.2,
+    curveZ: direction * (.62 + rollNoise(visualSeed, index, 7) * .86),
+    wobblePhase: rollNoise(visualSeed, index, 8) * Math.PI * 2,
+  }), [direction, index, visualSeed]);
+  const yaw = rollNoise(visualSeed, index, 12) * Math.PI * 2;
   const finalQuaternion = useMemo(() => targetRotation(value, yaw), [value, yaw]);
   const spinEnd = useMemo(() => new Quaternion().setFromEuler(new Euler(
-    7.1 + rollId * .17 + index,
-    8.4 + rollId * .13,
-    6.6 + index * 1.4,
-  )), [index, rollId]);
+    6.8 + rollNoise(visualSeed, index, 13) * 2.4,
+    7.4 + rollNoise(visualSeed, index, 14) * 2.8,
+    6.3 + rollNoise(visualSeed, index, 15) * 2.5,
+  )), [index, visualSeed]);
 
   useEffect(() => {
     elapsed.current = rollId > 0 ? 0 : 2.2;
@@ -121,40 +139,52 @@ function AnimatedDie({
     if (!group.current) return;
 
     if (rollId === 0) {
-      group.current.position.set(endX, DIE_REST_Y, endZ);
+      group.current.position.set(motion.endX, DIE_REST_Y, motion.endZ);
       group.current.quaternion.copy(finalQuaternion);
       return;
     }
 
-    elapsed.current = Math.min(2.2, elapsed.current + delta);
-    const t = elapsed.current / 2.2;
-    const travel = 1 - (1 - t) ** 3;
-    const x = MathUtils.lerp(startX, endX, travel);
-    const z = MathUtils.lerp(index === 0 ? -.55 : .55, endZ, travel);
-    const fall = Math.min(1, t / .54);
-    let y = MathUtils.lerp(5.2 + index * .55, DIE_REST_Y, fall * fall);
+    elapsed.current = Math.min(ROLL_DURATION, elapsed.current + delta);
+    const t = elapsed.current / ROLL_DURATION;
 
-    if (t > .54) {
-      const bounceT = (t - .54) / .46;
-      y = DIE_REST_Y + Math.abs(Math.sin(bounceT * Math.PI * 3.1)) * (1 - bounceT) * 1.15;
+    // Keep horizontal momentum through the bounces. The old cubic ease had
+    // already completed almost all travel before impact, which made each die
+    // appear to spin in one fixed spot after dropping.
+    const travel = MathUtils.smootherstep(t, 0, 1);
+    const airborne = Math.sin(travel * Math.PI);
+    const fadingWobble = Math.sin(travel * Math.PI * 3 + motion.wobblePhase) * (1 - travel);
+    const x = MathUtils.lerp(motion.startX, motion.endX, travel)
+      + airborne * motion.curveX
+      + fadingWobble * .13;
+    const z = MathUtils.lerp(motion.startZ, motion.endZ, travel)
+      + airborne * motion.curveZ
+      + fadingWobble * .18;
+    const impactAt = .5;
+    const fall = Math.min(1, t / impactAt);
+    let y = MathUtils.lerp(motion.startY, DIE_REST_Y, fall * fall);
+
+    if (t > impactAt) {
+      const bounceT = (t - impactAt) / (1 - impactAt);
+      y = DIE_REST_Y
+        + Math.abs(Math.sin(bounceT * Math.PI * 3.35)) * (1 - bounceT) ** 1.35 * 1.05;
     }
 
     group.current.position.set(x, y, z);
 
-    if (t < .72) {
+    if (t < .7) {
       const spin = new Quaternion().setFromEuler(new Euler(
-        7.1 * (t / .72) + rollId * .17 + index,
-        8.4 * (t / .72) + rollId * .13,
-        6.6 * (t / .72) + index * 1.4,
+        (6.8 + rollNoise(visualSeed, index, 9) * 2.4) * (t / .7) + index,
+        (7.4 + rollNoise(visualSeed, index, 10) * 2.8) * (t / .7),
+        (6.3 + rollNoise(visualSeed, index, 11) * 2.5) * (t / .7) + index * 1.4,
       ));
       group.current.quaternion.copy(spin);
     } else {
-      const settle = MathUtils.smoothstep((t - .72) / .28, 0, 1);
+      const settle = MathUtils.smoothstep((t - .7) / .3, 0, 1);
       group.current.quaternion.copy(spinEnd).slerp(finalQuaternion, settle);
     }
 
     if (t >= 1) {
-      group.current.position.set(endX, DIE_REST_Y, endZ);
+      group.current.position.set(motion.endX, DIE_REST_Y, motion.endZ);
       group.current.quaternion.copy(finalQuaternion);
       if (!reported.current) {
         reported.current = true;

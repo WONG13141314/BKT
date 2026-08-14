@@ -198,9 +198,8 @@
 }
 
 .physics-dice {
-  width: 220px;
+  width: min(76%, 320px);
   height: 125px;
-  max-width: 62%;
   max-height: 34%;
   margin-top: 10%;
   flex: 0 0 auto;
