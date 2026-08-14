@@ -21,6 +21,12 @@ const FACES = [
   { value: 4, position: [0, 0, -.556], rotation: [0, Math.PI, 0] },
 ] as const;
 
+// Keep the dice compact enough to tumble without filling the board centre.
+// The resting height follows the actual scaled cube, so the dice still touch
+// the floor instead of floating after their visual size is reduced.
+const DIE_SCALE = 1.02;
+const DIE_REST_Y = .56;
+
 interface Props {
   values: [number, number];
   rollId: number;
@@ -95,8 +101,8 @@ function AnimatedDie({
   const group = useRef<Group>(null);
   const elapsed = useRef(0);
   const reported = useRef(false);
-  const startX = index === 0 ? -1.9 : 1.9;
-  const endX = index === 0 ? -.92 : .92;
+  const startX = index === 0 ? -1.72 : 1.72;
+  const endX = index === 0 ? -.78 : .78;
   const endZ = index === 0 ? .08 : -.08;
   const yaw = ((rollId * 37 + index * 71) % 100) / 100 * Math.PI * 2;
   const finalQuaternion = useMemo(() => targetRotation(value, yaw), [value, yaw]);
@@ -115,7 +121,7 @@ function AnimatedDie({
     if (!group.current) return;
 
     if (rollId === 0) {
-      group.current.position.set(endX, .73, endZ);
+      group.current.position.set(endX, DIE_REST_Y, endZ);
       group.current.quaternion.copy(finalQuaternion);
       return;
     }
@@ -126,11 +132,11 @@ function AnimatedDie({
     const x = MathUtils.lerp(startX, endX, travel);
     const z = MathUtils.lerp(index === 0 ? -.55 : .55, endZ, travel);
     const fall = Math.min(1, t / .54);
-    let y = MathUtils.lerp(5.2 + index * .55, .73, fall * fall);
+    let y = MathUtils.lerp(5.2 + index * .55, DIE_REST_Y, fall * fall);
 
     if (t > .54) {
       const bounceT = (t - .54) / .46;
-      y = .73 + Math.abs(Math.sin(bounceT * Math.PI * 3.1)) * (1 - bounceT) * 1.15;
+      y = DIE_REST_Y + Math.abs(Math.sin(bounceT * Math.PI * 3.1)) * (1 - bounceT) * 1.15;
     }
 
     group.current.position.set(x, y, z);
@@ -148,7 +154,7 @@ function AnimatedDie({
     }
 
     if (t >= 1) {
-      group.current.position.set(endX, .73, endZ);
+      group.current.position.set(endX, DIE_REST_Y, endZ);
       group.current.quaternion.copy(finalQuaternion);
       if (!reported.current) {
         reported.current = true;
@@ -158,7 +164,7 @@ function AnimatedDie({
   });
 
   return (
-    <group ref={group} scale={1.35}>
+    <group ref={group} scale={DIE_SCALE}>
       <RoundedBox castShadow receiveShadow args={[1.08, 1.08, 1.08]} radius={.14} smoothness={6}>
         <meshPhysicalMaterial color="#fffdf5" roughness={.24} clearcoat={.18} clearcoatRoughness={.3} />
       </RoundedBox>

@@ -1,7 +1,6 @@
 export { Board } from './components/Board';
 export { GamePage } from './pages/GamePage';
 export { GameLobby } from './components/GameLobby';
-export { DiceRoller } from './components/DiceRoller';
 export { PlayerPanel } from './components/PlayerPanel';
 export { TurnIndicator } from './components/TurnIndicator';
 export { GameOverScreen } from './components/GameOverScreen';

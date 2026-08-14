@@ -127,74 +127,19 @@
   font-size: 0.7rem;
 }
 
-/* ---- Owner Indicator ---- */
+/* ---- Property ownership marker ---- */
 
-.tile-owner {
+/* This is a deed marker, not a player piece. The former coloured letter
+   circle looked like a second legacy token sitting on the tile. */
+.tile-owner-marker {
   position: absolute;
-  bottom: 12px;
+  bottom: 3px;
   right: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.4rem;
-  font-weight: 800;
-  color: #fff;
+  width: 14px;
+  height: 4px;
   border: 1px solid #000;
   z-index: 2;
-  box-shadow: 1px 1px 0px rgba(0,0,0,0.5);
-}
-
-/* ---- Player Tokens ---- */
-
-/* To ensure tokens stay upright relative to the screen, we reverse the rotation */
-.tile-rotate-bottom .tile-players { transform: rotate(0deg); }
-.tile-rotate-left   .tile-players { transform: rotate(-90deg); }
-.tile-rotate-top    .tile-players { transform: rotate(-180deg); }
-.tile-rotate-right  .tile-players { transform: rotate(90deg); }
-
-.tile-players {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%); /* Centered by default */
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 2px;
-  z-index: 3;
-}
-.tile-rotate-bottom .tile-players { transform: translate(-50%, -50%) rotate(0deg); }
-.tile-rotate-left   .tile-players { transform: translate(-50%, -50%) rotate(-90deg); }
-.tile-rotate-top    .tile-players { transform: translate(-50%, -50%) rotate(-180deg); }
-.tile-rotate-right  .tile-players { transform: translate(-50%, -50%) rotate(90deg); }
-
-
-.player-token {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.5rem;
-  font-weight: 800;
-  color: #fff;
-  border: 1px solid #000;
-  /* Make them look like 3D plastic pieces */
-  box-shadow: inset -3px -3px 6px rgba(0, 0, 0, 0.4), 
-              inset 2px 2px 4px rgba(255, 255, 255, 0.4),
-              2px 2px 3px rgba(0, 0, 0, 0.4);
-}
-
-.player-token.my-token {
-  border: 2px solid #fff;
-  box-shadow: inset -3px -3px 6px rgba(0, 0, 0, 0.4), 
-              inset 2px 2px 4px rgba(255, 255, 255, 0.4),
-              0 0 0 2px #000, 
-              2px 2px 5px rgba(0, 0, 0, 0.6);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, .4);
 }
 
 /* ---- Special Tile Backgrounds (Subtle tints) ---- */
@@ -253,9 +198,12 @@
 }
 
 .physics-dice {
-  width: 78%;
-  height: 46%;
-  margin-top: 12%;
+  width: 220px;
+  height: 125px;
+  max-width: 62%;
+  max-height: 34%;
+  margin-top: 10%;
+  flex: 0 0 auto;
 }
 
 .physics-dice,
@@ -271,6 +219,37 @@
   width: auto;
   min-width: 150px;
   padding: .55rem 1rem;
+}
+
+.dice-roll-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: #e9ecef;
+  color: #adb5bd;
+  border: 2px solid #000;
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 #000;
+  opacity: .5;
+  cursor: not-allowed;
+  transition: transform .1s ease, box-shadow .1s ease;
+  font: 800 1.2rem Impact, 'Arial Narrow', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.dice-roll-btn--active {
+  background: #e63946;
+  color: #fff;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.dice-roll-btn--active:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
 }
 
 .board-piece-layer {
@@ -369,9 +348,4 @@
   }
 
 
-  .player-token {
-    width: 12px;
-    height: 12px;
-    font-size: 0.4rem;
-  }
 }

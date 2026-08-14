@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../shared/middleware/require-auth';
 import { gameController } from './game.controller';
 
-const router = Router();
+const router: Router = Router();
 
 // Live gameplay runs over Socket.IO; these are read endpoints.
 // All of them require a valid player token.

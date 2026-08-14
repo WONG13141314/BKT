@@ -1,8 +1,10 @@
 import { RoundedBox } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
-import { Group, MathUtils, Vector3 } from 'three';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { CanvasTexture, Group, MathUtils, Mesh, MeshBasicMaterial, OrthographicCamera, Vector3 } from 'three';
 import { Player } from '../types/game.types';
+
+const BOARD_WORLD_SIZE = 10.05;
 
 const GRID = [
   [6, 6], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1],
@@ -20,15 +22,23 @@ const TOKEN_BAYS: [number, number][] = [
   [.34, .27],
 ];
 const YAWS = { race_car: -.38, battleship: 0, top_hat: -.28, scottie_dog: -.34 };
-const HEIGHTS = { race_car: .08, battleship: .07, top_hat: .065, scottie_dog: .11 };
+// Ground offsets account for every model's tilted lowest vertex. This keeps
+// wheels, hull, hat brim and paws just above the board instead of clipping.
+const HEIGHTS = { race_car: .1, battleship: .12, top_hat: .21, scottie_dog: .12 };
 const SCALES = { race_car: .27, battleship: .3, top_hat: .26, scottie_dog: .26 };
+const SHADOW_SCALES = {
+  race_car: [.27, .14],
+  battleship: [.29, .15],
+  top_hat: [.2, .15],
+  scottie_dog: [.22, .16],
+} as const;
 
 function tokenBay(tileIndex: number, playerIndex: number): [number, number] {
   const [across, depth] = TOKEN_BAYS[playerIndex] ?? [0, 0];
   // Rotate the same 2x2 bay layout with the track. Every model remains fully
   // inside the physical tile instead of straddling the centre/edge border.
   if (tileIndex <= 5) return [across, depth];
-  if (tileIndex <= 10) return [-depth, across];
+  if (tileIndex <= 9) return [-depth, across];
   if (tileIndex <= 15) return [-across, -depth];
   return [depth, -across];
 }
@@ -36,19 +46,25 @@ function tokenBay(tileIndex: number, playerIndex: number): [number, number] {
 function boardPoint(tileIndex: number, playerIndex: number, z: number) {
   const [row, column] = GRID[tileIndex] ?? GRID[0];
   const [offsetX, offsetY] = tokenBay(tileIndex, playerIndex);
-  const cell = 10.05 / 6;
+  const cell = BOARD_WORLD_SIZE / 6;
   return new Vector3((column - 3.5) * cell + offsetX, (3.5 - row) * cell + offsetY, z);
 }
 
-function trackAngle(tileIndex: number): number {
-  if (tileIndex <= 5) return 0;
-  if (tileIndex <= 10) return -Math.PI / 2;
-  if (tileIndex <= 15) return Math.PI;
-  return Math.PI / 2;
+/** Keep the WebGL coordinate system aligned with the responsive CSS board. */
+function ResponsiveBoardCamera() {
+  const camera = useThree((state) => state.camera);
+  const size = useThree((state) => state.size);
+
+  useLayoutEffect(() => {
+    const orthographicCamera = camera as OrthographicCamera;
+    orthographicCamera.zoom = Math.min(size.width, size.height) / BOARD_WORLD_SIZE;
+    orthographicCamera.updateProjectionMatrix();
+  }, [camera, size.height, size.width]);
+
+  return null;
 }
 
 export function BoardPiecesScene({ players }: { players: Player[] }) {
-  // Zoom 48 keeps the four outer token bays visible on responsive boards.
   return (
     <div className="board-piece-layer" aria-label="Three-dimensional player tokens">
       <Canvas
@@ -56,16 +72,17 @@ export function BoardPiecesScene({ players }: { players: Player[] }) {
         shadows
         dpr={[1, 2]}
         style={{ pointerEvents: 'none' }}
-        camera={{ position: [0, 0, 12], zoom: 48, near: .1, far: 40 }}
+        camera={{ position: [0, 0, 12], zoom: 1, near: .1, far: 40 }}
         gl={{ antialias: true, alpha: true }}
       >
+        <ResponsiveBoardCamera />
         <ambientLight intensity={.82} />
         <hemisphereLight args={['#fff8dc', '#315848', .92]} />
         <directionalLight castShadow position={[-5, 8, 10]} intensity={3.8} shadow-bias={-.0004} />
         <pointLight position={[5, 3, 8]} intensity={20} distance={18} color="#fff0c8" />
         <mesh position={[0, 0, .005]} receiveShadow>
-          <planeGeometry args={[10.05, 10.05]} />
-          <shadowMaterial transparent opacity={.34} depthWrite={false} />
+          <planeGeometry args={[BOARD_WORLD_SIZE, BOARD_WORLD_SIZE]} />
+          <shadowMaterial transparent opacity={.14} depthWrite={false} />
         </mesh>
         {players.map((player, index) => !player.isBankrupt && (
           <MovingToken key={player.id} player={player} playerIndex={index} />
@@ -79,11 +96,30 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
   const token = player.tokenType ?? 'race_car';
   const ground = HEIGHTS[token];
   const group = useRef<Group>(null);
+  const shadow = useRef<Mesh>(null);
+  const shadowMaterial = useRef<MeshBasicMaterial>(null);
   const from = useRef(boardPoint(player.position, playerIndex, ground));
   const to = useRef(boardPoint(player.position, playerIndex, ground));
   const progress = useRef(1);
   const lastPosition = useRef(player.position);
   const current = useMemo(() => new Vector3(), []);
+  const shadowTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 96;
+    canvas.height = 96;
+    const context = canvas.getContext('2d');
+    if (context) {
+      const gradient = context.createRadialGradient(48, 48, 5, 48, 48, 46);
+      gradient.addColorStop(0, 'rgba(0,0,0,.72)');
+      gradient.addColorStop(.45, 'rgba(0,0,0,.4)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 96, 96);
+    }
+    return new CanvasTexture(canvas);
+  }, []);
+
+  useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
 
   useEffect(() => {
     if (lastPosition.current === player.position) return;
@@ -95,30 +131,56 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
   }, [ground, player.position, playerIndex]);
 
   useFrame((_, delta) => {
-    if (!group.current) return;
+    if (!group.current || !shadow.current) return;
     progress.current = Math.min(1, progress.current + delta / .22);
     const eased = MathUtils.smoothstep(progress.current, 0, 1);
     current.lerpVectors(from.current, to.current, eased);
     const hop = Math.sin(progress.current * Math.PI);
     current.z = ground + hop * .9;
     group.current.position.copy(current);
-    group.current.rotation.x = .52 + hop * .07;
+    group.current.rotation.x = .52 + hop * .035;
     group.current.rotation.y = YAWS[token];
-    group.current.rotation.z = trackAngle(player.position) + hop * .06;
+    // Player pieces remain screen-upright on every board edge. Only their bay
+    // coordinates rotate with the track; the models themselves never spin.
+    group.current.rotation.z = 0;
+
+    const [shadowX, shadowY] = SHADOW_SCALES[token];
+    const spread = 1 + hop * .28;
+    shadow.current.position.set(current.x, current.y, .016);
+    shadow.current.scale.set(shadowX * spread, shadowY * spread, 1);
+    if (shadowMaterial.current) shadowMaterial.current.opacity = .32 * (1 - hop * .58);
   });
 
   return (
-    <group
-      ref={group}
-      position={to.current.toArray()}
-      scale={SCALES[token]}
-      rotation={[.52, YAWS[token], trackAngle(player.position)]}
-    >
-      {token === 'battleship' ? <Battleship />
-        : token === 'top_hat' ? <TopHat />
-          : token === 'scottie_dog' ? <ScottieDog />
-            : <RaceCar />}
-    </group>
+    <>
+      <mesh
+        ref={shadow}
+        position={boardPoint(player.position, playerIndex, .016).toArray()}
+        scale={[SHADOW_SCALES[token][0], SHADOW_SCALES[token][1], 1]}
+        renderOrder={2}
+      >
+        <circleGeometry args={[1, 32]} />
+        <meshBasicMaterial
+          ref={shadowMaterial}
+          map={shadowTexture}
+          transparent
+          opacity={.32}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <group
+        ref={group}
+        position={to.current.toArray()}
+        scale={SCALES[token]}
+        rotation={[.52, YAWS[token], 0]}
+      >
+        {token === 'battleship' ? <Battleship />
+          : token === 'top_hat' ? <TopHat />
+            : token === 'scottie_dog' ? <ScottieDog />
+              : <RaceCar />}
+      </group>
+    </>
   );
 }
 

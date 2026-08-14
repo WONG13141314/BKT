@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../../shared/middleware/require-auth';
 import { authController } from './auth.controller';
 
-export const authRoutes = Router();
+export const authRoutes: Router = Router();
 
 // Public
 authRoutes.post('/guest', authController.guest);

@@ -5,7 +5,6 @@ import { BOARD_TILES, COLOR_GROUPS, getGridPosition } from '../config/board.conf
 import { BoardPiecesScene } from './BoardPiecesScene';
 import { PhysicsDice } from './PhysicsDice';
 import './Board.css';
-import './DiceRoller.css';
 
 interface Props {
   gameState: GameState;
@@ -160,7 +159,14 @@ export function Board({
               {tile.type === 'TAX' && <span className="tile-price">{formatRM(tile.name === 'Cukai Mewah' ? 75 : 50)}</span>}
             </div>
             {property?.isLeveledUp && <span className="house-sticker" aria-label="House built"><i /><b /></span>}
-            {owner && <span className="tile-owner" style={{ background: owner.color }}>{owner.name.charAt(0)}</span>}
+            {owner && (
+              <span
+                className="tile-owner-marker"
+                style={{ background: owner.color }}
+                title={`Owned by ${owner.name}`}
+                aria-label={`Owned by ${owner.name}`}
+              />
+            )}
           </button>
         );
       })}

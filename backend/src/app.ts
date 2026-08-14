@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { env } from './config/env';
 import { corsOptions } from './config/cors';
@@ -6,7 +6,7 @@ import { corsOptions } from './config/cors';
 import { authRoutes } from './features/auth/auth.routes';
 import gameRoutes from './features/game/game.routes';
 
-export const app = express();
+export const app: Application = express();
 
 // Middleware
 app.use(cors(corsOptions));
