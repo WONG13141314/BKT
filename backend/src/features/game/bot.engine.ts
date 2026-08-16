@@ -69,7 +69,7 @@ export function submitBotDuelAnswers(state: GameState): GameState {
   let next = state;
 
   for (const side of [duel.challenger, duel.owner]) {
-    if (side.selectedIndex !== null) continue;
+    if (side.selectedIndex !== null || side.timedOut) continue;
 
     const player = next.players.find((p) => p.id === side.playerId);
     if (!player?.isBot) continue;

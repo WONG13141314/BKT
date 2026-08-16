@@ -96,12 +96,15 @@ describe('resolveStalledTurn', () => {
     const state = gameService.getGameSync(gameId)!;
     const duelSide = (playerId: string) => ({
       playerId,
-      challenge: selectChallenge({
+      challenge: {
+        ...selectChallenge({
         masteryStates: state.players[0].masteryStates,
         context: 'MATH_DUEL' as const,
         consecutiveFailures: {},
         forceSkill: 'Addition' as const,
-      }),
+        }),
+        startedAt: Date.now() - 60_000,
+      },
       selectedIndex: null,
       isCorrect: null,
       timeMs: null,
@@ -116,12 +119,10 @@ describe('resolveStalledTurn', () => {
       duelState: {
         tileIndex: 1,
         tileName: 'Tambah Alley',
-        skillName: 'Addition',
         rentAmount: 20,
         challenger: duelSide('p1'),
         owner: duelSide('p2'),
         startedAt: Date.now() - 60_000,
-        timeLimit: 20,
         resolution: null,
       },
     });

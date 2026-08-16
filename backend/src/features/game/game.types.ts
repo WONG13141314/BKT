@@ -274,6 +274,8 @@ export interface DuelSide {
   challenge: MathChallenge;
   selectedIndex: number | null;
   isCorrect: boolean | null;
+  /** The server closed this side after its own challenge deadline elapsed. */
+  timedOut?: boolean;
   timeMs: number | null;
   /** BKT transition, filled in when the duel resolves. Needed for the attempt log. */
   previousMastery: number | null;
@@ -285,13 +287,11 @@ export type DuelOutcome = 'CHALLENGER_WINS' | 'OWNER_WINS' | 'DRAW_BOTH' | 'DRAW
 export interface DuelState {
   tileIndex: number;
   tileName: string;
-  skillName: SkillName;
   /** Rent that would be due with no duel — the most the challenger can lose. */
   rentAmount: number;
   challenger: DuelSide;
   owner: DuelSide;
   startedAt: number;
-  timeLimit: number;      // Seconds, shared by both sides
   resolution: DuelResolution | null;
 }
 
@@ -318,8 +318,6 @@ export interface PublicDuelState {
   rentAmount: number;
   challenger: PublicDuelSide;
   owner: PublicDuelSide;
-  expiresAt: number;
-  timeLimit: number;
   resolution: DuelResolution | null;
 }
 

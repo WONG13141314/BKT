@@ -20,6 +20,7 @@ import {
   resolveAuction,
   submitDuelAnswer,
   bothDuellistsAnswered,
+  expireDuelSides,
   resolveDuel,
   acknowledgeCard,
   processCardChallengeAnswer,
@@ -331,14 +332,20 @@ export const gameService = {
     return { state: settled.newState, resolution: settled.resolution };
   },
 
-  /** Force the duel to settle now. Unanswered sides count as wrong. */
+  /** Close elapsed duel sides and settle once both answers are final. */
   forceResolveDuel: (
     gameId: string
-  ): { state: GameState; resolution: DuelResolution } | null => {
+  ): { state: GameState; resolution: DuelResolution | null } | null => {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
 
-    const settled = resolveDuel(state);
+    const expired = expireDuelSides(state);
+    if (!bothDuellistsAnswered(expired)) {
+      activeGames.set(gameId, expired);
+      return { state: expired, resolution: null };
+    }
+
+    const settled = resolveDuel(expired);
     activeGames.set(gameId, settled.newState);
     recordDuelAttempts(settled.duel, settled.newState);
 

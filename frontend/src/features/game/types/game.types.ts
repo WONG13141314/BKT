@@ -36,8 +36,6 @@ export const GAME_CONSTANTS = {
   BAIL_COST: 50,
   ROLL_CHALLENGE_BONUS: 0,
   SMART_BUY_DISCOUNT: 0.20,
-  DUEL_TIME_LIMIT: 20,
-  BANK_OFFER_TIME_LIMIT: 15,
   LANDLORD_BONUS: 0,
   MAX_JAIL_TURNS: 2,
   QUESTION_TIME_LIMIT_EASY: QUESTION_TIME_LIMITS[1],
@@ -329,8 +327,6 @@ export interface PublicDuelState {
   rentAmount: number;
   challenger: PublicDuelSide;
   owner: PublicDuelSide;
-  expiresAt: number;
-  timeLimit: number;
   resolution: DuelResolution | null;
 }
 

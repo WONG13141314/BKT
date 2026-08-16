@@ -10,7 +10,7 @@ function getSocketRoom(gameId: string): string {
 export function toPublicDuelState(duel: DuelState): PublicDuelState {
   const side = (duelSide: DuelState['challenger']) => ({
     playerId: duelSide.playerId,
-    hasAnswered: duelSide.selectedIndex !== null,
+    hasAnswered: duelSide.selectedIndex !== null || duelSide.timedOut === true,
     isCorrect: duel.resolution ? duelSide.isCorrect : null,
   });
 
@@ -20,8 +20,6 @@ export function toPublicDuelState(duel: DuelState): PublicDuelState {
     rentAmount: duel.rentAmount,
     challenger: side(duel.challenger),
     owner: side(duel.owner),
-    expiresAt: duel.startedAt + duel.timeLimit * 1000,
-    timeLimit: duel.timeLimit,
     resolution: duel.resolution,
   };
 }

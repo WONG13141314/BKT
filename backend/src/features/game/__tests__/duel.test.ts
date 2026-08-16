@@ -7,12 +7,15 @@
 
 import {
   initializeGameState,
+  expireDuelSides,
+  nextDuelDeadline,
+  resolveTileEvent,
   submitDuelAnswer,
   bothDuellistsAnswered,
   resolveDuel,
 } from '../game.engine';
 import { selectChallenge } from '../../../bkt/bkt.selector';
-import { LANDLORD_BONUS, DUEL_TIME_LIMIT } from '../game.constants';
+import { LANDLORD_BONUS } from '../game.constants';
 import type { DuelSide, DuelState, GameState } from '../game.types';
 
 const PLAYERS = [
@@ -21,6 +24,50 @@ const PLAYERS = [
 ];
 
 const RENT = 60;
+
+function withSeededRandom<T>(seed: number, action: () => T): T {
+  const originalRandom = Math.random;
+  let state = seed;
+  Math.random = () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+
+  try {
+    return action();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
+function stateLandingOnOwnedProperty(mastery: number = 0.5) {
+  const state = initializeGameState('game_DUEL_LIVE', PLAYERS);
+  const masteryStates = {
+    Addition: mastery,
+    Subtraction: mastery,
+    Multiplication: mastery,
+    Division: mastery,
+  };
+  const skillAttempts = {
+    Addition: 10,
+    Subtraction: 10,
+    Multiplication: 10,
+    Division: 10,
+  };
+
+  return {
+    ...state,
+    players: state.players.map((player, index) => ({
+      ...player,
+      position: index === 0 ? 1 : player.position,
+      masteryStates,
+      skillAttempts,
+    })),
+    properties: state.properties.map((property) => property.tileIndex === 1
+      ? { ...property, ownerId: state.players[1].id }
+      : property),
+  };
+}
 
 function makeSide(playerId: string): DuelSide {
   return {
@@ -44,12 +91,10 @@ function stateWithDuel(): GameState {
   const duel: DuelState = {
     tileIndex: 3,
     tileName: 'Tambah Alley',
-    skillName: 'Addition',
     rentAmount: RENT,
     challenger: makeSide('p1'),
     owner: makeSide('p2'),
     startedAt: Date.now(),
-    timeLimit: DUEL_TIME_LIMIT,
     resolution: null,
   };
 
@@ -140,6 +185,62 @@ describe('Duel payoff matrix', () => {
 });
 
 describe('Duel mechanics', () => {
+  it('keeps all four skills reachable in live property duels', () => {
+    const observed = withSeededRandom(0xD0E1, () => {
+      const skills = new Set<string>();
+
+      for (let draw = 0; draw < 600; draw += 1) {
+        const next = resolveTileEvent(stateLandingOnOwnedProperty());
+        const duel = next.duelState!;
+        skills.add(duel.challenger.challenge.skillName);
+        skills.add(duel.owner.challenge.skillName);
+      }
+
+      return skills;
+    });
+
+    expect([...observed].sort()).toEqual(['Addition', 'Division', 'Multiplication', 'Subtraction']);
+  });
+
+  it.each([
+    [0.2, 1, 25],
+    [0.6, 2, 20],
+    [0.9, 3, 15],
+  ] as const)('gives live difficulty %s duellists a %s-second private question', (mastery, difficulty, seconds) => {
+    const duel = resolveTileEvent(stateLandingOnOwnedProperty(mastery)).duelState!;
+
+    for (const side of [duel.challenger, duel.owner]) {
+      expect(side.challenge.difficulty).toBe(difficulty);
+      expect(side.challenge.timeLimit).toBe(seconds);
+      expect(side.challenge.startedAt + side.challenge.timeLimit * 1_000).toBe(
+        duel.startedAt + seconds * 1_000
+      );
+    }
+  });
+
+  it('expires each duel side at its own question deadline', () => {
+    const state = stateWithDuel();
+    const duel = state.duelState!;
+    const timed = {
+      ...state,
+      duelState: {
+        ...duel,
+        challenger: { ...duel.challenger, challenge: { ...duel.challenger.challenge, startedAt: 1_000, timeLimit: 25 } },
+        owner: { ...duel.owner, challenge: { ...duel.owner.challenge, startedAt: 1_000, timeLimit: 15 } },
+      },
+    };
+
+    const afterHardDeadline = expireDuelSides(timed, 16_000);
+    expect(afterHardDeadline.duelState!.challenger.timedOut).not.toBe(true);
+    expect(afterHardDeadline.duelState!.owner.timedOut).toBe(true);
+    expect(nextDuelDeadline(afterHardDeadline.duelState!)).toBe(26_000);
+    expect(bothDuellistsAnswered(afterHardDeadline)).toBe(false);
+
+    const afterEasyDeadline = expireDuelSides(afterHardDeadline, 26_000);
+    expect(afterEasyDeadline.duelState!.challenger.timedOut).toBe(true);
+    expect(bothDuellistsAnswered(afterEasyDeadline)).toBe(true);
+  });
+
   it('gives both duellists the same skill', () => {
     const state = stateWithDuel();
 

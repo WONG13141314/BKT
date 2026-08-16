@@ -12,7 +12,7 @@
 import { Server, Socket } from 'socket.io';
 import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
-import { getCurrentPlayer } from '../features/game/game.engine';
+import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
@@ -86,7 +86,7 @@ function scheduleBotDuelAnswer(io: Server, gameId: string) {
   }
 
   const waitingOnBot = [state.duelState!.challenger, state.duelState!.owner].some((side) => {
-    if (side.selectedIndex !== null) return false;
+    if (side.selectedIndex !== null || side.timedOut) return false;
     return state.players.find((p) => p.id === side.playerId)?.isBot === true;
   });
 
@@ -243,6 +243,18 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   }
 
   const now = Date.now();
+
+  // A duel has one deadline per learner. Recompute its next side-specific
+  // expiry on every publication instead of reusing the last phase deadline.
+  if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
+    const deadline = nextDuelDeadline(state.duelState);
+    if (deadline !== null) {
+      state = savePhaseDeadline(gameId, state, deadline);
+      phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
+    }
+    return;
+  }
+
   const savedDeadline = state.phaseDeadlineFor === state.turnPhase ? state.phaseDeadline : null;
   const phaseDeadline = overrideMs === undefined
     ? savedDeadline ?? getPhaseDeadline(state, now, { canBuild: canBuildOnEndTurn(state) })
@@ -256,15 +268,6 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
 
   if (state.turnPhase === 'AUCTION' && state.auctionState) {
     const deadline = state.auctionState.endsAt;
-    state = savePhaseDeadline(gameId, state, deadline);
-    phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
-    return;
-  }
-
-  // A duel waits on the owner as well as the active player, so it still needs a
-  // deadline when a bot is the one taking the turn.
-  if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
-    const deadline = state.duelState.startedAt + state.duelState.timeLimit * 1000 + CHALLENGE_GRACE_MS;
     state = savePhaseDeadline(gameId, state, deadline);
     phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     return;

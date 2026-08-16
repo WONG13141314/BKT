@@ -25,7 +25,6 @@ describe('authoritative game recovery', () => {
     game.duelState = {
       tileIndex: 1,
       tileName: 'Addition Avenue',
-      skillName: 'Addition',
       rentAmount: 50,
       challenger: {
         playerId: game.players[0].id,
@@ -46,7 +45,6 @@ describe('authoritative game recovery', () => {
         newMastery: null,
       },
       startedAt: NOW,
-      timeLimit: 20,
       resolution: null,
     } satisfies DuelState;
     gameService.replaceState(game.id, game);
@@ -58,7 +56,7 @@ describe('authoritative game recovery', () => {
     await ownerSocket.trigger('game:request-state', { gameId: game.id });
 
     expect(ownerSocket.emit).toHaveBeenCalledWith('game:duel', expect.objectContaining({
-      myChallenge: expect.objectContaining({ id: game.duelState.owner.challenge.id }),
+      myChallenge: expect.objectContaining({ id: game.duelState!.owner.challenge.id }),
     }));
   });
 

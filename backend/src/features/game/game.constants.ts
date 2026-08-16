@@ -30,8 +30,6 @@ export const SMART_BUY_DISCOUNT = 0.20;        // Banker Offer: 20% off property
 // The challenger's stake is the rent; the owner's reward comes from the bank, so
 // winning a duel never takes extra money from the other child.
 
-export const DUEL_TIME_LIMIT = 20;             // Seconds, shared by both duellists
-export const BANK_OFFER_TIME_LIMIT = 15;        // The one short solo pressure event
 export const LANDLORD_BONUS = 0;               // Rent itself is the owner's reward
 export const DUEL_DRAW_RENT_RATIO = 0.50;      // Both correct → challenger pays half
 
@@ -108,8 +106,6 @@ export const GAME_CONSTANTS = {
   MONOPOLY_RENT_MULTIPLIER,
   ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
-  DUEL_TIME_LIMIT,
-  BANK_OFFER_TIME_LIMIT,
   LANDLORD_BONUS,
   MAX_ROUNDS,
   CLOCK_CAP_MINUTES,

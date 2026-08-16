@@ -107,6 +107,28 @@ describe('Skill selection', () => {
     }
   });
 
+  it('keeps all four skills reachable in Smart Buy despite a property theme', () => {
+    const counts = withSeededRandom(0x5A17, () => tally(
+      () => selectChallenge({
+        masteryStates: {
+          Addition: 0.5,
+          Subtraction: 0.5,
+          Multiplication: 0.5,
+          Division: 0.5,
+        },
+        context: 'SMART_BUY',
+        consecutiveFailures: NO_FAILURES,
+        skillAttempts: { Addition: 10, Subtraction: 10, Multiplication: 10, Division: 10 },
+        propertyPrice: 200,
+        propertySkillTheme: 'Addition',
+      }).skillName
+    ));
+
+    for (const skill of ACTIVE_SKILL_NAMES) {
+      expect(counts[skill]).toBeGreaterThan(0);
+    }
+  });
+
   it('honours a forced skill exactly, for duels', () => {
     for (let i = 0; i < 50; i++) {
       const challenge = selectChallenge({

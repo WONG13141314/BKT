@@ -61,12 +61,15 @@ describe('game publisher', () => {
 
   it('gives each duellist only their own redacted challenge and gives observers none', () => {
     const state = makeGameState();
-    const challengerChallenge = makePrivateChallenge({ id: 'challenger', correctIndex: 1 });
-    const ownerChallenge = makePrivateChallenge({ id: 'owner', correctIndex: 3 });
+    const challengerChallenge = makePrivateChallenge({
+      id: 'challenger', correctIndex: 1, difficulty: 1, timeLimit: 25, startedAt: 1_000,
+    });
+    const ownerChallenge = makePrivateChallenge({
+      id: 'owner', correctIndex: 3, difficulty: 3, timeLimit: 15, startedAt: 1_000,
+    });
     state.duelState = {
       tileIndex: 1,
       tileName: 'Tambah Town',
-      skillName: 'Addition',
       rentAmount: 50,
       challenger: {
         playerId: state.players[0].id,
@@ -87,7 +90,6 @@ describe('game publisher', () => {
         newMastery: null,
       },
       startedAt: 1_000,
-      timeLimit: 20,
       resolution: null,
     };
     const challengerSocket = makeSocket({ player: { id: 'db-player-1' } });
@@ -102,6 +104,10 @@ describe('game publisher', () => {
     const observerPayload = observerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
     expect(challengerPayload.myChallenge.id).toBe('challenger');
     expect(ownerPayload.myChallenge.id).toBe('owner');
+    expect(challengerPayload.myChallenge.expiresAt).toBe(26_000);
+    expect(ownerPayload.myChallenge.expiresAt).toBe(16_000);
+    expect(challengerPayload.duel.expiresAt).toBeUndefined();
+    expect(challengerPayload.duel.timeLimit).toBeUndefined();
     expect(observerPayload.myChallenge).toBeNull();
     expect(JSON.stringify([challengerPayload, ownerPayload, observerPayload])).not.toContain('correctIndex');
   });
@@ -134,7 +140,6 @@ describe('game publisher', () => {
     state.duelState = {
       tileIndex: 1,
       tileName: 'Tambah Town',
-      skillName: 'Addition',
       rentAmount: 50,
       challenger: {
         playerId: 'alice',
@@ -155,7 +160,6 @@ describe('game publisher', () => {
         newMastery: null,
       },
       startedAt: 1_000,
-      timeLimit: 20,
       resolution: null,
     };
     const aliceSocket = makeSocket({ player: { id: 'alice' } });

@@ -43,7 +43,6 @@ import {
   TOTAL_TILES,
   ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
-  DUEL_TIME_LIMIT,
   LANDLORD_BONUS,
   DUEL_DRAW_RENT_RATIO,
   LUCKY_BREAK_CASH_OPTIONS,
@@ -392,9 +391,9 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
 /**
  * Set up a duel over one property's rent.
  *
- * Both duellists get the *same skill* — the property's theme, which is what
- * makes it read as a fair contest — but each at their own BKT difficulty. That
- * is the whole fairness mechanism: because each question is calibrated to its
+ * A property's skill theme gently weights each selection rather than forcing
+ * either learner into it. Each player receives an independently selected
+ * question at their own BKT difficulty and answer window. Because each question is calibrated to its
  * player, both sit at a similar probability of answering correctly, so a duel
  * between the strongest and weakest player at the table is close to even while
  * still stretching each of them appropriately.
@@ -405,22 +404,23 @@ function buildDuel(
   tile: TileConfig,
   rent: number
 ): DuelState {
-  const skillName = (tile.skillTheme ?? 'Addition') as SkillName;
+  const startedAt = Date.now();
 
   const questionFor = (player: PlayerState) =>
-    selectChallenge({
+    ({ ...selectChallenge({
       masteryStates: player.masteryStates,
       context: 'MATH_DUEL',
       consecutiveFailures: player.consecutiveFailures,
       skillAttempts: player.skillAttempts,
-      forceSkill: skillName,
-    });
+      propertySkillTheme: tile.skillTheme ?? undefined,
+    }), startedAt });
 
   const side = (player: PlayerState): DuelSide => ({
     playerId: player.id,
     challenge: questionFor(player),
     selectedIndex: null,
     isCorrect: null,
+    timedOut: false,
     timeMs: null,
     previousMastery: null,
     newMastery: null,
@@ -429,12 +429,10 @@ function buildDuel(
   return {
     tileIndex: tile.index,
     tileName: tile.name,
-    skillName,
     rentAmount: rent,
     challenger: side(challenger),
     owner: side(owner),
-    startedAt: Date.now(),
-    timeLimit: DUEL_TIME_LIMIT,
+    startedAt,
     resolution: null,
   };
 }
@@ -448,7 +446,8 @@ export function submitDuelAnswer(
   state: GameState,
   playerId: string,
   selectedIndex: number,
-  timeMs: number
+  timeMs: number,
+  receivedAt: number = Date.now()
 ): GameState {
   const duel = state.duelState;
   if (!duel || duel.resolution) return state;
@@ -460,7 +459,11 @@ export function submitDuelAnswer(
         ? 'owner'
         : null;
 
-  if (!which || duel[which].selectedIndex !== null) return state;
+  if (!which || duel[which].selectedIndex !== null || duel[which].timedOut) return state;
+
+  if (receivedAt >= duelSideExpiresAt(duel[which])) {
+    return expireDuelSides(state, receivedAt);
+  }
 
   const side = duel[which];
   const answered: DuelSide = {
@@ -475,7 +478,39 @@ export function submitDuelAnswer(
 
 export function bothDuellistsAnswered(state: GameState): boolean {
   const duel = state.duelState;
-  return !!duel && duel.challenger.selectedIndex !== null && duel.owner.selectedIndex !== null;
+  return !!duel && isDuelSideComplete(duel.challenger) && isDuelSideComplete(duel.owner);
+}
+
+function isDuelSideComplete(side: DuelSide): boolean {
+  return side.selectedIndex !== null || side.timedOut === true;
+}
+
+export function duelSideExpiresAt(side: DuelSide): number {
+  return side.challenge.startedAt + side.challenge.timeLimit * 1_000;
+}
+
+/** The next authoritative duel deadline is the earliest unanswered side. */
+export function nextDuelDeadline(duel: DuelState): number | null {
+  const pending = [duel.challenger, duel.owner]
+    .filter((side) => !isDuelSideComplete(side))
+    .map(duelSideExpiresAt);
+  return pending.length > 0 ? Math.min(...pending) : null;
+}
+
+/** Marks only the learner(s) whose individual answer window has expired. */
+export function expireDuelSides(state: GameState, now: number = Date.now()): GameState {
+  const duel = state.duelState;
+  if (!duel || duel.resolution) return state;
+
+  const expire = (side: DuelSide): DuelSide =>
+    !isDuelSideComplete(side) && now >= duelSideExpiresAt(side)
+      ? { ...side, timedOut: true, isCorrect: false, timeMs: Math.max(0, now - side.challenge.startedAt) }
+      : side;
+  const challenger = expire(duel.challenger);
+  const owner = expire(duel.owner);
+  if (challenger === duel.challenger && owner === duel.owner) return state;
+
+  return { ...state, duelState: { ...duel, challenger, owner } };
 }
 
 /**
