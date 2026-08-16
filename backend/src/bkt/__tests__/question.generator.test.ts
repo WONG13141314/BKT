@@ -1,5 +1,20 @@
 import { generateQuestion, generateQuestionBank, generateSmartBuyQuestion } from '../question.generator';
 
+function withSeededRandom<T>(seed: number, action: () => T): T {
+  const originalRandom = Math.random;
+  let state = seed;
+  Math.random = () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+
+  try {
+    return action();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 describe('Question Generator — Redesigned Math Monopoly', () => {
   describe('generateQuestion', () => {
     const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'];
@@ -58,26 +73,30 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
     });
 
     it.each([1, 2] as const)('generates exact division at difficulty %s', (difficulty) => {
-      for (let i = 0; i < 500; i += 1) {
-        const question = generateQuestion('Division', difficulty).questionData;
+      withSeededRandom(0xD1A1 + difficulty, () => {
+        for (let i = 0; i < 500; i += 1) {
+          const question = generateQuestion('Division', difficulty).questionData;
 
-        expect(question.type).toBe('long_division');
-        if (question.type === 'long_division') expect(question.remainder).toBe(0);
-      }
+          expect(question.type).toBe('long_division');
+          if (question.type === 'long_division') expect(question.remainder).toBe(0);
+        }
+      });
     });
 
     it('reserves non-zero remainders and remainder prompts for hard division', () => {
       const targets = new Set<string>();
 
-      for (let i = 0; i < 500; i += 1) {
-        const question = generateQuestion('Division', 3).questionData;
+      withSeededRandom(0xBEEF, () => {
+        for (let i = 0; i < 500; i += 1) {
+          const question = generateQuestion('Division', 3).questionData;
 
-        expect(question.type).toBe('long_division');
-        if (question.type === 'long_division') {
-          expect(question.remainder).toBeGreaterThan(0);
-          targets.add(question.missingTarget);
+          expect(question.type).toBe('long_division');
+          if (question.type === 'long_division') {
+            expect(question.remainder).toBeGreaterThan(0);
+            targets.add(question.missingTarget);
+          }
         }
-      }
+      });
 
       expect(targets).toContain('remainder');
     });
@@ -172,22 +191,24 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
       const prices = [40, 80, 120, 160, 200, 240];
       const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'] as const;
 
-      for (const skill of skills) {
-        for (const difficulty of [1, 2, 3] as const) {
-          for (let i = 0; i < 2_000; i += 1) {
-            const price = prices[i % prices.length];
-            const question = generateSmartBuyQuestion(price, difficulty, skill);
+      withSeededRandom(0x5B00, () => {
+        for (const skill of skills) {
+          for (const difficulty of [1, 2, 3] as const) {
+            for (let i = 0; i < 2_000; i += 1) {
+              const price = prices[i % prices.length];
+              const question = generateSmartBuyQuestion(price, difficulty, skill);
 
-            expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
-            expect(question.text).toContain(String(price));
-            expect(question.options).toHaveLength(4);
-            expect(new Set(question.options).size).toBe(4);
-            expect(question.options[question.correctIndex]).toBeDefined();
-            expect(question.options.every((option) => Number.isFinite(Number(option)) && Number(option) >= 0)).toBe(true);
-            correctIndexCounts[question.correctIndex] += 1;
+              expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
+              expect(question.text).toContain(String(price));
+              expect(question.options).toHaveLength(4);
+              expect(new Set(question.options).size).toBe(4);
+              expect(question.options[question.correctIndex]).toBeDefined();
+              expect(question.options.every((option) => Number.isFinite(Number(option)) && Number(option) >= 0)).toBe(true);
+              correctIndexCounts[question.correctIndex] += 1;
+            }
           }
         }
-      }
+      });
 
       for (const count of correctIndexCounts) expect(count).toBeGreaterThan(5_000);
     });
