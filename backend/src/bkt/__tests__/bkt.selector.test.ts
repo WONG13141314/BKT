@@ -1,6 +1,8 @@
 import { selectChallenge, getAdjustedParams, determineHint } from '../bkt.selector';
 import { ChallengeContext, SKILL_NAMES } from '../../features/game/game.types';
+import { ACTIVE_SKILL_NAMES } from '../../features/game/game.constants';
 import { BKT_PARAMS_BY_DIFFICULTY } from '../bkt.defaults';
+import { baseInput, masteryFor } from '../../test/bkt.fixtures';
 
 describe('BKT Question Selector', () => {
   const defaultMastery: Record<string, number> = {
@@ -15,6 +17,23 @@ describe('BKT Question Selector', () => {
   };
 
   describe('selectChallenge', () => {
+    it('keeps every primary-math skill live', () => {
+      expect(ACTIVE_SKILL_NAMES).toEqual(['Addition', 'Subtraction', 'Multiplication', 'Division']);
+    });
+
+    it.each([[1, 25], [2, 20], [3, 15]] as const)(
+      'assigns difficulty %s a %s second answer window',
+      (difficulty, seconds) => {
+        const challenge = selectChallenge(baseInput({
+          forceSkill: 'Addition',
+          mastery: masteryFor(difficulty),
+        }));
+
+        expect(challenge.difficulty).toBe(difficulty);
+        expect(challenge.timeLimit).toBe(seconds);
+      }
+    );
+
     it('should return a valid MathChallenge for ROLL_CHALLENGE context', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
@@ -28,7 +47,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
       expect(challenge.context).toBe('ROLL_CHALLENGE');
-      expect(challenge.timeLimit).toBe(0);
+      expect(challenge.timeLimit).toBe(25);
     });
 
     it('should use contextual skills for SMART_BUY', () => {
@@ -39,8 +58,8 @@ describe('BKT Question Selector', () => {
         propertyPrice: 200,
       });
 
-      expect(['Addition', 'Subtraction']).toContain(challenge.skillName);
-      expect(challenge.timeLimit).toBe(15);
+      expect(['Addition', 'Subtraction', 'Multiplication', 'Division']).toContain(challenge.skillName);
+      expect(challenge.timeLimit).toBe(25);
     });
 
     it('should reduce difficulty for JAIL_ESCAPE', () => {
@@ -56,7 +75,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.difficulty).toBeLessThanOrEqual(2);
     });
 
-    it('keeps solo questions untimed regardless of difficulty', () => {
+    it('uses the easy-question time limit for solo questions', () => {
       const easyMastery: Record<string, number> = {};
       for (const s of SKILL_NAMES) easyMastery[s] = 0.1;
 
@@ -67,7 +86,7 @@ describe('BKT Question Selector', () => {
       });
 
       expect(challenge.difficulty).toBe(1);
-      expect(challenge.timeLimit).toBe(0);
+      expect(challenge.timeLimit).toBe(25);
     });
   });
 

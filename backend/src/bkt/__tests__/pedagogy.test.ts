@@ -10,7 +10,7 @@ import {
 } from '../question.generator';
 import { determineHint, selectChallenge } from '../bkt.selector';
 import { BOARD_TILES } from '../../features/game/board.config';
-import { ACTIVE_SKILL_NAMES, SKILL_NAMES } from '../../features/game/game.constants';
+import { SKILL_NAMES } from '../../features/game/game.constants';
 import type { ColumnQuestion, LongDivisionQuestion } from '../../features/game/game.types';
 
 describe('Misconception distractors', () => {
@@ -177,13 +177,14 @@ describe('Hints', () => {
 describe('Board balance', () => {
   const properties = BOARD_TILES.filter((t) => t.type === 'PROPERTY');
 
-  it('splits the board evenly across the current Addition/Subtraction syllabus', () => {
+  it('splits property themes evenly between Addition and Subtraction', () => {
     const counts = Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])) as Record<string, number>;
     for (const tile of properties) {
       if (tile.skillTheme) counts[tile.skillTheme]++;
     }
 
-    for (const skill of ACTIVE_SKILL_NAMES) expect(counts[skill]).toBe(5);
+    expect(counts.Addition).toBe(5);
+    expect(counts.Subtraction).toBe(5);
     expect(counts.Multiplication).toBe(0);
     expect(counts.Division).toBe(0);
 

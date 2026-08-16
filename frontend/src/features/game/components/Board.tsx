@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dices } from 'lucide-react';
-import { GameState, formatRM } from '../types/game.types';
+import { GameState, PRIMARY_MATH_LABEL, formatRM } from '../types/game.types';
 import { BOARD_TILES, COLOR_GROUPS, getGridPosition } from '../config/board.config';
 import { BoardPiecesScene } from './BoardPiecesScene';
 import { PhysicsDice } from './PhysicsDice';
@@ -172,7 +172,7 @@ export function Board({
       })}
 
       <div className="board-center">
-        <div className="board-brand"><strong>MATHOPOLY</strong><span>STANDARD 1 KSSR</span></div>
+        <div className="board-brand"><strong>MATHOPOLY</strong><span>{PRIMARY_MATH_LABEL}</span></div>
         <PhysicsDice
           values={gameState.diceValues}
           rollId={gameState.diceRollId}

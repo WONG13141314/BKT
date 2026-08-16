@@ -56,7 +56,7 @@ describe('Challenge redaction', () => {
     expect(publicChallenge.correctIndex).toBeUndefined();
     expect(publicChallenge.text).toBeUndefined();
     expect(publicChallenge.options).toHaveLength(4);
-    expect(publicChallenge.expiresAt).toBe(challenge.startedAt);
+    expect(publicChallenge.expiresAt).toBe(challenge.startedAt + challenge.timeLimit * 1_000);
     expect(publicChallenge.skillName).toBeUndefined();
     expect(publicChallenge.difficulty).toBeUndefined();
   });

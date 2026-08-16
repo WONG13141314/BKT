@@ -11,7 +11,7 @@ import {
   MathChallenge,
   QuestionData,
 } from '../features/game/game.types';
-import { ACTIVE_SKILL_NAMES as SKILL_NAMES, BANK_OFFER_TIME_LIMIT, DUEL_TIME_LIMIT, SkillName } from '../features/game/game.constants';
+import { ACTIVE_SKILL_NAMES, QUESTION_TIME_LIMITS, SkillName } from '../features/game/game.constants';
 import {
   generateQuestion,
   generateSmartBuyQuestion,
@@ -21,17 +21,13 @@ import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 // ---- Context-to-Skill Mapping ----
 
 const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
-  ROLL_CHALLENGE: SKILL_NAMES,                            // The turn toll — fully BKT-driven
-  MATH_DUEL: SKILL_NAMES,                                 // Themed by the disputed property
-  SMART_BUY: ['Subtraction', 'Multiplication'],           // Price calculations
-  CHALLENGE_CARD: SKILL_NAMES,                            // All skills eligible
-  JAIL_ESCAPE: SKILL_NAMES,                               // All, reduced difficulty
-  LEVEL_UP: SKILL_NAMES,                                  // Matched to property skill theme
+  ROLL_CHALLENGE: ACTIVE_SKILL_NAMES,                     // The turn toll — fully BKT-driven
+  MATH_DUEL: ACTIVE_SKILL_NAMES,                          // Themed by the disputed property
+  SMART_BUY: ACTIVE_SKILL_NAMES,                          // Price calculations
+  CHALLENGE_CARD: ACTIVE_SKILL_NAMES,                     // All skills eligible
+  JAIL_ESCAPE: ACTIVE_SKILL_NAMES,                        // All, reduced difficulty
+  LEVEL_UP: ACTIVE_SKILL_NAMES,                           // Matched to property skill theme
 };
-
-// The submitted Standard 1 study evaluates addition and subtraction only.
-// Keep the dormant generators compiled, but never select them in live play.
-CONTEXT_SKILL_MAP.SMART_BUY = SKILL_NAMES;
 
 // ---- Difficulty from Mastery ----
 //
@@ -231,7 +227,7 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   } = input;
 
   // 1. Eligible skills for this context
-  const eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || SKILL_NAMES;
+  const eligibleSkills: readonly SkillName[] = CONTEXT_SKILL_MAP[context] || ACTIVE_SKILL_NAMES;
 
   // 2. Pick the skill. A themed property tilts the wheel toward its own skill
   //    without excluding the others.
@@ -303,11 +299,7 @@ function buildChallenge(
     options: generated.options,
     correctIndex: generated.correctIndex,
     context,
-    timeLimit: context === 'MATH_DUEL'
-      ? DUEL_TIME_LIMIT
-      : context === 'SMART_BUY'
-        ? BANK_OFFER_TIME_LIMIT
-        : 0,
+    timeLimit: QUESTION_TIME_LIMITS[difficulty],
     startedAt: Date.now(),
     hintLevel: hint.level,
     hintContent: hint.content,

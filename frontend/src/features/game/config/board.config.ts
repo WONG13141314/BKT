@@ -1,7 +1,7 @@
 // ============================================
 // Board Configuration — Frontend
 // 20-tile layout, 5 color groups, RM currency
-// Standard 1 KSSR themed properties
+// Primary Math themed properties
 // ============================================
 
 import { TileConfig, ColorGroup, SkillName } from '../types/game.types';

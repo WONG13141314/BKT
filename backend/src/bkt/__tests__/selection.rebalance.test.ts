@@ -16,21 +16,38 @@ function tally(pick: () => SkillName): Record<string, number> {
 
 const NO_FAILURES: Record<string, number> = {};
 
+function withSeededRandom<T>(seed: number, action: () => T): T {
+  const originalRandom = Math.random;
+  let state = seed;
+  Math.random = () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+
+  try {
+    return action();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 describe('Skill selection', () => {
   const weakAtSubtraction = {
     Addition: 0.85,
     Subtraction: 0.10,
+    Multiplication: 0.85,
+    Division: 0.85,
   };
 
   it('targets the weakest skill without monopolising the session', () => {
-    const counts = tally(
+    const counts = withSeededRandom(0xB17, () => tally(
       () =>
         selectChallenge({
           masteryStates: weakAtSubtraction,
           context: 'ROLL_CHALLENGE',
           consecutiveFailures: NO_FAILURES,
         }).skillName
-    );
+    ));
 
     // The acceptance target for Phase 4: a player weak in Division sees it at
     // least 40% of the time.
@@ -45,7 +62,7 @@ describe('Skill selection', () => {
   });
 
   it('still surfaces a mastered skill occasionally, so retention is visible', () => {
-    const counts = tally(
+    const counts = withSeededRandom(0xCAFE, () => tally(
       () =>
         selectChallenge({
           masteryStates: {
@@ -57,7 +74,7 @@ describe('Skill selection', () => {
           context: 'ROLL_CHALLENGE',
           consecutiveFailures: NO_FAILURES,
         }).skillName
-    );
+    ));
 
     for (const skill of ACTIVE_SKILL_NAMES) {
       expect(counts[skill]).toBeGreaterThan(0);
@@ -65,24 +82,26 @@ describe('Skill selection', () => {
   });
 
   it('treats a property theme as a preference, not a rule', () => {
-    const counts = tally(
+    const counts = withSeededRandom(0xF00D, () => tally(
       () =>
         selectChallenge({
           masteryStates: {
             Addition: 0.5,
             Subtraction: 0.5,
+            Multiplication: 0.5,
+            Division: 0.5,
           },
           context: 'LEVEL_UP',
           consecutiveFailures: NO_FAILURES,
           propertySkillTheme: 'Addition',
         }).skillName
-    );
+    ));
 
     // Boosted, so clearly ahead of an even 25% split...
-    expect(counts.Addition / DRAWS).toBeGreaterThan(0.55);
+    expect(counts.Addition / DRAWS).toBeGreaterThan(0.3);
     // ...but not the hard filter it used to be, which collapsed the candidate
     // list to one skill and left BKT with nothing to decide.
-    expect(counts.Addition / DRAWS).toBeLessThan(0.95);
+    expect(counts.Addition / DRAWS).toBeLessThan(0.5);
     for (const skill of ACTIVE_SKILL_NAMES) {
       expect(counts[skill]).toBeGreaterThan(0);
     }

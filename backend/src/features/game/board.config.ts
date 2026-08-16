@@ -1,6 +1,6 @@
 // ============================================
 // Board Configuration — 20 Tiles
-// Standard 1 KSSR themed properties, RM currency
+// Primary Math themed properties, RM currency
 // 5 color sets × 2 properties = 10 properties + 10 specials
 // ============================================
 

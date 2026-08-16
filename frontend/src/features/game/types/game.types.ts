@@ -16,6 +16,14 @@ export type SkillName = typeof SKILL_NAMES[number];
 
 // ---- Constants ----
 
+export const PRIMARY_MATH_LABEL = 'Primary Math';
+
+export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
+  1: 25,
+  2: 20,
+  3: 15,
+};
+
 export const GAME_CONSTANTS = {
   TOTAL_TILES: 20,
   MAX_PLAYERS: 4,
@@ -32,9 +40,10 @@ export const GAME_CONSTANTS = {
   BANK_OFFER_TIME_LIMIT: 15,
   LANDLORD_BONUS: 0,
   MAX_JAIL_TURNS: 2,
-  QUESTION_TIME_LIMIT_EASY: 20,
-  QUESTION_TIME_LIMIT_MEDIUM: 15,
-  QUESTION_TIME_LIMIT_HARD: 12,
+  QUESTION_TIME_LIMIT_EASY: QUESTION_TIME_LIMITS[1],
+  QUESTION_TIME_LIMIT_MEDIUM: QUESTION_TIME_LIMITS[2],
+  QUESTION_TIME_LIMIT_HARD: QUESTION_TIME_LIMITS[3],
+  PRIMARY_MATH_LABEL,
 } as const;
 
 // ---- Board & Tiles ----

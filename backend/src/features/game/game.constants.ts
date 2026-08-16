@@ -1,7 +1,7 @@
 // ============================================
 // Game Constants — All tunable values in one place
 // Currency: RM (Malaysian Ringgit)
-// Scope: Standard 1 KSSR only
+// Scope: Primary Math
 // ============================================
 
 // ---- Board ----
@@ -50,11 +50,18 @@ export const TOTAL_CARDS = 12;
 export const LUCK_CARDS_COUNT = 7;
 export const MATH_CARDS_COUNT = 5;
 
+/** The answer window is determined solely by question difficulty. */
+export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
+  1: 25,
+  2: 20,
+  3: 15,
+};
+
 // ---- Question Timing ----
 
-export const TIME_LIMIT_EASY = 20;    // seconds
-export const TIME_LIMIT_MEDIUM = 15;
-export const TIME_LIMIT_HARD = 12;
+export const TIME_LIMIT_EASY = QUESTION_TIME_LIMITS[1];
+export const TIME_LIMIT_MEDIUM = QUESTION_TIME_LIMITS[2];
+export const TIME_LIMIT_HARD = QUESTION_TIME_LIMITS[3];
 
 // ---- Lucky Break Rewards ----
 
@@ -65,7 +72,9 @@ export const LUCKY_BREAK_TOKEN_CHANCE = 0.33; // 1 in 3 chance of free Level Up 
 // Winner = highest net worth (cash + property values + level-up bonuses)
 // No mastery multiplier in game score
 
-// ---- Skill Nodes (Standard 1 KSSR) ----
+// ---- Skill Nodes (Primary Math) ----
+
+export const PRIMARY_MATH_LABEL = 'Primary Math';
 
 export const SKILL_NAMES = [
   'Addition',
@@ -76,8 +85,8 @@ export const SKILL_NAMES = [
 
 export type SkillName = typeof SKILL_NAMES[number];
 
-/** Curriculum scope used by the evaluated Standard 1 game. */
-export const ACTIVE_SKILL_NAMES = ['Addition', 'Subtraction'] as const satisfies readonly SkillName[];
+/** Every primary-math skill participates in live play. */
+export const ACTIVE_SKILL_NAMES = SKILL_NAMES;
 
 // ---- Currency Formatting ----
 
@@ -111,4 +120,6 @@ export const GAME_CONSTANTS = {
   TIME_LIMIT_EASY,
   TIME_LIMIT_MEDIUM,
   TIME_LIMIT_HARD,
+  QUESTION_TIME_LIMITS,
+  PRIMARY_MATH_LABEL,
 } as const;
