@@ -3,9 +3,10 @@ import { gameService } from '../../features/game/game.service';
 import { registerGameHandlers } from '../game.handlers';
 import {
   getPhaseDeadline,
+  PHASE_TIMEOUTS,
   PhaseTimerRegistry,
 } from '../phase.deadlines';
-import { makeGameState } from '../../test/game.fixtures';
+import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
 import { makeServer, makeSocket } from './socket.harness';
 
 const NOW = 1_700_000_000_000;
@@ -65,6 +66,21 @@ describe('movement acknowledgement', () => {
     gameService.removeGame(gameId);
     jest.restoreAllMocks();
   });
+
+  async function advanceOnceAfterAcknowledgement(
+    socket: ReturnType<typeof makeSocket>,
+    diceRollId: number
+  ) {
+    await socket.trigger('game:movement-complete', { gameId, diceRollId: diceRollId - 1 });
+    expect(gameService.getGameSync(gameId)!.turnPhase).toBe('MOVING');
+
+    await socket.trigger('game:movement-complete', { gameId, diceRollId });
+    const advanced = gameService.getGameSync(gameId)!;
+    expect(advanced.turnPhase).not.toBe('MOVING');
+
+    await socket.trigger('game:movement-complete', { gameId, diceRollId });
+    expect(gameService.getGameSync(gameId)).toBe(advanced);
+  }
 
   it('advances only once for a current movement acknowledgement', async () => {
     const socket = makeSocket({ player: { id: 'db-player-1' } });
@@ -127,5 +143,72 @@ describe('movement acknowledgement', () => {
     await socket.trigger('game:request-state', { gameId });
 
     expect(gameService.getGameSync(gameId)!.phaseDeadline! - Date.now()).toBe(45_000);
+  });
+
+  it('keeps the movement fallback when the active player disconnects mid-animation', async () => {
+    const socket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:roll', { gameId });
+    const movementDeadline = gameService.getGameSync(gameId)!.phaseDeadline;
+
+    await socket.trigger('disconnect');
+
+    expect(gameService.getGameSync(gameId)!.phaseDeadline).toBe(movementDeadline);
+  });
+
+  it('keeps a bail roll in MOVING until the presentation fallback resolves it', async () => {
+    const state = makeGameState({ id: gameId, turnPhase: 'JAIL_DECISION' });
+    state.players[0] = { ...state.players[0], isInJail: true };
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' } });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:jail-bail', { gameId });
+    const moving = gameService.getGameSync(gameId)!;
+    expect(moving.turnPhase).toBe('MOVING');
+
+    jest.advanceTimersByTime(PHASE_TIMEOUTS.movementFallback);
+    const advanced = gameService.getGameSync(gameId)!;
+    expect(advanced.turnPhase).not.toBe('MOVING');
+
+    await socket.trigger('game:movement-complete', { gameId, diceRollId: moving.diceRollId });
+    expect(gameService.getGameSync(gameId)).toBe(advanced);
+  });
+
+  it('keeps a successful jail escape roll in MOVING until one matching acknowledgement', async () => {
+    const state = makeGameState({
+      id: gameId,
+      turnPhase: 'JAIL_CHALLENGE',
+      currentChallenge: makePrivateChallenge({ context: 'JAIL_ESCAPE' }),
+    });
+    state.players[0] = { ...state.players[0], isInJail: true };
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' } });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:jail-answer', { gameId, selectedIndex: 1, timeMs: 10 });
+    const moving = gameService.getGameSync(gameId)!;
+    expect(moving.turnPhase).toBe('MOVING');
+
+    await advanceOnceAfterAcknowledgement(socket, moving.diceRollId);
+  });
+
+  it('keeps an auto-release jail roll in MOVING until one matching acknowledgement', async () => {
+    const state = makeGameState({ id: gameId, turnPhase: 'JAIL_DECISION' });
+    state.players[0] = { ...state.players[0], isInJail: true, jailTurns: 1 };
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' } });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:jail-wait', { gameId });
+    const moving = gameService.getGameSync(gameId)!;
+    expect(moving.turnPhase).toBe('MOVING');
+
+    await advanceOnceAfterAcknowledgement(socket, moving.diceRollId);
   });
 });

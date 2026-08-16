@@ -283,6 +283,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
 }
 
 async function resolveStall(io: Server, gameId: string) {
+  const stalledPhase = gameService.getGameSync(gameId)?.turnPhase;
   const outcome = gameService.resolveStalledTurn(gameId);
   if (!outcome) return;
 
@@ -295,10 +296,7 @@ async function resolveStall(io: Server, gameId: string) {
   // A duel forced to settle reveals its result like a normal one.
   emitDuelResult(io, socketRoom, outcome.state);
 
-  broadcastState(io, socketRoom, outcome.state);
-
-  // A timed-out roll or jail escape leaves the player mid-move.
-  advanceServerPhases(io, gameId, socketRoom);
+  publishTransition(io, gameId, socketRoom, outcome.state, stalledPhase === 'MOVING');
 
   const live = gameService.getGameSync(gameId);
   if (live && getCurrentPlayer(live).isBot) {
@@ -313,26 +311,47 @@ async function resolveStall(io: Server, gameId: string) {
  * Run the phases the server drives on its own, until the game is waiting on a
  * person again.
  *
- * `MOVING` walks the token and resolves the tile. `RESOLVE_TILE` can also stand
- * alone now, because a challenge card may teleport the player and the tile they
- * arrive on still has to be resolved. Looping covers a card that moves you onto
- * another card.
+ * `MOVING` is consumed only after the client acknowledgement or server fallback
+ * that explicitly permits it. `RESOLVE_TILE` can also stand alone now, because
+ * a challenge card may teleport a player and the destination still has to be
+ * resolved. Looping covers a card that moves a player onto another card.
  */
-function advanceServerPhases(io: Server, gameId: string, socketRoom: string) {
+function advanceServerPhases(
+  io: Server,
+  gameId: string,
+  socketRoom: string,
+  allowMovement = false
+) {
+  let mayAdvanceMovement = allowMovement;
   for (let guard = 0; guard < 8; guard++) {
     const state = gameService.getGameSync(gameId);
     if (!state) return;
 
     const next =
       state.turnPhase === 'MOVING'
-        ? gameService.executeMove(gameId)
+        ? mayAdvanceMovement
+          ? gameService.executeMove(gameId)
+          : null
         : state.turnPhase === 'RESOLVE_TILE'
           ? gameService.resolveTile(gameId)
           : null;
 
     if (!next) return;
+    mayAdvanceMovement = false;
     broadcastState(io, socketRoom, next);
   }
+}
+
+/** Publish a transition, then continue only non-presentation server phases. */
+function publishTransition(
+  io: Server,
+  gameId: string,
+  socketRoom: string,
+  state: GameState,
+  allowMovement = false
+) {
+  broadcastState(io, socketRoom, state);
+  advanceServerPhases(io, gameId, socketRoom, allowMovement);
 }
 
 async function handleEndTurnFlow(io: Server, gameId: string) {
@@ -376,8 +395,7 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
     if (stuck) {
       const recovered = gameService.resolveStalledTurn(gameId);
       if (recovered) {
-        broadcastState(io, socketRoom, recovered.state);
-        advanceServerPhases(io, gameId, socketRoom);
+        publishTransition(io, gameId, socketRoom, recovered.state);
         await handleEndTurnFlow(io, gameId);
       } else {
         broadcastState(io, socketRoom, stuck);
@@ -476,8 +494,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     }
 
     const socketRoom = getSocketRoom(gameId);
-    broadcastState(io, socketRoom, state);
-    advanceServerPhases(io, gameId, socketRoom);
+    publishTransition(io, gameId, socketRoom, state);
   }
 
   /**
@@ -501,11 +518,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
     const socketRoom = getSocketRoom(gameId);
     emitAnswerResult(io, socketRoom, outcome.state, outcome.result);
-    broadcastState(io, socketRoom, outcome.state);
-
-    // A Roll Challenge or jail escape leaves the player ready to move, and a
-    // challenge card may have teleported them.
-    advanceServerPhases(io, gameId, socketRoom);
+    publishTransition(io, gameId, socketRoom, outcome.state);
 
     if (opts.autoEnd === true) void handleEndTurnFlow(io, gameId);
   }
@@ -592,7 +605,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const state = validateTurn(data.gameId);
     if (!state || state.turnPhase !== 'MOVING' || state.diceRollId !== data.diceRollId) return;
 
-    advanceServerPhases(io, data.gameId, getSocketRoom(data.gameId));
+    advanceServerPhases(io, data.gameId, getSocketRoom(data.gameId), true);
   });
 
   // ---- Challenge answers ----
@@ -718,8 +731,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     }
 
     const socketRoom = getSocketRoom(d.gameId);
-    broadcastState(io, socketRoom, state);
-    advanceServerPhases(io, d.gameId, socketRoom);
+    publishTransition(io, d.gameId, socketRoom, state);
   });
 
   socket.on('game:jail-wait', (d: { gameId: string }) => {
@@ -729,8 +741,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     if (!state) return;
 
     const socketRoom = getSocketRoom(d.gameId);
-    broadcastState(io, socketRoom, state);
-    advanceServerPhases(io, d.gameId, socketRoom);
+    publishTransition(io, d.gameId, socketRoom, state);
   });
 
   socket.on('game:level-up-decline', (d: { gameId: string }) =>
@@ -756,7 +767,13 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     // Everyone else is blocked on this player. Give them the reconnect grace window to come
     // back, then move the game on without them.
     if (wasActivePlayer) {
-      armPhaseTimer(io, gameId, PHASE_TIMEOUTS.disconnectGrace);
+      // Movement already has a shorter presentation fallback. Replacing it
+      // with reconnect grace would let a vanished animation stall the table.
+      armPhaseTimer(
+        io,
+        gameId,
+        state.turnPhase === 'MOVING' ? undefined : PHASE_TIMEOUTS.disconnectGrace
+      );
     }
   });
 };
