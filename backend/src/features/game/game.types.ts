@@ -439,6 +439,8 @@ export interface GameState {
   // Timing
   gameStartTime: number;          // Unix timestamp ms
   isFinalRound: boolean;          // After clock cap triggers
+  /** Set by socket deadline handling once the current phase has an expiry. */
+  phaseDeadline?: number | null;
 
   // Auction (simplified — 10-second bidding)
   auctionState: AuctionState | null;

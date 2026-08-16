@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { roomManager } from './lobby.manager';
+import { publishGameState } from './game.publisher';
 
 export const registerLobbyHandlers = (io: Server, socket: Socket) => {
   const playerId = socket.data.player.id;
@@ -126,18 +127,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
     import('../features/game/game.service').then(({ gameService }) => {
       gameService.createGame(gameId, gamePlayers).then((state) => {
         io.to(socketRoom).emit('game:start', { roomCode: room.code });
-        io.to(socketRoom).emit('game:state', {
-          state: {
-            ...state,
-            currentChallenge: null,
-            players: state.players.map((player) => ({
-              ...player,
-              masteryStates: {},
-              skillAttempts: {},
-              consecutiveFailures: {},
-            })),
-          },
-        });
+        publishGameState(io, state);
       });
     });
   });

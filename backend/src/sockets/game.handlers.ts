@@ -11,10 +11,15 @@
 
 import { Server, Socket } from 'socket.io';
 import { gameService } from '../features/game/game.service';
-import { AnswerResult, DuelState, GameState, PublicDuelState } from '../features/game/game.types';
-import { toPublicChallenge } from '../features/game/challenge.public';
+import { AnswerResult, GameState } from '../features/game/game.types';
 import { getCurrentPlayer } from '../features/game/game.engine';
 import { recordGameResult } from '../features/game/game.persistence';
+import {
+  publishFinishedToSocket,
+  publishGameState,
+  publishGameStateToSocket,
+  toPublicDuelState,
+} from './game.publisher';
 
 // ---- Deadlines ----
 
@@ -37,120 +42,8 @@ function getSocketRoom(gameId: string): string {
   return `room:${gameId.replace('game_', '')}`;
 }
 
-/**
- * Challenges hold answers, so they never travel with the state — neither the
- * active challenge nor either side of a duel. The duel is re-sent separately,
- * redacted per recipient.
- */
-function toPublicState(state: GameState): GameState {
-  return {
-    ...state,
-    players: state.players.map((player) => ({
-      ...player,
-      masteryStates: {},
-      skillAttempts: {},
-      consecutiveFailures: {},
-    })),
-    currentChallenge: null,
-    duelState: null,
-  };
-}
-
-/**
- * Duel status without either question. During the duel a player learns only
- * whether their opponent has answered — not what they were asked. Seeing an
- * easier-looking question opposite reads as unfair even when both are correctly
- * calibrated, so the questions are only ever revealed after the result.
- */
-function toPublicDuel(duel: DuelState): PublicDuelState {
-  const side = (s: DuelState['challenger']) => ({
-    playerId: s.playerId,
-    hasAnswered: s.selectedIndex !== null,
-    isCorrect: duel.resolution ? s.isCorrect : null,
-  });
-
-  return {
-    tileIndex: duel.tileIndex,
-    tileName: duel.tileName,
-    rentAmount: duel.rentAmount,
-    challenger: side(duel.challenger),
-    owner: side(duel.owner),
-    expiresAt: duel.startedAt + duel.timeLimit * 1000,
-    timeLimit: duel.timeLimit,
-    resolution: duel.resolution,
-  };
-}
-
-/**
- * Send the duel to the room: each duellist gets their own redacted question,
- * everyone else watches the scoreboard half of the card.
- */
-function emitDuel(io: Server, socketRoom: string, state: GameState) {
-  const duel = state.duelState;
-  if (!duel) return;
-
-  // Resolved duels are broadcast via emitDuelResult; re-sending here would
-  // cause the frontend to re-show the card after the timeout has cleared it.
-  if (duel.resolution) return;
-
-  const publicDuel = toPublicDuel(duel);
-  const room = io.sockets.adapter.rooms.get(socketRoom);
-  if (!room) return;
-
-  for (const socketId of room) {
-    const s = io.sockets.sockets.get(socketId);
-    if (!s) continue;
-
-    const viewerId = s.data?.player?.id;
-    const mySide =
-      state.players.find((p) => p.id === duel.challenger.playerId)?.playerId === viewerId
-        ? duel.challenger
-        : state.players.find((p) => p.id === duel.owner.playerId)?.playerId === viewerId
-          ? duel.owner
-          : null;
-
-    s.emit('game:duel', {
-      duel: publicDuel,
-      // Null for onlookers, and for a duellist who has already answered.
-      myChallenge:
-        mySide && mySide.selectedIndex === null ? toPublicChallenge(mySide.challenge) : null,
-    });
-  }
-}
-
-function emitChallengeToPlayer(io: Server, socketRoom: string, state: GameState) {
-  if (!state.currentChallenge) return;
-
-  const activePlayer = state.players[state.currentPlayerIndex];
-  if (activePlayer.isBot) return; // Bots are resolved server-side
-
-  const room = io.sockets.adapter.rooms.get(socketRoom);
-  if (!room) return;
-
-  const publicChallenge = toPublicChallenge(state.currentChallenge);
-
-  for (const socketId of room) {
-    const s = io.sockets.sockets.get(socketId);
-    if (!s) continue;
-
-    const isActivePlayer =
-      s.data?.player?.id === activePlayer.playerId || s.data?.player?.id === activePlayer.id;
-
-    if (isActivePlayer) {
-      s.emit('game:challenge', { challenge: publicChallenge, playerId: activePlayer.id });
-    } else {
-      s.emit('game:challenge-started', {
-        playerId: activePlayer.id,
-        context: state.currentChallenge.context,
-      });
-    }
-  }
-}
-
-function broadcastState(io: Server, socketRoom: string, state: GameState) {
-  io.to(socketRoom).emit('game:state', { state: toPublicState(state) });
-  emitChallengeToPlayer(io, socketRoom, state);
-  emitDuel(io, socketRoom, state);
+function broadcastState(io: Server, _socketRoom: string, state: GameState) {
+  publishGameState(io, state);
   scheduleBotDuelAnswer(io, state.id);
   armPhaseTimer(io, state.id);
 }
@@ -210,7 +103,7 @@ function emitDuelResult(io: Server, socketRoom: string, state: GameState) {
   if (!state.duelState?.resolution) return;
 
   io.to(socketRoom).emit('game:duel-result', {
-    duel: toPublicDuel(state.duelState),
+    duel: toPublicDuelState(state.duelState),
     resolution: state.duelState.resolution,
   });
 }
@@ -265,13 +158,14 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
     // side by side tells the weakest child, in front of their friends, that they
     // are bottom of the table. Each player gets their own report and no one
     // else's.
+    const reports = gameService.getMasteryReports(state.id) ?? [];
     const room = io.sockets.adapter.rooms.get(socketRoom);
 
     for (const socketId of room ?? []) {
       const s = io.sockets.sockets.get(socketId);
       if (!s) continue;
-
-      s.emit('game:finished', { scores, masteryReports: null });
+      const report = reports.find((item) => item.playerId === s.data?.player?.id) ?? null;
+      publishFinishedToSocket(s, state, scores, report);
     }
 
     // Queued, not awaited — the scoreboard is already on its way to the players.
@@ -482,7 +376,7 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
 
   for (const step of steps) {
     await new Promise((resolve) => setTimeout(resolve, step.delay));
-    io.to(socketRoom).emit('game:state', { state: toPublicState(step.state) });
+    publishGameState(io, step.state);
     io.to(socketRoom).emit('game:bot-action', {
       botId: currentPlayer.id,
       botName: currentPlayer.name,
@@ -619,18 +513,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     socket.join(socketRoom);
     socket.data.gameId = data.gameId;
 
-    socket.emit('game:state', { state: toPublicState(state) });
+    publishGameStateToSocket(socket, state);
 
     const activePlayer = state.players[state.currentPlayerIndex];
-    const isActivePlayer =
-      activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId);
-
-    if (state.currentChallenge && isActivePlayer) {
-      socket.emit('game:challenge', {
-        challenge: toPublicChallenge(state.currentChallenge),
-        playerId: activePlayer.id,
-      });
-    }
+    const isActivePlayer = activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId);
 
     // The player is back — restore the normal deadline.
     if (isActivePlayer) armPhaseTimer(io, data.gameId);
@@ -638,15 +524,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
   socket.on('game:request-challenge', async (data: { gameId: string }) => {
     const state = await gameService.getGame(data.gameId);
-    if (!state?.currentChallenge) return;
-
-    const activePlayer = state.players[state.currentPlayerIndex];
-    if (activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId)) {
-      socket.emit('game:challenge', {
-        challenge: toPublicChallenge(state.currentChallenge),
-        playerId: activePlayer.id,
-      });
-    }
+    if (state) publishGameStateToSocket(socket, state);
   });
 
   // ---- Roll ----
