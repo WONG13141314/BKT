@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { avatarToken } from '../../auth/avatars';
 import { usePlayer } from '../../auth/PlayerContext';
@@ -35,8 +35,9 @@ export function GameLobby() {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasJoined, setHasJoined] = useState(false);
   const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const bootstrapRef = useRef<string | null>(null);
+  const terminalRecoveryRef = useRef(false);
 
   const action = searchParams.get('action');
   const codeParam = searchParams.get('code');
@@ -46,25 +47,30 @@ export function GameLobby() {
   const isHost = myId !== null && myId === room?.hostId;
 
   useEffect(() => {
+    if (terminalRecoveryRef.current) return;
     if (!socket) {
       connectSocket();
       return;
     }
     if (!isConnected) return;
-    if (hasJoined) return;
 
     const savedRoomCode = myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null;
+    const bootstrapKey = savedRoomCode
+      ? `resume:${socket.id ?? 'connected'}:${savedRoomCode}`
+      : `fresh:${socket.id ?? 'connected'}:${action ?? ''}:${codeParam ?? ''}`;
+    if (bootstrapRef.current === bootstrapKey) return;
+
     if (savedRoomCode) {
+      bootstrapRef.current = bootstrapKey;
       socket.emit('room:resume', { code: savedRoomCode });
-      setHasJoined(true);
     } else if (action === 'host') {
+      bootstrapRef.current = bootstrapKey;
       socket.emit('room:create');
-      setHasJoined(true);
     } else if (action === 'join' && codeParam) {
+      bootstrapRef.current = bootstrapKey;
       socket.emit('room:join', { code: codeParam });
-      setHasJoined(true);
     }
-  }, [socket, isConnected, action, codeParam, connectSocket, hasJoined, myId]);
+  }, [socket, isConnected, action, codeParam, connectSocket, myId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -78,21 +84,32 @@ export function GameLobby() {
       }
     };
     const onRoomError = (data: { message: string }) => setError(data.message);
-    const onGameStart = (data: { roomCode: string }) => navigate(`/game?code=${data.roomCode}`);
+    const onGameStart = (data: { roomCode: string }) => {
+      if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+      navigate(`/game?code=${data.roomCode}`);
+    };
     const onRoomDeleted = () => {
       if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+      terminalRecoveryRef.current = true;
+      bootstrapRef.current = null;
       setRoom(null);
       setError('The room has been closed.');
     };
     const onRoomRemoved = (data: { code: string; message: string }) => {
       if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
-      setHasJoined(false);
+      terminalRecoveryRef.current = true;
+      bootstrapRef.current = null;
       setRoom(null);
       setError(data.message);
     };
     const resumeRoom = () => {
-      const code = room?.code ?? (myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null);
-      if (code) socket.emit('room:resume', { code });
+      if (terminalRecoveryRef.current) return;
+      const code = myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null;
+      if (!code) return;
+      const bootstrapKey = `resume:${socket.id ?? 'connected'}:${code}`;
+      if (bootstrapRef.current === bootstrapKey) return;
+      bootstrapRef.current = bootstrapKey;
+      socket.emit('room:resume', { code });
     };
 
     socket.on('room:update', onRoomUpdate);
@@ -102,8 +119,6 @@ export function GameLobby() {
     socket.on('room:removed', onRoomRemoved);
     socket.on('connect', resumeRoom);
 
-    if (socket.connected && room?.code) resumeRoom();
-
     return () => {
       socket.off('room:update', onRoomUpdate);
       socket.off('room:error', onRoomError);
@@ -112,14 +127,19 @@ export function GameLobby() {
       socket.off('room:removed', onRoomRemoved);
       socket.off('connect', resumeRoom);
     };
-  }, [socket, navigate, myId, room?.code]);
+  }, [socket, navigate, myId]);
 
   const toggleReady = () => { if (socket) socket.emit('room:ready'); };
   const startGame = () => { if (socket) socket.emit('room:start'); };
+  const returnToLanding = () => {
+    terminalRecoveryRef.current = false;
+    bootstrapRef.current = null;
+    if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+    navigate('/', { replace: true });
+  };
   const leaveRoom = () => {
     if (socket) socket.emit('room:leave');
-    if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
-    navigate('/');
+    returnToLanding();
   };
 
   const addBot = () => {
@@ -163,7 +183,7 @@ export function GameLobby() {
           <div className="lobby-error-state">
             <AlertCircle size={40} className="error-icon" />
             <p className="error-message">{error}</p>
-            <button className="btn-primary" onClick={() => navigate('/')}>Go Back</button>
+            <button className="btn-primary" onClick={returnToLanding}>Go Back</button>
           </div>
         </div>
       </div>

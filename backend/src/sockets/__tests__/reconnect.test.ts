@@ -191,4 +191,54 @@ describe('lobby recovery', () => {
       message: 'Your place in this room is no longer available.',
     });
   });
+
+  it('resumes an authenticated playing-room seat into game recovery', async () => {
+    jest.useFakeTimers();
+    const playerId = 'playing-resume-player';
+    const room = roomManager.createRoom(playerId, 'Chen', 'top_hat');
+    roomCodes.push(room.code);
+    roomManager.addBot(room.code, playerId);
+    roomManager.setRoomStatus(room.code, 'playing');
+    const gameId = `game_${room.code}`;
+    const game = makeGameState({ id: gameId });
+    game.players[0] = { ...game.players[0], id: playerId, playerId };
+    gameService.replaceState(gameId, game);
+
+    const socket = makeSocket({ player: { id: playerId, displayName: 'Chen', avatar: 'top_hat' } });
+    const io = makeServer([socket], gameId);
+    const presence = new SocketPresence();
+    presence.connect(playerId, socket.id);
+    registerLobbyHandlers(io, socket, presence);
+    registerGameHandlers(io, socket, presence);
+
+    await socket.trigger('room:resume', { code: room.code });
+
+    expect(socket.data.gameId).toBe(gameId);
+    expect(socket.emit).toHaveBeenCalledWith('game:start', { roomCode: room.code });
+
+    await socket.trigger('game:request-state', { gameId });
+    expect(socket.emit).toHaveBeenCalledWith('game:state', expect.anything());
+    gameService.removeGame(gameId);
+  });
+
+  it('rejects a playing-room resume after the game retention window ended', async () => {
+    const playerId = 'expired-playing-resume-player';
+    const room = roomManager.createRoom(playerId, 'Devi', 'scottie_dog');
+    roomCodes.push(room.code);
+    roomManager.addBot(room.code, playerId);
+    roomManager.setRoomStatus(room.code, 'playing');
+    const socket = makeSocket({ player: { id: playerId, displayName: 'Devi', avatar: 'scottie_dog' } });
+    const io = makeServer([socket], `game_${room.code}`);
+    const presence = new SocketPresence();
+    presence.connect(playerId, socket.id);
+    registerLobbyHandlers(io, socket, presence);
+
+    await socket.trigger('room:resume', { code: room.code });
+
+    expect(socket.emit).toHaveBeenCalledWith('room:removed', {
+      code: room.code,
+      message: 'This game is no longer available.',
+    });
+    expect(socket.emit).not.toHaveBeenCalledWith('game:start', expect.anything());
+  });
 });

@@ -107,6 +107,20 @@ export const registerLobbyHandlers = (
     }
 
     cancelPendingLobbyRemoval(room.code, playerId);
+    if (room.status === 'playing') {
+      const gameId = `game_${room.code}`;
+      if (!gameService.getGameSync(gameId)) {
+        socket.emit('room:removed', {
+          code: room.code,
+          message: 'This game is no longer available.',
+        });
+        return;
+      }
+      socket.data.gameId = gameId;
+      socket.join(`room:${room.code}`);
+      socket.emit('game:start', { roomCode: room.code });
+      return;
+    }
     socket.join(`room:${room.code}`);
     socket.emit('room:update', roomManager.serializeRoom(room));
   });
