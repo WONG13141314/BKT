@@ -139,11 +139,14 @@ describe('resolveStalledTurn', () => {
     expect(outcome!.state.players[1].money).toBe(state.players[1].money + 20);
   });
 
-  it('does nothing for server-driven phases', () => {
-    const state = gameService.getGameSync(gameId)!;
-    gameService.replaceState(gameId, { ...state, turnPhase: 'MOVING' });
+  it('advances MOVING when the presentation fallback expires', () => {
+    const state = gameService.startRoll(gameId)!;
 
-    expect(gameService.resolveStalledTurn(gameId)).toBeNull();
+    expect(state.turnPhase).toBe('MOVING');
+    const outcome = gameService.resolveStalledTurn(gameId);
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.state.turnPhase).not.toBe('MOVING');
   });
 
   it('returns null for an unknown game', () => {

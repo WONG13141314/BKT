@@ -144,6 +144,7 @@ export function GamePage() {
 
   const {
     emitRoll,
+    emitMovementComplete,
     emitRollAnswer,
     emitBuyFull,
     emitSmartBuy,
@@ -286,6 +287,7 @@ export function GamePage() {
 
   // ---- Visual pacing (never blocks the server state machine) ----
   const prevPlayerIdxRef = useRef<number | null>(null);
+  const acknowledgedMovementRollRef = useRef<number | null>(null);
 
   const handleMovementChange = useCallback((isMoving: boolean) => {
     setIsPawnMoving(isMoving);
@@ -293,10 +295,12 @@ export function GamePage() {
 
   const handleMovementComplete = useCallback(() => {
     setIsPawnMoving(false);
-    if (!gameState) return;
+    if (!gameState || !isMyTurn || gameState.turnPhase !== 'MOVING') return;
+    if (acknowledgedMovementRollRef.current === gameState.diceRollId) return;
 
-    setSelectedTile(gameState.players[gameState.currentPlayerIndex]?.position ?? 0);
-  }, [gameState]);
+    acknowledgedMovementRollRef.current = gameState.diceRollId;
+    emitMovementComplete(gameState.diceRollId);
+  }, [emitMovementComplete, gameState, isMyTurn]);
 
   const handleDiceRollingChange = useCallback((rolling: boolean) => {
     setIsDiceRolling(rolling);
@@ -530,6 +534,23 @@ export function GamePage() {
   const isHoldingAnswer = !!answerResult;
   const isHoldingDuelResult = !!duel?.resolution;
   const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isBoardAnimating;
+
+  // The server deliberately keeps the committed player position unchanged
+  // during MOVING. Give the board the deterministic dice destination as a
+  // presentation-only target so its existing pawn animation can complete
+  // before this client acknowledges the authoritative transition.
+  const presentationGameState = renderPhase === 'MOVING' && isMyTurn
+    ? {
+        ...gameState,
+        players: gameState.players.map((seat, index) => index === gameState.currentPlayerIndex
+          ? {
+              ...seat,
+              position: (seat.position + gameState.diceValues[0] + gameState.diceValues[1])
+                % gameState.tiles.length,
+            }
+          : seat),
+      }
+    : gameState;
   
   const showChallenge = ((isChallenge && !!activeChallenge) || isHoldingAnswer) && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
@@ -597,7 +618,7 @@ export function GamePage() {
 
         {/* Center: Board */}
         <Board
-          gameState={gameState}
+          gameState={presentationGameState}
           selectedTile={detailTileIndex}
           onTileSelect={setSelectedTile}
           isMyTurn={isMyTurn}

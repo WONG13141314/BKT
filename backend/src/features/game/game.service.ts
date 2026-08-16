@@ -491,6 +491,8 @@ export const gameService = {
     switch (state.turnPhase) {
       case 'ROLL_PHASE':
         return advanced(gameService.startRoll(gameId));
+      case 'MOVING':
+        return advanced(gameService.executeMove(gameId));
       case 'ROLL_CHALLENGE':
         return timedOut(gameService.submitRollChallengeAnswer(gameId, NO_ANSWER, elapsed));
       case 'SMART_BUY_CHALLENGE':
@@ -516,7 +518,7 @@ export const gameService = {
       case 'END_TURN':
         return advanced(gameService.endTurn(gameId));
       default:
-        // MOVING / RESOLVE_TILE are transient and driven by the server already.
+        // RESOLVE_TILE is advanced by the server in the same transition loop.
         return null;
     }
   },

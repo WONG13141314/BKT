@@ -13,6 +13,7 @@ import { Server, Socket } from 'socket.io';
 import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
 import { getCurrentPlayer } from '../features/game/game.engine';
+import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
   findMasteryReportForSocket,
@@ -21,20 +22,19 @@ import {
   publishGameStateToSocket,
   toPublicDuelState,
 } from './game.publisher';
+import { getPhaseDeadline, PHASE_TIMEOUTS, PhaseTimerRegistry } from './phase.deadlines';
 
 // ---- Deadlines ----
 
-/** How long a player may sit on a decision (buy, jail, level up, end turn). */
+/** How long a player may sit on a decision not yet given its own phase limit. */
 const DECISION_TIMEOUT_MS = 90_000;
 /** Slack on top of a challenge's own time limit, to cover latency. */
 const CHALLENGE_GRACE_MS = 3_000;
-/** Reconnect window before a disconnected player's turn is auto-resolved. */
-const DISCONNECT_GRACE_MS = 10_000;
 /** How long a finished game stays in memory so late joiners can read the scores. */
 const FINISHED_GAME_TTL_MS = 5 * 60_000;
 
 // Module scope: these outlive any single socket.
-const phaseTimers = new Map<string, NodeJS.Timeout>();
+const phaseTimers = new PhaseTimerRegistry();
 const cleanupTimers = new Map<string, NodeJS.Timeout>();
 
 // ---- Room / payload helpers ----
@@ -44,9 +44,13 @@ function getSocketRoom(gameId: string): string {
 }
 
 function broadcastState(io: Server, _socketRoom: string, state: GameState) {
-  publishGameState(io, state);
-  scheduleBotDuelAnswer(io, state.id);
+  // Store and arm the authoritative absolute deadline before any recipient sees
+  // this transition. The public payload and server timer therefore describe the
+  // same phase, even for the initial MOVING broadcast after a roll.
   armPhaseTimer(io, state.id);
+  const liveState = gameService.getGameSync(state.id) ?? state;
+  publishGameState(io, liveState);
+  scheduleBotDuelAnswer(io, liveState.id);
 }
 
 // ---- Bot duellists ----
@@ -185,11 +189,36 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
 // ---- Phase deadlines ----
 
 function clearPhaseTimer(gameId: string) {
-  const timer = phaseTimers.get(gameId);
-  if (timer) {
-    clearTimeout(timer);
-    phaseTimers.delete(gameId);
-  }
+  phaseTimers.clear(gameId);
+}
+
+function canBuildOnEndTurn(state: GameState): boolean {
+  if (state.turnPhase !== 'END_TURN') return false;
+
+  const player = getCurrentPlayer(state);
+  return state.properties.some((property) => {
+    const tile = state.tiles[property.tileIndex];
+    if (
+      !tile ||
+      tile.type !== 'PROPERTY' ||
+      !tile.colorGroup ||
+      property.ownerId !== player.id ||
+      property.isLeveledUp ||
+      !ownsFullColorGroup(player.properties, tile.colorGroup)
+    ) return false;
+
+    return player.hasLevelUpToken || player.money >= getLevelUpCost(tile);
+  });
+}
+
+function savePhaseDeadline(
+  gameId: string,
+  state: GameState,
+  deadline: number | null
+): GameState {
+  const phaseDeadlineFor = deadline === null ? null : state.turnPhase;
+  if (state.phaseDeadline === deadline && state.phaseDeadlineFor === phaseDeadlineFor) return state;
+  return gameService.replaceState(gameId, { ...state, phaseDeadline: deadline, phaseDeadlineFor });
 }
 
 /**
@@ -199,18 +228,31 @@ function clearPhaseTimer(gameId: string) {
 function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   clearPhaseTimer(gameId);
 
-  const state = gameService.getGameSync(gameId);
+  let state = gameService.getGameSync(gameId);
   if (!state || state.phase !== 'PLAYING') return;
 
-  // MOVING and RESOLVE_TILE are driven by the server, not by a human.
-  if (state.turnPhase === 'MOVING' || state.turnPhase === 'RESOLVE_TILE') return;
+  // RESOLVE_TILE is driven by the server in the same transition loop.
+  if (state.turnPhase === 'RESOLVE_TILE') {
+    savePhaseDeadline(gameId, state, null);
+    return;
+  }
+
+  const now = Date.now();
+  const savedDeadline = state.phaseDeadlineFor === state.turnPhase ? state.phaseDeadline : null;
+  const phaseDeadline = overrideMs === undefined
+    ? savedDeadline ?? getPhaseDeadline(state, now, { canBuild: canBuildOnEndTurn(state) })
+    : now + overrideMs;
+
+  if (phaseDeadline !== null) {
+    state = savePhaseDeadline(gameId, state, phaseDeadline);
+    phaseTimers.arm(io, gameId, phaseDeadline, () => void resolveStall(io, gameId));
+    return;
+  }
 
   if (state.turnPhase === 'AUCTION' && state.auctionState) {
-    const timer = setTimeout(() => {
-      phaseTimers.delete(gameId);
-      void resolveStall(io, gameId);
-    }, Math.max(500, state.auctionState.endsAt - Date.now()));
-    phaseTimers.set(gameId, timer);
+    const deadline = state.auctionState.endsAt;
+    state = savePhaseDeadline(gameId, state, deadline);
+    phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     return;
   }
 
@@ -218,12 +260,8 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   // deadline when a bot is the one taking the turn.
   if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
     const deadline = state.duelState.startedAt + state.duelState.timeLimit * 1000 + CHALLENGE_GRACE_MS;
-    const timer = setTimeout(() => {
-      phaseTimers.delete(gameId);
-      void resolveStall(io, gameId);
-    }, Math.max(1_000, deadline - Date.now()));
-
-    phaseTimers.set(gameId, timer);
+    state = savePhaseDeadline(gameId, state, deadline);
+    phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     return;
   }
 
@@ -231,33 +269,17 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   // leave a bot stranded. Arm a generous safety timer so `resolveStall`
   // can push the turn forward if `triggerBotTurnIfNeeded` fails.
   if (state.players[state.currentPlayerIndex].isBot) {
-    const timer = setTimeout(() => {
-      phaseTimers.delete(gameId);
-      void resolveStall(io, gameId);
-    }, overrideMs ?? 15_000);
-    phaseTimers.set(gameId, timer);
+    const deadline = now + 15_000;
+    state = savePhaseDeadline(gameId, state, deadline);
+    phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     return;
   }
 
-  let delay: number;
-  if (overrideMs !== undefined) {
-    delay = overrideMs;
-  } else if (state.currentChallenge && state.currentChallenge.timeLimit > 0) {
-    const deadline =
-      state.currentChallenge.startedAt +
-      state.currentChallenge.timeLimit * 1000 +
-      CHALLENGE_GRACE_MS;
-    delay = Math.max(1_000, deadline - Date.now());
-  } else {
-    delay = DECISION_TIMEOUT_MS;
-  }
-
-  const timer = setTimeout(() => {
-    phaseTimers.delete(gameId);
-    void resolveStall(io, gameId);
-  }, delay);
-
-  phaseTimers.set(gameId, timer);
+  const deadline = state.currentChallenge && state.currentChallenge.timeLimit > 0
+    ? state.currentChallenge.startedAt + state.currentChallenge.timeLimit * 1000 + CHALLENGE_GRACE_MS
+    : now + DECISION_TIMEOUT_MS;
+  state = savePhaseDeadline(gameId, state, deadline);
+  phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
 }
 
 async function resolveStall(io: Server, gameId: string) {
@@ -514,9 +536,8 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     socket.join(socketRoom);
     socket.data.gameId = data.gameId;
 
-    publishGameStateToSocket(socket, state);
-
     if (state.phase === 'FINISHED') {
+      publishGameStateToSocket(socket, state);
       const scores = gameService.getScores(state.id);
       if (scores) {
         publishFinishedToSocket(
@@ -532,8 +553,14 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const activePlayer = state.players[state.currentPlayerIndex];
     const isActivePlayer = activePlayer?.playerId === playerId;
 
-    // The player is back — restore the normal deadline.
-    if (isActivePlayer) armPhaseTimer(io, data.gameId);
+    // The player is back — replace disconnect grace with this phase's normal
+    // deadline before publishing their restored snapshot.
+    if (isActivePlayer) {
+      savePhaseDeadline(data.gameId, state, null);
+      armPhaseTimer(io, data.gameId);
+    }
+
+    publishGameStateToSocket(socket, gameService.getGameSync(data.gameId) ?? state);
   });
 
   socket.on('game:request-challenge', async (data: { gameId: string }) => {
@@ -556,9 +583,16 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const socketRoom = getSocketRoom(data.gameId);
     broadcastState(io, socketRoom, state);
 
-    // Deliberately no auto end-turn: the player sees where they landed and
-    // ends the turn themselves. The phase timer covers them walking away.
-    advanceServerPhases(io, data.gameId, socketRoom);
+    // The client presents the dice and pawn motion before it acknowledges this
+    // roll. A bounded MOVING deadline keeps a hidden or dishonest tab from
+    // blocking the room forever.
+  });
+
+  socket.on('game:movement-complete', (data: { gameId: string; diceRollId: number }) => {
+    const state = validateTurn(data.gameId);
+    if (!state || state.turnPhase !== 'MOVING' || state.diceRollId !== data.diceRollId) return;
+
+    advanceServerPhases(io, data.gameId, getSocketRoom(data.gameId));
   });
 
   // ---- Challenge answers ----
@@ -719,10 +753,10 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     const activePlayer = state.players[state.currentPlayerIndex];
     const wasActivePlayer = activePlayer?.playerId === playerId;
 
-    // Everyone else is blocked on this player. Give them a short window to come
+    // Everyone else is blocked on this player. Give them the reconnect grace window to come
     // back, then move the game on without them.
     if (wasActivePlayer) {
-      armPhaseTimer(io, gameId, DISCONNECT_GRACE_MS);
+      armPhaseTimer(io, gameId, PHASE_TIMEOUTS.disconnectGrace);
     }
   });
 };

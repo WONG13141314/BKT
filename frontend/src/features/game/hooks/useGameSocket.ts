@@ -88,6 +88,8 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
 
   // Roll
   const emitRoll = useCallback(() => emit('game:roll'), [emit]);
+  const emitMovementComplete = useCallback((diceRollId: number) =>
+    emit('game:movement-complete', { diceRollId }), [emit]);
 
   // Roll Challenge — the turn toll. Correct earns two dice, wrong earns one.
   const emitRollAnswer = useCallback((selectedIndex: number, timeMs: number) =>
@@ -141,6 +143,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
 
   return {
     emitRoll,
+    emitMovementComplete,
     emitRollAnswer,
     emitBuyFull,
     emitSmartBuy,

@@ -441,6 +441,8 @@ export interface GameState {
   isFinalRound: boolean;          // After clock cap triggers
   /** Set by socket deadline handling once the current phase has an expiry. */
   phaseDeadline?: number | null;
+  /** Server-only phase marker that prevents an expiry from leaking into a new phase. */
+  phaseDeadlineFor?: TurnPhase | null;
 
   // Auction (simplified — 10-second bidding)
   auctionState: AuctionState | null;

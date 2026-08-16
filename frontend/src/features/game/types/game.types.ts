@@ -287,6 +287,7 @@ export interface GameState {
   challengeCardIndex: number;
   gameStartTime: number;
   isFinalRound: boolean;
+  phaseDeadline: number | null;
   auctionState: AuctionState | null;
 }
 
