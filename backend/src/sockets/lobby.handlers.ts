@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { roomManager } from './lobby.manager';
-import { publishGameState } from './game.publisher';
 import { gameService } from '../features/game/game.service';
+import { publishGameStartTransition } from './game.handlers';
 import { SocketPresence } from './presence.manager';
 
 export const registerLobbyHandlers = (
@@ -152,8 +152,8 @@ export const registerLobbyHandlers = (
         if (roomSocket) roomSocket.data.gameId = gameId;
       }
 
+      publishGameStartTransition(io, state);
       io.to(socketRoom).emit('game:start', { roomCode: startingRoom.code });
-      publishGameState(io, state);
       roomManager.setRoomStatus(startingRoom.code, 'playing');
     } catch {
       roomManager.cancelStart(startingRoom.code);

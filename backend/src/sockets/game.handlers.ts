@@ -54,6 +54,11 @@ function broadcastState(io: Server, _socketRoom: string, state: GameState) {
   scheduleBotDuelAnswer(io, liveState.id);
 }
 
+/** Starts a freshly created game on the same deadline-managed publication path as later turns. */
+export function publishGameStartTransition(io: Server, state: GameState): void {
+  broadcastState(io, getSocketRoom(state.id), state);
+}
+
 // ---- Bot duellists ----
 //
 // A bot's duel answer used to be submitted only when the human submitted theirs,

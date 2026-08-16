@@ -4,6 +4,7 @@ import { makeGameState } from '../../test/game.fixtures';
 import { registerLobbyHandlers } from '../lobby.handlers';
 import { roomManager } from '../lobby.manager';
 import { SocketPresence } from '../presence.manager';
+import { PHASE_TIMEOUTS } from '../phase.deadlines';
 import { makeServer, makeSocket } from './socket.harness';
 
 describe('room:start', () => {
@@ -37,6 +38,41 @@ describe('room:start', () => {
 
     roomManager.removePlayer('host');
     roomManager.removePlayer('guest');
+  });
+
+  it('publishes an initial roll deadline and recovers it once after duplicate starts', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1_700_000_000_000);
+    const host = makeSocket({ player: { id: 'host-deadline', displayName: 'Host', avatar: 'ship' } });
+    const room = roomManager.createRoom('host-deadline', 'Host', 'ship');
+    roomManager.addBot(room.code, 'host-deadline');
+    const gameId = `game_${room.code}`;
+    const io = makeServer([host], gameId);
+    const presence = new SocketPresence();
+    presence.connect('host-deadline', host.id);
+    const createGame = jest.spyOn(gameService, 'createGame').mockImplementation(async (id) =>
+      gameService.replaceState(id, makeGameState({ id }))
+    );
+
+    registerLobbyHandlers(io, host, presence);
+    await Promise.all([host.trigger('room:start'), host.trigger('room:start')]);
+
+    expect(createGame).toHaveBeenCalledTimes(1);
+    expect(io.roomEmitter.emit).toHaveBeenCalledWith('game:state', expect.objectContaining({
+      state: expect.objectContaining({
+        turnPhase: 'ROLL_PHASE',
+        phaseDeadline: 1_700_000_000_000 + PHASE_TIMEOUTS.roll,
+      }),
+    }));
+
+    jest.advanceTimersByTime(PHASE_TIMEOUTS.roll);
+    await Promise.resolve();
+    expect(gameService.getGameSync(gameId)?.diceRollId).toBe(1);
+
+    gameService.removeGame(gameId);
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    roomManager.removePlayer('host-deadline');
   });
 
   it('returns a room to waiting when game creation fails', async () => {
