@@ -8,6 +8,7 @@ import {
 } from '../phase.deadlines';
 import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
 import { makeServer, makeSocket } from './socket.harness';
+import { SocketPresence } from '../presence.manager';
 
 const NOW = 1_700_000_000_000;
 
@@ -130,6 +131,25 @@ describe('movement acknowledgement', () => {
 
     jest.advanceTimersByTime(50_000);
     expect(gameService.getGameSync(gameId)!.turnPhase).not.toBe('ROLL_PHASE');
+  });
+
+  it('waits for the final socket before beginning active-turn disconnect recovery', async () => {
+    const firstSocket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const secondSocket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const io = makeServer([firstSocket, secondSocket], gameId);
+    const presence = new SocketPresence();
+    presence.connect('db-player-1', firstSocket.id);
+    presence.connect('db-player-1', secondSocket.id);
+    registerGameHandlers(io, firstSocket, presence);
+    registerGameHandlers(io, secondSocket, presence);
+
+    await firstSocket.trigger('disconnect');
+    expect(gameService.getGameSync(gameId)!.phaseDeadline).toBeUndefined();
+
+    await secondSocket.trigger('disconnect');
+    expect(gameService.getGameSync(gameId)!.phaseDeadline! - Date.now()).toBe(
+      PHASE_TIMEOUTS.disconnectGrace
+    );
   });
 
   it('restores the normal deadline when the active player reconnects', async () => {

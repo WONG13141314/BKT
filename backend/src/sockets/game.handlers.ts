@@ -23,6 +23,7 @@ import {
   toPublicDuelState,
 } from './game.publisher';
 import { getPhaseDeadline, PHASE_TIMEOUTS, PhaseTimerRegistry } from './phase.deadlines';
+import { SocketPresence } from './presence.manager';
 
 // ---- Deadlines ----
 
@@ -460,7 +461,11 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
 // Socket wiring
 // ============================================
 
-export const registerGameHandlers = (io: Server, socket: Socket) => {
+export const registerGameHandlers = (
+  io: Server,
+  socket: Socket,
+  presence: SocketPresence = new SocketPresence()
+) => {
   const playerId = socket.data.player.id;
 
   const findAuthenticatedSeat = (state: GameState) =>
@@ -755,6 +760,8 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
   // ---- Disconnect ----
 
   socket.on('disconnect', () => {
+    if (presence.disconnect(playerId, socket.id) > 0) return;
+
     const gameId: string | undefined = socket.data.gameId;
     if (!gameId) return;
 

@@ -1,8 +1,14 @@
 import { Server, Socket } from 'socket.io';
 import { roomManager } from './lobby.manager';
 import { publishGameState } from './game.publisher';
+import { gameService } from '../features/game/game.service';
+import { SocketPresence } from './presence.manager';
 
-export const registerLobbyHandlers = (io: Server, socket: Socket) => {
+export const registerLobbyHandlers = (
+  io: Server,
+  socket: Socket,
+  presence: SocketPresence = new SocketPresence()
+) => {
   const playerId = socket.data.player.id;
   const playerName = socket.data.player.displayName;
   const playerAvatar = socket.data.player.avatar;
@@ -90,7 +96,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
   });
 
   // Host starts the game
-  socket.on('room:start', () => {
+  socket.on('room:start', async () => {
     const room = roomManager.getRoomForPlayer(playerId);
     if (!room) {
       socket.emit('room:error', { message: 'You are not in a room.' });
@@ -107,13 +113,14 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
       return;
     }
 
-    roomManager.setRoomStatus(room.code, 'playing');
+    const startingRoom = roomManager.beginStart(room.code, playerId);
+    if (!startingRoom) return;
 
-    const socketRoom = `room:${room.code}`;
-    const gameId = `game_${room.code}`;
+    const socketRoom = `room:${startingRoom.code}`;
+    const gameId = `game_${startingRoom.code}`;
     const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
     const PLAYER_TOKENS = ['race_car', 'battleship', 'top_hat', 'scottie_dog'] as const;
-    const gamePlayers = Array.from(room.players.values()).map((p, idx) => ({
+    const gamePlayers = Array.from(startingRoom.players.values()).map((p, idx) => ({
       id: p.id,
       playerId: p.id,
       name: p.name,
@@ -124,12 +131,34 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
       botDifficulty: p.botDifficulty,
     }));
 
-    import('../features/game/game.service').then(({ gameService }) => {
-      gameService.createGame(gameId, gamePlayers).then((state) => {
-        io.to(socketRoom).emit('game:start', { roomCode: room.code });
-        publishGameState(io, state);
-      });
-    });
+    const hasReservedRoster = () => {
+      const currentRoom = roomManager.getRoom(startingRoom.code);
+      return currentRoom?.status === 'starting' &&
+        currentRoom.players.size === gamePlayers.length &&
+        gamePlayers.every((player) => currentRoom.players.has(player.id));
+    };
+
+    try {
+      const state = await gameService.createGame(gameId, gamePlayers);
+      if (!hasReservedRoster()) {
+        gameService.removeGame(gameId);
+        roomManager.cancelStart(startingRoom.code);
+        return;
+      }
+
+      const socketIds = io.sockets.adapter.rooms.get(socketRoom);
+      for (const socketId of socketIds ?? []) {
+        const roomSocket = io.sockets.sockets.get(socketId);
+        if (roomSocket) roomSocket.data.gameId = gameId;
+      }
+
+      io.to(socketRoom).emit('game:start', { roomCode: startingRoom.code });
+      publishGameState(io, state);
+      roomManager.setRoomStatus(startingRoom.code, 'playing');
+    } catch {
+      roomManager.cancelStart(startingRoom.code);
+      socket.emit('room:error', { message: 'Unable to start the game. Please try again.' });
+    }
   });
 
   // Player leaves the room
@@ -139,7 +168,7 @@ export const registerLobbyHandlers = (io: Server, socket: Socket) => {
 
   // Clean up on disconnect
   socket.on('disconnect', () => {
-    handleLeave();
+    if (presence.disconnect(playerId, socket.id) === 0) handleLeave();
   });
 
   function handleLeave() {

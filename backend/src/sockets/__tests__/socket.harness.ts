@@ -13,17 +13,26 @@ export type ServerHarness = Server & {
 let socketNumber = 0;
 
 export function makeSocket(data: Record<string, unknown> = {}): SocketHarness {
-  const listeners = new Map<string, SocketListener>();
+  const listeners = new Map<string, SocketListener[]>();
   const socket = {
     id: `socket-${socketNumber++}`,
     data,
     emit: jest.fn(),
     join: jest.fn(),
+    leave: jest.fn(),
     on: jest.fn((event: string, listener: SocketListener) => {
-      listeners.set(event, listener);
+      const eventListeners = listeners.get(event) ?? [];
+      eventListeners.push(listener);
+      listeners.set(event, eventListeners);
       return socket;
     }),
-    trigger: async (event: string, ...args: any[]) => listeners.get(event)?.(...args),
+    trigger: async (event: string, ...args: any[]) => {
+      let result: unknown;
+      for (const listener of listeners.get(event) ?? []) {
+        result = await listener(...args);
+      }
+      return result;
+    },
   } as unknown as SocketHarness;
   return socket;
 }

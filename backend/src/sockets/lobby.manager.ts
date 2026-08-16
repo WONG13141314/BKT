@@ -12,7 +12,7 @@ export interface Room {
   hostId: string;
   players: Map<string, LobbyPlayer>;
   maxPlayers: number;
-  status: 'waiting' | 'playing';
+  status: 'waiting' | 'starting' | 'playing';
 }
 
 /** Fallback token when a bot joins; humans bring their own from their profile. */
@@ -64,7 +64,7 @@ class RoomManager {
   ): { room: Room | null; error?: string } {
     const room = this.rooms.get(code.toUpperCase());
     if (!room) return { room: null, error: 'Room not found. Check the code and try again.' };
-    if (room.status === 'playing') return { room: null, error: 'Game already in progress.' };
+    if (room.status !== 'waiting') return { room: null, error: 'Game already in progress.' };
     if (room.players.size >= room.maxPlayers && !room.players.has(playerId)) {
       return { room: null, error: 'Room is full (max 4 players).' };
     }
@@ -86,7 +86,7 @@ class RoomManager {
     const room = this.rooms.get(code.toUpperCase());
     if (!room) return { room: null, error: 'Room not found.' };
     if (room.hostId !== requesterId) return { room: null, error: 'Only the host can add bots.' };
-    if (room.status === 'playing') return { room: null, error: 'Game already in progress.' };
+    if (room.status !== 'waiting') return { room: null, error: 'Game already in progress.' };
     if (room.players.size >= room.maxPlayers) return { room: null, error: 'Room is full (max 4 players).' };
 
     botCounter++;
@@ -115,7 +115,7 @@ class RoomManager {
     const room = this.rooms.get(code.toUpperCase());
     if (!room) return { room: null, error: 'Room not found.' };
     if (room.hostId !== requesterId) return { room: null, error: 'Only the host can remove bots.' };
-    if (room.status === 'playing') return { room: null, error: 'Game already in progress.' };
+    if (room.status !== 'waiting') return { room: null, error: 'Game already in progress.' };
 
     const player = room.players.get(botId);
     if (!player || !player.isBot) return { room: null, error: 'Bot not found.' };
@@ -187,7 +187,7 @@ class RoomManager {
    * - All human players are ready (bots are always ready)
    */
   public canStartGame(code: string): boolean {
-    const room = this.rooms.get(code);
+    const room = this.rooms.get(code.toUpperCase());
     if (!room) return false;
     const players = Array.from(room.players.values());
     if (players.length < 2 || players.length > room.maxPlayers) return false;
@@ -198,8 +198,30 @@ class RoomManager {
     return humans.every((p) => p.isReady);
   }
 
-  public setRoomStatus(code: string, status: 'waiting' | 'playing') {
-    const room = this.rooms.get(code);
+  /** Atomically reserve a ready lobby for a single game creation attempt. */
+  public beginStart(code: string, requesterId: string): Room | null {
+    const room = this.rooms.get(code.toUpperCase());
+    if (
+      !room ||
+      room.hostId !== requesterId ||
+      room.status !== 'waiting' ||
+      !this.canStartGame(room.code)
+    ) {
+      return null;
+    }
+
+    room.status = 'starting';
+    return room;
+  }
+
+  /** Releases a room only when its in-flight game creation did not complete. */
+  public cancelStart(code: string): void {
+    const room = this.rooms.get(code.toUpperCase());
+    if (room?.status === 'starting') room.status = 'waiting';
+  }
+
+  public setRoomStatus(code: string, status: Room['status']) {
+    const room = this.rooms.get(code.toUpperCase());
     if (room) room.status = status;
   }
 
