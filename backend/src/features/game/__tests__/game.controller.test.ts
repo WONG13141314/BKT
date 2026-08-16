@@ -52,4 +52,32 @@ describe('game controller public state access', () => {
     expect(response.status).toHaveBeenCalledWith(403);
     expect(response.json).toHaveBeenCalledWith({ error: 'You are not a player in this game' });
   });
+
+  it('does not authorize an account that only matches a seat id', async () => {
+    const state = makeGameState();
+    state.players[0] = { ...state.players[0], id: 'alice', playerId: 'bob' };
+    jest.spyOn(gameService, 'getGame').mockResolvedValue(state);
+    const response = makeResponse();
+
+    await gameController.getById(makeRequest('alice'), response);
+
+    expect(response.status).toHaveBeenCalledWith(403);
+  });
+
+  it('does not create a game when the account matches only an untrusted seat id', async () => {
+    const request = makeRequest('alice') as Request & { body: unknown };
+    request.body = {
+      players: [
+        { id: 'alice', playerId: 'bob' },
+        { id: 'seat-2', playerId: 'carol' },
+      ],
+    };
+    const createGame = jest.spyOn(gameService, 'createGame');
+    const response = makeResponse();
+
+    await gameController.create(request, response);
+
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(createGame).not.toHaveBeenCalled();
+  });
 });

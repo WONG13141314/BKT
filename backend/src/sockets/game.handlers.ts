@@ -123,8 +123,7 @@ function emitAnswerResult(
     const s = io.sockets.sockets.get(socketId);
     if (!s) continue;
 
-    const isActivePlayer =
-      s.data?.player?.id === activePlayer.playerId || s.data?.player?.id === activePlayer.id;
+    const isActivePlayer = s.data?.player?.id === activePlayer.playerId;
 
     // Onlookers learn the outcome, not the answer or the mastery numbers.
     const publicResult = isActivePlayer
@@ -424,13 +423,16 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
 export const registerGameHandlers = (io: Server, socket: Socket) => {
   const playerId = socket.data.player.id;
 
+  const findAuthenticatedSeat = (state: GameState) =>
+    state.players.find((seat) => seat.playerId === playerId);
+
   /** Confirms the caller is the active player and returns the live state. */
   function validateTurn(gameId: string): GameState | null {
     const state = gameService.getGameSync(gameId);
     if (!state) return null;
 
     const activePlayer = state.players[state.currentPlayerIndex];
-    if (activePlayer.playerId !== playerId && activePlayer.id !== playerId) {
+    if (activePlayer.playerId !== playerId) {
       socket.emit('game:error', { message: 'Not your turn' });
       return null;
     }
@@ -498,9 +500,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
       return;
     }
 
-    const viewerSeat = state.players.find((seat) =>
-      seat.playerId === playerId || seat.id === playerId
-    );
+    const viewerSeat = findAuthenticatedSeat(state);
     if (!viewerSeat) {
       socket.emit('game:seat-mismatch', {
         seats: state.players
@@ -530,7 +530,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     }
 
     const activePlayer = state.players[state.currentPlayerIndex];
-    const isActivePlayer = activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId);
+    const isActivePlayer = activePlayer?.playerId === playerId;
 
     // The player is back — restore the normal deadline.
     if (isActivePlayer) armPhaseTimer(io, data.gameId);
@@ -538,7 +538,8 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
 
   socket.on('game:request-challenge', async (data: { gameId: string }) => {
     const state = await gameService.getGame(data.gameId);
-    if (state) publishGameStateToSocket(socket, state);
+    if (!state || !findAuthenticatedSeat(state)) return;
+    publishGameStateToSocket(socket, state);
   });
 
   // ---- Roll ----
@@ -648,7 +649,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
   socket.on('game:auction-bid', (d: { gameId: string; amount: number }) => {
     const state = gameService.getGameSync(d.gameId);
     if (!state || state.turnPhase !== 'AUCTION') return;
-    const seat = state.players.find((player) => player.playerId === playerId || player.id === playerId);
+    const seat = findAuthenticatedSeat(state);
     if (!seat) return;
 
     const next = gameService.placeAuctionBid(d.gameId, seat.id, Math.floor(d.amount));
@@ -716,8 +717,7 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     if (!state || state.phase !== 'PLAYING') return;
 
     const activePlayer = state.players[state.currentPlayerIndex];
-    const wasActivePlayer =
-      activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId);
+    const wasActivePlayer = activePlayer?.playerId === playerId;
 
     // Everyone else is blocked on this player. Give them a short window to come
     // back, then move the game on without them.

@@ -108,9 +108,62 @@ describe('game publisher', () => {
 
   it('looks up only the report belonging to the finished-payload recipient', () => {
     const socket = makeSocket({ player: { id: 'db-player-2' } });
-    const { report } = makeFinishedFixture();
+    const { state, report } = makeFinishedFixture();
     const otherReport = { ...report, playerId: 'db-player-2', playerName: 'Ben' };
 
-    expect(findMasteryReportForSocket(socket, [report, otherReport])).toBe(otherReport);
+    expect(findMasteryReportForSocket(socket, [report, otherReport], state)).toBe(otherReport);
+  });
+
+  it('does not treat a game seat id as an authenticated account id', () => {
+    const state = makeGameState({ currentChallenge: makePrivateChallenge() });
+    state.players[0] = { ...state.players[0], id: 'alice', playerId: 'bob' };
+    const aliceSocket = makeSocket({ player: { id: 'alice' } });
+    const io = makeServer([aliceSocket]);
+    const { report } = makeFinishedFixture();
+    const bobsReport = { ...report, playerId: 'alice' };
+
+    publishGameState(io, state);
+
+    expect(aliceSocket.emit).not.toHaveBeenCalledWith('game:challenge', expect.anything());
+    expect(findMasteryReportForSocket(aliceSocket, [bobsReport], state)).toBeNull();
+  });
+
+  it('does not give a matching seat id another account’s duel question', () => {
+    const state = makeGameState();
+    state.players[0] = { ...state.players[0], id: 'alice', playerId: 'bob' };
+    state.duelState = {
+      tileIndex: 1,
+      tileName: 'Tambah Town',
+      skillName: 'Addition',
+      rentAmount: 50,
+      challenger: {
+        playerId: 'alice',
+        challenge: makePrivateChallenge({ id: 'bobs-duel-question' }),
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      owner: {
+        playerId: state.players[1].id,
+        challenge: makePrivateChallenge({ id: 'owners-duel-question' }),
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      startedAt: 1_000,
+      timeLimit: 20,
+      resolution: null,
+    };
+    const aliceSocket = makeSocket({ player: { id: 'alice' } });
+    const io = makeServer([aliceSocket]);
+
+    publishGameState(io, state);
+
+    const duelPayload = aliceSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    expect(duelPayload.myChallenge).toBeNull();
   });
 });

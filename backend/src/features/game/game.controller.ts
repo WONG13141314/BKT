@@ -8,7 +8,7 @@ import { gameService } from './game.service';
 function isGameSeat(req: Request, state: Awaited<ReturnType<typeof gameService.getGame>>): boolean {
   const playerId = req.player?.id;
   return !!playerId && !!state?.players.some((seat) =>
-    seat.playerId === playerId || seat.id === playerId
+    seat.playerId === playerId
   );
 }
 
@@ -25,7 +25,7 @@ export const gameController = {
       }
 
       const playerId = req.player?.id;
-      if (!playerId || !players.some((seat) => seat.playerId === playerId || seat.id === playerId)) {
+      if (!playerId || !players.some((seat) => seat.playerId === playerId)) {
         return res.status(403).json({ error: 'You must be a player in the new game' });
       }
 

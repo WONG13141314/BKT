@@ -30,14 +30,13 @@ export function toPublicDuelState(duel: DuelState): PublicDuelState {
 export function findMasteryReportForSocket(
   socket: Socket,
   reports: MasteryReport[],
-  state?: GameState
+  state: GameState
 ): MasteryReport | null {
   const viewerId = socket.data?.player?.id;
-  const seat = state?.players.find((player) =>
-    player.playerId === viewerId || player.id === viewerId
-  );
+  const seat = state.players.find((player) => player.playerId === viewerId);
+  if (!seat) return null;
   return reports.find((report) =>
-    report.playerId === viewerId || report.playerId === seat?.id || report.playerId === seat?.playerId
+    report.playerId === seat.id || report.playerId === seat.playerId
   ) ?? null;
 }
 
@@ -52,7 +51,7 @@ function publishChallengeToSocket(socket: Socket, state: GameState): void {
   const activePlayer = state.players[state.currentPlayerIndex];
   if (!activePlayer || activePlayer.isBot) return;
 
-  if (isSocketPlayer(socket, activePlayer.playerId) || isSocketPlayer(socket, activePlayer.id)) {
+  if (isSocketPlayer(socket, activePlayer.playerId)) {
     socket.emit('game:challenge', {
       challenge: toPublicChallenge(state.currentChallenge),
       playerId: activePlayer.id,
@@ -72,9 +71,9 @@ function publishDuelToSocket(socket: Socket, state: GameState): void {
 
   const challenger = state.players.find((player) => player.id === duel.challenger.playerId);
   const owner = state.players.find((player) => player.id === duel.owner.playerId);
-  const mySide = challenger && (isSocketPlayer(socket, challenger.playerId) || isSocketPlayer(socket, challenger.id))
+  const mySide = challenger && isSocketPlayer(socket, challenger.playerId)
     ? duel.challenger
-    : owner && (isSocketPlayer(socket, owner.playerId) || isSocketPlayer(socket, owner.id))
+    : owner && isSocketPlayer(socket, owner.playerId)
       ? duel.owner
       : null;
 
