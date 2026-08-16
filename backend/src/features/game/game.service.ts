@@ -441,19 +441,20 @@ export const gameService = {
 
   // ---- Bot Turn ----
 
-  executeBotTurn: (gameId: string): BotTurnStep[] | null => {
+  planBotTurn: (gameId: string): BotTurnStep[] | null => {
     const state = activeGames.get(gameId);
     if (!state) return null;
 
     const player = getCurrentPlayer(state);
     if (!player.isBot) return null;
 
-    const steps = executeBotTurn(state);
-    // Save the final state
-    if (steps.length > 0) {
-      activeGames.set(gameId, steps[steps.length - 1].state);
-    }
-    return steps;
+    return executeBotTurn(state);
+  },
+
+  /** Commits exactly one bot presentation step after its delay has elapsed. */
+  commitBotStep: (gameId: string, state: GameState): GameState => {
+    activeGames.set(gameId, state);
+    return state;
   },
 
   // ---- Stall recovery ----

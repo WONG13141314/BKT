@@ -380,6 +380,16 @@ function isDuelPending(state: GameState): boolean {
   return state.turnPhase === 'MATH_DUEL' && !!state.duelState && !state.duelState.resolution;
 }
 
+/**
+ * Deadlines are refreshed after each publication, so they cannot identify the
+ * source snapshot for a delayed bot step. Everything else must still match:
+ * if it does not, a human action or recovery has made the remaining plan stale.
+ */
+function isCurrentBotPlanSource(live: GameState, expected: GameState): boolean {
+  const withoutDeadline = ({ phaseDeadline: _deadline, phaseDeadlineFor: _deadlineFor, ...state }: GameState) => state;
+  return JSON.stringify(withoutDeadline(live)) === JSON.stringify(withoutDeadline(expected));
+}
+
 async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
   const state = gameService.getGameSync(gameId);
   if (!state || state.phase === 'FINISHED') return;
@@ -389,9 +399,11 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
 
   clearPhaseTimer(gameId);
 
-  let steps: ReturnType<typeof gameService.executeBotTurn>;
+  let steps: ReturnType<typeof gameService.planBotTurn>;
   try {
-    steps = gameService.executeBotTurn(gameId);
+    // Planning is deliberately side-effect free. A snapshot becomes
+    // authoritative only once its own presentation delay has elapsed.
+    steps = gameService.planBotTurn(gameId);
   } catch (err) {
     console.error(`[BotTurn] Error executing bot turn for ${gameId}:`, err);
     // Force the turn forward so the game isn't permanently stuck.
@@ -419,18 +431,35 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
     return;
   }
 
+  let expectedPlanSource = state;
   for (const step of steps) {
     await new Promise((resolve) => setTimeout(resolve, step.delay));
-    publishGameState(io, step.state);
+    const liveBeforeCommit = gameService.getGameSync(gameId);
+    if (!liveBeforeCommit || !isCurrentBotPlanSource(liveBeforeCommit, expectedPlanSource)) {
+      // A human duel response (or recovery) moved the real game while this
+      // presentation was visible. Never overwrite that newer state with a
+      // future snapshot calculated from the old plan.
+      return;
+    }
+    const committed = gameService.commitBotStep(gameId, step.state);
+    // `broadcastState` publishes through the shared public boundary and arms
+    // exactly the timer for the just-committed phase. Keeping the bot safety
+    // timer cleared until this point prevents it from resolving a future plan
+    // snapshot while the current presentation is still on screen.
+    broadcastState(io, socketRoom, committed);
     io.to(socketRoom).emit('game:bot-action', {
       botId: currentPlayer.id,
       botName: currentPlayer.name,
       action: step.action,
     });
+    expectedPlanSource = step.state;
   }
 
-  const finalState = gameService.getGameSync(gameId);
-  if (!finalState) return;
+  // Never make control-flow decisions from a planned snapshot: a duel answer,
+  // timeout, reconnect, or finish may have changed the authoritative state
+  // while a presentation delay was pending.
+  const liveAfterPlayback = gameService.getGameSync(gameId);
+  if (!liveAfterPlayback) return;
 
   // A bot turn does not always finish. If it landed on a human's property the
   // duel needs that human's answer before it can settle.
@@ -439,14 +468,15 @@ async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
   // would never be sent their question; and because this function clears the
   // phase timer on entry, recursing here would destroy the duel deadline on
   // every pass and spin the turn forever. Hand control to the duel handler.
-  if (isDuelPending(finalState)) {
-    broadcastState(io, socketRoom, finalState);
+  if (isDuelPending(liveAfterPlayback)) {
+    broadcastState(io, socketRoom, liveAfterPlayback);
     return;
   }
 
-  checkAndEmitGameOver(io, socketRoom, finalState);
+  checkAndEmitGameOver(io, socketRoom, liveAfterPlayback);
 
-  if (finalState.phase === 'PLAYING') {
+  const finalState = gameService.getGameSync(gameId);
+  if (finalState?.phase === 'PLAYING') {
     // Only recurse when the turn actually moved on. Anything else means the bot
     // is stuck, and repeating the same turn would loop indefinitely.
     const advanced = finalState.currentPlayerIndex !== state.currentPlayerIndex;

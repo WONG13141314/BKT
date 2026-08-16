@@ -119,8 +119,10 @@ export interface BotTurnStep {
 }
 
 /**
- * Execute a full bot turn and return all intermediate states.
- * The caller (socket handler) should emit each state with delays.
+ * Plan a full bot turn as immutable intermediate snapshots.
+ *
+ * This engine never owns session persistence: callers must commit each state
+ * only after its presentation delay, before publishing it to recipients.
  */
 export function executeBotTurn(state: GameState): BotTurnStep[] {
   const steps: BotTurnStep[] = [];
