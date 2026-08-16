@@ -3,6 +3,7 @@ import type { Server, Socket } from 'socket.io';
 type SocketListener = (...args: any[]) => unknown;
 
 export type SocketHarness = Socket & {
+  emit: Socket['emit'] & jest.Mock;
   trigger(event: string, ...args: any[]): Promise<unknown>;
 };
 
