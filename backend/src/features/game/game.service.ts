@@ -49,11 +49,23 @@ import { loadMasteryPriorsAfterWrites, newGameId, recordAttempt } from './game.p
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
 
-/** Backward-compatible state boundary for sessions persisted before Task 2. */
+/** Backward-compatible state boundary for sessions persisted by older releases. */
 function normalizeRestoredState(state: GameState): GameState {
+  // Deserialized snapshots predate the current type contract, so inspect the
+  // raw boundary value without putting obsolete auction fields back in the
+  // live state types.
+  const rawState = state as unknown as Record<string, unknown>;
+  const wasLegacyAuction = rawState.turnPhase === 'AUCTION';
+  const { auctionState: _legacyAuctionState, ...withoutAuction } = rawState;
+  const currentState = withoutAuction as unknown as GameState;
+
   return {
-    ...state,
-    players: state.players.map((player) => ({
+    ...currentState,
+    turnPhase: wasLegacyAuction ? 'END_TURN' : currentState.turnPhase,
+    pendingTileEvent: wasLegacyAuction ? null : currentState.pendingTileEvent,
+    phaseDeadline: wasLegacyAuction ? null : currentState.phaseDeadline,
+    phaseDeadlineFor: wasLegacyAuction ? null : currentState.phaseDeadlineFor,
+    players: currentState.players.map((player) => ({
       ...player,
       recentQuestionFingerprints: Array.isArray(player.recentQuestionFingerprints)
         ? player.recentQuestionFingerprints.slice(-8)

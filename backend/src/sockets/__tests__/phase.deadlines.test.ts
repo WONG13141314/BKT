@@ -7,6 +7,7 @@ import {
   PhaseTimerRegistry,
 } from '../phase.deadlines';
 import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
+import type { GameState } from '../../features/game/game.types';
 import { makeServer, makeSocket } from './socket.harness';
 import { SocketPresence } from '../presence.manager';
 
@@ -82,6 +83,66 @@ describe('movement acknowledgement', () => {
     await socket.trigger('game:movement-complete', { gameId, diceRollId });
     expect(gameService.getGameSync(gameId)).toBe(advanced);
   }
+
+  it.each([
+    [false, PHASE_TIMEOUTS.endTurn],
+    [true, PHASE_TIMEOUTS.build],
+  ])('restores a legacy auction snapshot into an end turn with the correct deadline', async (buildCapable, expectedTimeout) => {
+    const current = makeGameState({ id: gameId, turnPhase: 'END_TURN' });
+    const state = buildCapable
+      ? {
+          ...current,
+          players: current.players.map((player, index) => index === 0
+            ? { ...player, properties: [1, 2], hasLevelUpToken: true }
+            : player),
+          properties: current.properties.map((property) => [1, 2].includes(property.tileIndex)
+            ? { ...property, ownerId: current.players[0].id }
+            : property),
+        }
+      : current;
+    const legacySerialized = JSON.parse(JSON.stringify({
+      ...state,
+      turnPhase: 'AUCTION',
+      auctionState: {
+        tileIndex: 4,
+        currentBid: 30,
+        currentBidderId: null,
+        endsAt: Date.now() + 60_000,
+        isActive: true,
+      },
+      pendingTileEvent: {
+        type: 'PROPERTY',
+        tileIndex: 4,
+        tileName: 'Tolak Drive',
+        propertyPrice: 120,
+        propertyOwner: null,
+      },
+      phaseDeadline: Date.now() + 60_000,
+      phaseDeadlineFor: 'AUCTION',
+    })) as GameState;
+
+    const restored = gameService.replaceState(gameId, legacySerialized);
+
+    expect(restored.turnPhase).toBe('END_TURN');
+    expect(restored.pendingTileEvent).toBeNull();
+    expect(restored.properties.find((property) => property.tileIndex === 4)?.ownerId).toBeNull();
+    expect('auctionState' in restored).toBe(false);
+    expect(restored.phaseDeadline).toBeNull();
+    expect(restored.phaseDeadlineFor).toBeNull();
+
+    const socket = makeSocket({ player: { id: 'db-player-1' } });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+    const now = Date.now();
+
+    await socket.trigger('game:request-state', { gameId });
+
+    const published = gameService.getGameSync(gameId)!;
+    expect(published.turnPhase).toBe('END_TURN');
+    expect(published.phaseDeadline).toBe(now + expectedTimeout);
+    expect(published.phaseDeadlineFor).toBe('END_TURN');
+    expect(gameService.resolveStalledTurn(gameId)?.state.turnPhase).toBe('ROLL_PHASE');
+  });
 
   it('advances only once for a current movement acknowledgement', async () => {
     const socket = makeSocket({ player: { id: 'db-player-1' } });
