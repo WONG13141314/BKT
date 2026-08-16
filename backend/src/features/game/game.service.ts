@@ -51,6 +51,19 @@ import { loadMasteryPriors, newGameId, recordAttempt } from './game.persistence'
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
 
+/** Backward-compatible state boundary for sessions persisted before Task 2. */
+function normalizeRestoredState(state: GameState): GameState {
+  return {
+    ...state,
+    players: state.players.map((player) => ({
+      ...player,
+      recentQuestionFingerprints: Array.isArray(player.recentQuestionFingerprints)
+        ? player.recentQuestionFingerprints.slice(-8)
+        : [],
+    })),
+  };
+}
+
 /**
  * Every answer submission has the same shape: check the phase, grade it, store
  * the new state, log the attempt. Routing all six through here means the
@@ -158,8 +171,9 @@ export const gameService = {
    * server restart, and by tests to set up a specific phase directly.
    */
   replaceState: (gameId: string, state: GameState): GameState => {
-    activeGames.set(gameId, state);
-    return state;
+    const normalized = normalizeRestoredState(state);
+    activeGames.set(gameId, normalized);
+    return normalized;
   },
 
   // ---- Roll Phase ----

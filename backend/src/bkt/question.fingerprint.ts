@@ -2,6 +2,11 @@ import type { GeneratedQuestion } from './question.generator';
 
 const DEFAULT_MAX_ATTEMPTS = 6;
 
+function boundedAttemptCount(maxAttempts: number): number {
+  if (!Number.isFinite(maxAttempts) || maxAttempts <= 0) return DEFAULT_MAX_ATTEMPTS;
+  return Math.min(DEFAULT_MAX_ATTEMPTS, Math.max(1, Math.floor(maxAttempts)));
+}
+
 /**
  * Identifies the learning task rather than the generated answer choices.
  * Addition and multiplication normalize their operands because reversing them
@@ -44,7 +49,7 @@ export function generateDistinctQuestion(
   recent: readonly string[],
   maxAttempts: number = DEFAULT_MAX_ATTEMPTS
 ): GeneratedQuestion & { fingerprint: string } {
-  const attempts = Math.max(1, Math.floor(maxAttempts));
+  const attempts = boundedAttemptCount(maxAttempts);
   let latest: GeneratedQuestion & { fingerprint: string } | null = null;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {

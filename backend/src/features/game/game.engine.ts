@@ -1654,7 +1654,7 @@ function rememberIssuedQuestion(player: PlayerState, challenge: MathChallenge): 
   return {
     ...player,
     recentQuestionFingerprints: [
-      ...player.recentQuestionFingerprints,
+      ...(player.recentQuestionFingerprints ?? []),
       challenge.fingerprint,
     ].slice(-RECENT_QUESTION_FINGERPRINT_LIMIT),
   };

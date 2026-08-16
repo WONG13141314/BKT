@@ -14,10 +14,16 @@ import {
   buildHouse,
   startSmartBuyChallenge,
   processSmartBuyAnswer,
+  processCardChallengeAnswer,
+  startJailMathEscape,
+  processJailEscapeAnswer,
+  startLevelUpChallenge,
+  processLevelUpAnswer,
 } from '../game.engine';
 import { GameState } from '../game.types';
 import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS } from '../game.constants';
 import { selectChallenge } from '../../../bkt/bkt.selector';
+import { gameService } from '../game.service';
 
 describe('Game Engine — MathOpoly Redesign', () => {
   let gameState: GameState;
@@ -256,6 +262,15 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(challenged.players[0].recentQuestionFingerprints).toEqual([
         challenged.currentChallenge!.fingerprint,
       ]);
+
+      const answered = processSmartBuyAnswer(
+        challenged,
+        challenged.currentChallenge!.correctIndex,
+        1_000
+      ).newState;
+      expect(answered.players[0].recentQuestionFingerprints).toEqual([
+        challenged.currentChallenge!.fingerprint,
+      ]);
     });
 
     it('keeps only the eight most recently issued fingerprints', () => {
@@ -279,6 +294,98 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(afterNineIssues.players[0].recentQuestionFingerprints.at(-1)).toBe(
         afterNineIssues.currentChallenge!.fingerprint
       );
+    });
+
+    it('normalizes legacy restored histories before issuing a Smart Buy question', () => {
+      const gameId = 'legacy-question-history';
+      const legacyState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION' as const,
+        pendingTileEvent: {
+          type: 'PROPERTY' as const,
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+        players: gameState.players.map(({ recentQuestionFingerprints: _history, ...player }) => player),
+      } as unknown as GameState;
+
+      try {
+        gameService.replaceState(gameId, legacyState);
+        expect(gameService.getGameSync(gameId)!.players.map((player) => player.recentQuestionFingerprints)).toEqual([
+          [], [], [], [],
+        ]);
+
+        const issued = gameService.startSmartBuy(gameId)!;
+        expect(issued.players[0].recentQuestionFingerprints).toEqual([issued.currentChallenge!.fingerprint]);
+      } finally {
+        gameService.removeGame(gameId);
+      }
+    });
+
+    it('defensively records a question when a legacy player reaches the engine directly', () => {
+      const legacyState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION' as const,
+        pendingTileEvent: {
+          type: 'PROPERTY' as const,
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+        players: gameState.players.map(({ recentQuestionFingerprints: _history, ...player }) => player),
+      } as unknown as GameState;
+
+      const issued = startSmartBuyChallenge(legacyState);
+
+      expect(issued.players[0].recentQuestionFingerprints).toEqual([issued.currentChallenge!.fingerprint]);
+    });
+
+    it('records a Challenge Card fingerprint once at issue time, not answer time', () => {
+      const card = resolveTileEvent({
+        ...gameState,
+        turnPhase: 'RESOLVE_TILE',
+        challengeCardDeck: [8],
+        challengeCardIndex: 0,
+        players: gameState.players.map((player, index) => index === 0 ? { ...player, position: 3 } : player),
+      });
+      const history = card.players[0].recentQuestionFingerprints;
+
+      expect(history).toEqual([card.currentChallenge!.fingerprint]);
+      const answered = processCardChallengeAnswer(card, card.currentChallenge!.correctIndex, 1_000).newState;
+      expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
+    });
+
+    it('records a Jail Escape fingerprint once at issue time, not answer time', () => {
+      const challenge = startJailMathEscape({
+        ...gameState,
+        turnPhase: 'JAIL_DECISION',
+        players: gameState.players.map((player, index) => index === 0 ? { ...player, isInJail: true } : player),
+      });
+      const history = challenge.players[0].recentQuestionFingerprints;
+
+      expect(history).toEqual([challenge.currentChallenge!.fingerprint]);
+      const answered = processJailEscapeAnswer(challenge, challenge.currentChallenge!.correctIndex, 1_000).newState;
+      expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
+    });
+
+    it('records a Level Up fingerprint once at issue time, not answer time', () => {
+      const challenge = startLevelUpChallenge({
+        ...gameState,
+        turnPhase: 'LEVEL_UP_OFFER',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 40,
+          propertyOwner: 'p1',
+        },
+      });
+      const history = challenge.players[0].recentQuestionFingerprints;
+
+      expect(history).toEqual([challenge.currentChallenge!.fingerprint]);
+      const answered = processLevelUpAnswer(challenge, challenge.currentChallenge!.correctIndex, 1_000).newState;
+      expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
     });
 
     it('opens an auction and transfers the deed to the highest bidder', () => {
