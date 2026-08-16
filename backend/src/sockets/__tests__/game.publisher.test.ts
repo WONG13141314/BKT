@@ -112,6 +112,48 @@ describe('game publisher', () => {
     expect(JSON.stringify([challengerPayload, ownerPayload, observerPayload])).not.toContain('correctIndex');
   });
 
+  it('withholds a timed-out duellist question while preserving the opponent deadline', () => {
+    const state = makeGameState();
+    state.duelState = {
+      tileIndex: 1,
+      tileName: 'Tambah Town',
+      rentAmount: 50,
+      challenger: {
+        playerId: state.players[0].id,
+        challenge: makePrivateChallenge({ id: 'expired', context: 'MATH_DUEL', timeLimit: 15, startedAt: 1_000 }),
+        selectedIndex: null,
+        isCorrect: false,
+        timedOut: true,
+        timeMs: 15_000,
+        previousMastery: null,
+        newMastery: null,
+      },
+      owner: {
+        playerId: state.players[1].id,
+        challenge: makePrivateChallenge({ id: 'pending', context: 'MATH_DUEL', timeLimit: 25, startedAt: 1_000 }),
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      startedAt: 1_000,
+      resolution: null,
+    };
+    const challengerSocket = makeSocket({ player: { id: 'db-player-1' } });
+    const ownerSocket = makeSocket({ player: { id: 'db-player-2' } });
+    const io = makeServer([challengerSocket, ownerSocket]);
+
+    publishGameState(io, state);
+
+    const challengerPayload = challengerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    const ownerPayload = ownerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    expect(challengerPayload.myChallenge).toBeNull();
+    expect(challengerPayload.duel.challenger.hasAnswered).toBe(true);
+    expect(ownerPayload.myChallenge).toEqual(expect.objectContaining({ id: 'pending', expiresAt: 26_000 }));
+    expect(ownerPayload.duel.owner.hasAnswered).toBe(false);
+  });
+
   it('looks up only the report belonging to the finished-payload recipient', () => {
     const socket = makeSocket({ player: { id: 'db-player-2' } });
     const { state, report } = makeFinishedFixture();

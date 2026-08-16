@@ -77,7 +77,9 @@ function publishDuelToSocket(socket: Socket, state: GameState): void {
 
   socket.emit('game:duel', {
     duel: toPublicDuelState(duel),
-    myChallenge: mySide && mySide.selectedIndex === null ? toPublicChallenge(mySide.challenge) : null,
+    myChallenge: mySide && mySide.selectedIndex === null && !mySide.timedOut
+      ? toPublicChallenge(mySide.challenge)
+      : null,
   });
 }
 

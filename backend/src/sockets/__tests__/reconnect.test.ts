@@ -60,6 +60,49 @@ describe('authoritative game recovery', () => {
     }));
   });
 
+  it('does not restore a reconnecting duellist question after that side timed out', async () => {
+    const game = makeGameState({ id: 'game_RECONNECT_TIMED_OUT_DUEL', turnPhase: 'MATH_DUEL' });
+    gameIds.push(game.id);
+    game.duelState = {
+      tileIndex: 1,
+      tileName: 'Addition Avenue',
+      rentAmount: 50,
+      challenger: {
+        playerId: game.players[0].id,
+        challenge: makePrivateChallenge({ id: 'challenger-question', context: 'MATH_DUEL' }),
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      owner: {
+        playerId: game.players[1].id,
+        challenge: makePrivateChallenge({ id: 'expired-owner-question', context: 'MATH_DUEL' }),
+        selectedIndex: null,
+        isCorrect: false,
+        timedOut: true,
+        timeMs: 15_000,
+        previousMastery: null,
+        newMastery: null,
+      },
+      startedAt: NOW,
+      resolution: null,
+    } satisfies DuelState;
+    gameService.replaceState(game.id, game);
+
+    const ownerSocket = makeSocket({ player: { id: game.players[1].playerId } });
+    const io = makeServer([ownerSocket], game.id);
+    registerGameHandlers(io, ownerSocket);
+
+    await ownerSocket.trigger('game:request-state', { gameId: game.id });
+
+    expect(ownerSocket.emit).toHaveBeenCalledWith('game:duel', expect.objectContaining({
+      myChallenge: null,
+      duel: expect.objectContaining({ owner: expect.objectContaining({ hasAnswered: true }) }),
+    }));
+  });
+
   it('re-emits scores and only the viewer report for a finished game', async () => {
     const { state: finishedGame } = makeFinishedFixture();
     finishedGame.id = 'game_RECONNECT_FINISHED';
