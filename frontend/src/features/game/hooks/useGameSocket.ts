@@ -102,11 +102,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emit('game:smart-buy-answer', { selectedIndex }), [emit]);
   const emitSkipBuy = useCallback(() => emit('game:skip-buy'), [emit]);
 
-  // Auctions are table-wide: every human player may bid, even when another
-  // player is taking the turn.
-  const emitAuctionBid = useCallback((amount: number) =>
-    emit('game:auction-bid', { amount }), [emit]);
-
   // Math Duel — sent by either duellist. The owner answers on another player's
   // turn, so this is deliberately not gated on whose turn it is.
   const emitDuelAnswer = useCallback((selectedIndex: number) =>
@@ -149,7 +144,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitSmartBuy,
     emitSmartBuyAnswer,
     emitSkipBuy,
-    emitAuctionBid,
     emitDuelAnswer,
     emitCardAck,
     emitCardAnswer,

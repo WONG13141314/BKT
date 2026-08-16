@@ -16,8 +16,6 @@ import {
   startSmartBuyChallenge,
   processSmartBuyAnswer,
   skipBuy,
-  placeAuctionBid,
-  resolveAuction,
   submitDuelAnswer,
   bothDuellistsAnswered,
   expireDuelSides,
@@ -264,23 +262,6 @@ export const gameService = {
     return newState;
   },
 
-  placeAuctionBid: (gameId: string, playerId: string, amount: number): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'AUCTION') return null;
-    const newState = placeAuctionBid(state, playerId, amount);
-    if (newState === state) return null;
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
-  resolveAuction: (gameId: string): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'AUCTION') return null;
-    const newState = resolveAuction(state);
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
   buildHouse: (gameId: string, tileIndex: number): GameState | null => {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'END_TURN') return null;
@@ -521,8 +502,6 @@ export const gameService = {
         return gameService.submitLevelUpAnswer(gameId, NO_ANSWER);
       case 'BUY_DECISION':
         return advanced(gameService.skipBuy(gameId));
-      case 'AUCTION':
-        return advanced(gameService.resolveAuction(gameId));
       case 'MATH_DUEL':
         return advanced(gameService.forceResolveDuel(gameId)?.state ?? null);
       case 'JAIL_DECISION':

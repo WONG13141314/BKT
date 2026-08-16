@@ -147,7 +147,6 @@ export function initializeGameState(
     challengeCardIndex: 0,
     gameStartTime: Date.now(),
     isFinalRound: false,
-    auctionState: null,
   };
 }
 
@@ -738,8 +737,8 @@ export function processSmartBuyAnswer(
     ? { type: 'DISCOUNT', value: SMART_BUY_DISCOUNT * 100, description: `Bank offer approved! You may buy for ${formatRM(discountedPrice)} instead of ${formatRM(fullPrice)}.` }
     : { type: 'NONE', value: 0, description: `The bank keeps the listed price of ${formatRM(fullPrice)}.` };
 
-  // Return to the deed decision. Even when the player cannot afford the offer,
-  // they can decline it and open the property to the rest of the table.
+  // Return to the deed decision. A player who cannot afford the offer can
+  // simply decline it, leaving the property available on a later landing.
   const actualPrice = finalPrice;
 
   const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
@@ -761,73 +760,13 @@ export function processSmartBuyAnswer(
   };
 }
 
-/** Declining an unowned property opens a short multiplayer auction. */
+/** Declining an unowned property leaves it available for a later landing. */
 export function skipBuy(state: GameState): GameState {
-  const event = state.pendingTileEvent;
-  if (!event || event.type !== 'PROPERTY') return { ...state, turnPhase: 'END_TURN' };
+  if (state.turnPhase !== 'BUY_DECISION') return state;
 
   return {
     ...state,
-    turnPhase: 'AUCTION',
-    auctionState: {
-      tileIndex: event.tileIndex,
-      currentBid: Math.max(10, Math.floor((event.propertyPrice ?? 0) * 0.25)),
-      currentBidderId: null,
-      endsAt: Date.now() + 10_000,
-      isActive: true,
-    },
-  };
-}
-
-export function placeAuctionBid(state: GameState, playerId: string, amount: number): GameState {
-  const auction = state.auctionState;
-  const player = state.players.find((item) => item.id === playerId);
-  const minimumBid = auction ? auction.currentBid + (auction.currentBidderId ? 10 : 0) : Infinity;
-  if (
-    state.turnPhase !== 'AUCTION' ||
-    !auction?.isActive ||
-    !player ||
-    player.isBankrupt ||
-    amount < minimumBid ||
-    amount > player.money
-  ) return state;
-
-  return {
-    ...state,
-    auctionState: {
-      ...auction,
-      currentBid: amount,
-      currentBidderId: player.id,
-      endsAt: Date.now() + 5_000,
-    },
-  };
-}
-
-export function resolveAuction(state: GameState): GameState {
-  const auction = state.auctionState;
-  if (!auction) return { ...state, turnPhase: 'END_TURN' };
-
-  const winnerIndex = state.players.findIndex((player) => player.id === auction.currentBidderId);
-  const hasWinner = winnerIndex >= 0 && state.players[winnerIndex].money >= auction.currentBid;
-
-  return {
-    ...state,
-    players: hasWinner
-      ? updatePlayerInList(state.players, winnerIndex, (player) => ({
-          ...player,
-          money: player.money - auction.currentBid,
-          properties: [...player.properties, auction.tileIndex],
-        }))
-      : state.players,
-    properties: hasWinner
-      ? state.properties.map((property) =>
-          property.tileIndex === auction.tileIndex
-            ? { ...property, ownerId: state.players[winnerIndex].id }
-            : property
-        )
-      : state.properties,
     turnPhase: 'END_TURN',
-    auctionState: null,
     pendingTileEvent: null,
   };
 }

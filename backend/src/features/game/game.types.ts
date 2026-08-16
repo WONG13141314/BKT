@@ -95,7 +95,6 @@ export type TurnPhase =
   | 'MOVING'                // Token animation in progress
   | 'RESOLVE_TILE'          // Processing tile landing
   | 'BUY_DECISION'          // Player choosing to buy / smart-buy / skip
-  | 'AUCTION'               // All players may bid for a declined property
   | 'SMART_BUY_CHALLENGE'   // Answering Smart Buy question
   | 'MATH_DUEL'             // Challenger and owner answering simultaneously
   | 'CARD_DRAW'             // Challenge Card drawn, showing effect
@@ -448,16 +447,6 @@ export interface GameState {
   /** Server-only phase marker that prevents an expiry from leaking into a new phase. */
   phaseDeadlineFor?: TurnPhase | null;
 
-  // Auction (simplified — 10-second bidding)
-  auctionState: AuctionState | null;
-}
-
-export interface AuctionState {
-  tileIndex: number;
-  currentBid: number;
-  currentBidderId: string | null;
-  endsAt: number;
-  isActive: boolean;
 }
 
 // ---- Scoring (End Game) ----

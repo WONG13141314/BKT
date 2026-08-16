@@ -125,9 +125,7 @@ export function Board({
               ? 'Choose Jail Action'
               : gameState.turnPhase === 'END_TURN'
                 ? 'Review & End Turn'
-                : gameState.turnPhase === 'AUCTION'
-                  ? 'Auction in Progress'
-                  : 'Action in Progress';
+                : 'Action in Progress';
 
   return (
     <div className="board-grid">

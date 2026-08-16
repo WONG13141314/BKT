@@ -273,16 +273,6 @@
   box-shadow: 2px 2px 0 #000;
 }
 
-.auction-leading {
-  margin: 0;
-  padding: 0.5rem;
-  border: 2px dashed #000;
-  background: #d8f3dc;
-  color: #000;
-  text-align: center;
-  font: 800 0.75rem 'Courier New', monospace;
-}
-
 .action-btn--primary {
   background: #e63946;
   color: #fff;

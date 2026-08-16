@@ -188,12 +188,6 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         break;
       }
 
-      case 'AUCTION': {
-        // Auctions belong to the whole table. Pause the bot turn and let the
-        // shared phase timer collect human bids before the server resolves it.
-        return steps;
-      }
-
       case 'MATH_DUEL': {
         const beforeAnswers = currentState;
         currentState = submitBotDuelAnswers(currentState);

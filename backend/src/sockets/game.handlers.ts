@@ -315,13 +315,6 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
     return;
   }
 
-  if (state.turnPhase === 'AUCTION' && state.auctionState) {
-    const deadline = state.auctionState.endsAt;
-    state = savePhaseDeadline(gameId, state, deadline);
-    phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
-    return;
-  }
-
   // Bot turns normally run to completion, but errors or edge cases can
   // leave a bot stranded. Arm a generous safety timer so `resolveStall`
   // can push the turn forward if `triggerBotTurnIfNeeded` fails.
@@ -794,20 +787,6 @@ export const registerGameHandlers = (
 
   socket.on('game:skip-buy', (d: { gameId: string }) =>
     runAction(d.gameId, gameService.skipBuy));
-
-  socket.on('game:auction-bid', (d: { gameId: string; amount: number }) => {
-    const state = gameService.getGameSync(d.gameId);
-    if (!state || state.turnPhase !== 'AUCTION') return;
-    const seat = findAuthenticatedSeat(state);
-    if (!seat) return;
-
-    const next = gameService.placeAuctionBid(d.gameId, seat.id, Math.floor(d.amount));
-    if (!next) {
-      socket.emit('game:error', { message: 'Bid must be higher and within your available cash' });
-      return;
-    }
-    broadcastState(io, getSocketRoom(d.gameId), next);
-  });
 
   socket.on('game:build-house', (d: { gameId: string; tileIndex: number }) => {
     if (!validateTurn(d.gameId)) return;

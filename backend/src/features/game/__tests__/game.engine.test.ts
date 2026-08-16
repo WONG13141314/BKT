@@ -9,8 +9,6 @@ import {
   calculateFinalScores,
   payBail,
   skipBuy,
-  placeAuctionBid,
-  resolveAuction,
   buildHouse,
   startSmartBuyChallenge,
   processSmartBuyAnswer,
@@ -388,7 +386,7 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
     });
 
-    it('opens an auction and transfers the deed to the highest bidder', () => {
+    it('leaves a declined property unowned and ends the landing decision', () => {
       const offered: GameState = {
         ...gameState,
         turnPhase: 'BUY_DECISION',
@@ -400,15 +398,15 @@ describe('Game Engine — MathOpoly Redesign', () => {
         },
       };
 
-      const auction = skipBuy(offered);
-      expect(auction.turnPhase).toBe('AUCTION');
-      const bid = placeAuctionBid(auction, 'p2', auction.auctionState!.currentBid);
-      const settled = resolveAuction(bid);
+      const next = skipBuy(offered);
 
-      expect(settled.turnPhase).toBe('END_TURN');
-      expect(settled.properties.find((property) => property.tileIndex === 1)?.ownerId).toBe('p2');
-      expect(settled.players[1].properties).toContain(1);
-      expect(settled.players[1].money).toBe(STARTING_MONEY - auction.auctionState!.currentBid);
+      expect(next.turnPhase).toBe('END_TURN');
+      expect(next.properties.find((property) => property.tileIndex === offered.pendingTileEvent!.tileIndex)?.ownerId).toBeNull();
+      expect(next.pendingTileEvent).toBeNull();
+    });
+
+    it('does not change a turn that is not awaiting a purchase decision', () => {
+      expect(skipBuy(gameState)).toBe(gameState);
     });
 
     it('builds a house only after completing the colour set', () => {

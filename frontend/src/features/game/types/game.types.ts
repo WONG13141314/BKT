@@ -119,7 +119,6 @@ export type TurnPhase =
   | 'MOVING'
   | 'RESOLVE_TILE'
   | 'BUY_DECISION'
-  | 'AUCTION'
   | 'SMART_BUY_CHALLENGE'
   | 'MATH_DUEL'
   | 'CARD_DRAW'
@@ -296,7 +295,6 @@ export interface GameState {
   gameStartTime: number;
   isFinalRound: boolean;
   phaseDeadline: number | null;
-  auctionState: AuctionState | null;
 }
 
 // ---- Math Duel ----
@@ -329,14 +327,6 @@ export interface PublicDuelState {
   challenger: PublicDuelSide;
   owner: PublicDuelSide;
   resolution: DuelResolution | null;
-}
-
-export interface AuctionState {
-  tileIndex: number;
-  currentBid: number;
-  currentBidderId: string | null;
-  endsAt: number;
-  isActive: boolean;
 }
 
 // ---- Scoring ----

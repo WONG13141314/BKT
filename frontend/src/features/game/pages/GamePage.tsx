@@ -33,7 +33,6 @@ import {
   Zap,
   Lock,
   DollarSign,
-  Gavel,
   House,
 } from 'lucide-react';
 import './GamePage.css';
@@ -73,7 +72,6 @@ export function GamePage() {
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
   const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
-  const [auctionSeconds, setAuctionSeconds] = useState(0);
   const [rollRequested, setRollRequested] = useState(false);
   const [seatRecoveryMessage, setSeatRecoveryMessage] = useState<string | null>(null);
   const [seatChoices, setSeatChoices] = useState<StoredProfile[]>([]);
@@ -149,7 +147,6 @@ export function GamePage() {
     emitSmartBuy,
     emitSmartBuyAnswer,
     emitSkipBuy,
-    emitAuctionBid,
     emitDuelAnswer,
     emitCardAck,
     emitCardAnswer,
@@ -345,19 +342,6 @@ export function GamePage() {
     }, 6000);
     return () => clearTimeout(safety);
   }, [isDiceRolling, isPawnMoving, gameState?.diceRollId]);
-
-  useEffect(() => {
-    if (!gameState?.auctionState?.isActive) {
-      setAuctionSeconds(0);
-      return;
-    }
-    const update = () => setAuctionSeconds(Math.max(0, Math.ceil(
-      (gameState.auctionState!.endsAt - Date.now()) / 1000
-    )));
-    update();
-    const timer = setInterval(update, 250);
-    return () => clearInterval(timer);
-  }, [gameState?.auctionState?.endsAt, gameState?.auctionState?.isActive]);
 
   // Auto-request missing active challenge if in challenge phase
   useEffect(() => {
@@ -574,7 +558,6 @@ export function GamePage() {
   const forcePendingDetails = !!gameState.pendingTileEvent && [
     'BUY_DECISION',
     'SMART_BUY_CHALLENGE',
-    'AUCTION',
     'MATH_DUEL',
     'CARD_DRAW',
     'CARD_MATH_CHALLENGE',
@@ -585,12 +568,6 @@ export function GamePage() {
       ? currentPlayer?.position ?? selectedTile
       : selectedTile;
   const showingLandedTile = detailTileIndex === currentPlayer?.position;
-  const auction = gameState.auctionState;
-  const auctionLeader = auction?.currentBidderId
-    ? gameState.players.find((candidate) => candidate.id === auction.currentBidderId)
-    : null;
-  const myPlayer = gameState.players.find((candidate) => candidate.id === myPlayerId);
-  const nextAuctionBid = (auction?.currentBid ?? 0) + (auction?.currentBidderId ? 10 : 0);
   const listedDecisionPrice = gameState.pendingTileEvent?.propertyPrice ?? 0;
   const effectiveDecisionPrice = currentPlayer?.hasDiscountToken
     ? Math.floor(listedDecisionPrice * .7)
@@ -651,25 +628,8 @@ export function GamePage() {
                 <DollarSign size={16} /> {gameState.pendingTileEvent.bankOfferApproved ? 'Accept Offer' : 'Buy Property'} · {formatRM(effectiveDecisionPrice)}
               </button>
               <button className="action-btn action-btn--ghost" onClick={emitSkipBuy}>
-                <Gavel size={16} /> Send to Auction
+                Skip Purchase
               </button>
-            </div>
-          )}
-
-          {/* Table-wide auction: every human player may bid. */}
-          {renderPhase === 'AUCTION' && auction?.isActive && (
-            <div className="game-actions decision-panel auction-panel">
-              <h3 className="decision-title"><Gavel size={16} /> Property Auction</h3>
-              <p className="decision-subtitle">
-                {auctionLeader ? `${auctionLeader.name}: ${formatRM(auction.currentBid)}` : `Opening bid: ${formatRM(auction.currentBid)}`}
-                {' '}· {auctionSeconds}s
-              </p>
-              {myPlayer && !myPlayer.isBankrupt && myPlayer.money >= nextAuctionBid && auction.currentBidderId !== myPlayerId && (
-                <button className="action-btn action-btn--primary" onClick={() => emitAuctionBid(nextAuctionBid)}>
-                  Bid {formatRM(nextAuctionBid)}
-                </button>
-              )}
-              {auction.currentBidderId === myPlayerId && <p className="auction-leading">You have the highest bid.</p>}
             </div>
           )}
 
