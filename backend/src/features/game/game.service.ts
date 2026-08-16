@@ -46,7 +46,7 @@ import {
   DuelResolution,
 } from './game.types';
 import { executeBotTurn, submitBotDuelAnswers, BotTurnStep } from './bot.engine';
-import { loadMasteryPriors, newGameId, recordAttempt } from './game.persistence';
+import { awaitPlayerWrites, loadMasteryPriors, newGameId, recordAttempt } from './game.persistence';
 
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
@@ -75,11 +75,11 @@ function submitAnswer(
   requiredPhase: TurnPhase,
   process: (
     state: GameState,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ) => { newState: GameState; result: AnswerResult },
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { state: GameState; result: AnswerResult } | null {
   const state = activeGames.get(gameId);
   if (!state || state.turnPhase !== requiredPhase || !state.currentChallenge) return null;
@@ -88,7 +88,7 @@ function submitAnswer(
   const challenge = state.currentChallenge;
   const player = state.players[state.currentPlayerIndex];
 
-  const { newState, result } = process(state, selectedIndex, timeMs);
+  const { newState, result } = process(state, selectedIndex, receivedAt);
   activeGames.set(gameId, newState);
 
   // Fire-and-forget: gameplay never waits on the database.
@@ -97,7 +97,7 @@ function submitAnswer(
     dbGameId: state.dbGameId,
     challenge,
     selectedIndex,
-    timeMs,
+    timeMs: Math.max(0, receivedAt - challenge.startedAt),
     previousMastery: result.previousMastery,
     newMastery: result.newMastery,
     isCorrect: result.isCorrect,
@@ -126,8 +126,8 @@ function recordDuelAttempts(duel: DuelState, state: GameState): void {
       player,
       dbGameId: state.dbGameId,
       challenge: side.challenge,
-      // A side that never answered is graded wrong and logged as a timeout.
-      selectedIndex: side.selectedIndex ?? -1,
+      // A side that never answered is logged as explicit no-answer evidence.
+      selectedIndex: side.selectedIndex,
       timeMs: side.timeMs ?? 0,
       previousMastery: side.previousMastery,
       newMastery: side.newMastery,
@@ -142,6 +142,7 @@ export const gameService = {
   createGame: async (gameId: string, players: GamePlayerSeed[]): Promise<GameState> => {
     // Resume each returning player's BKT chain. Bots have no Player row.
     const humanIds = players.filter((p) => !p.isBot).map((p) => p.playerId);
+    await Promise.all(humanIds.map(awaitPlayerWrites));
     const priors = await loadMasteryPriors(humanIds);
 
     const seeded = players.map((p) => {
@@ -191,10 +192,10 @@ export const gameService = {
 
   submitRollChallengeAnswer: (
     gameId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'ROLL_CHALLENGE', processRollChallengeAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'ROLL_CHALLENGE', processRollChallengeAnswer, selectedIndex, receivedAt),
 
   // ---- Movement ----
 
@@ -247,10 +248,10 @@ export const gameService = {
 
   submitSmartBuyAnswer: (
     gameId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'SMART_BUY_CHALLENGE', processSmartBuyAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'SMART_BUY_CHALLENGE', processSmartBuyAnswer, selectedIndex, receivedAt),
 
   skipBuy: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
@@ -299,14 +300,14 @@ export const gameService = {
   submitDuelAnswer: (
     gameId: string,
     playerId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; resolution: DuelResolution | null } | null => {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
 
     // A bot landlord answers the moment the challenge reaches it.
-    let next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, timeMs));
+    let next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, receivedAt));
 
     if (!bothDuellistsAnswered(next)) {
       activeGames.set(gameId, next);
@@ -379,10 +380,10 @@ export const gameService = {
 
   submitCardAnswer: (
     gameId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'CARD_MATH_CHALLENGE', processCardChallengeAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'CARD_MATH_CHALLENGE', processCardChallengeAnswer, selectedIndex, receivedAt),
 
   // ---- Jail ----
 
@@ -397,10 +398,10 @@ export const gameService = {
 
   submitJailAnswer: (
     gameId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'JAIL_CHALLENGE', processJailEscapeAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'JAIL_CHALLENGE', processJailEscapeAnswer, selectedIndex, receivedAt),
 
   payBail: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
@@ -433,10 +434,10 @@ export const gameService = {
 
   submitLevelUpAnswer: (
     gameId: string,
-    selectedIndex: number,
-    timeMs: number
+    selectedIndex: number | null,
+    receivedAt?: number
   ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'LEVEL_UP_CHALLENGE', processLevelUpAnswer, selectedIndex, timeMs),
+    submitAnswer(gameId, 'LEVEL_UP_CHALLENGE', processLevelUpAnswer, selectedIndex, receivedAt),
 
   declineLevelUp: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
@@ -495,20 +496,11 @@ export const gameService = {
     const state = activeGames.get(gameId);
     if (!state || state.phase !== 'PLAYING') return null;
 
-    const timedOut = (
-      outcome: { state: GameState; result: AnswerResult } | null
-    ) => {
-      if (!outcome) return null;
-      return { state: outcome.state, result: { ...outcome.result, timedOut: true } };
-    };
     const advanced = (next: GameState | null) =>
       next ? { state: next, result: null } : null;
 
-    // -1 can never equal a correctIndex, so a timeout always grades as incorrect.
-    const NO_ANSWER = -1;
-    const elapsed = state.currentChallenge
-      ? Date.now() - state.currentChallenge.startedAt
-      : 0;
+    // Null is explicit no-answer evidence, distinct from an incorrect choice.
+    const NO_ANSWER = null;
 
     switch (state.turnPhase) {
       case 'ROLL_PHASE':
@@ -516,15 +508,15 @@ export const gameService = {
       case 'MOVING':
         return advanced(gameService.executeMove(gameId));
       case 'ROLL_CHALLENGE':
-        return timedOut(gameService.submitRollChallengeAnswer(gameId, NO_ANSWER, elapsed));
+        return gameService.submitRollChallengeAnswer(gameId, NO_ANSWER);
       case 'SMART_BUY_CHALLENGE':
-        return timedOut(gameService.submitSmartBuyAnswer(gameId, NO_ANSWER, elapsed));
+        return gameService.submitSmartBuyAnswer(gameId, NO_ANSWER);
       case 'CARD_MATH_CHALLENGE':
-        return timedOut(gameService.submitCardAnswer(gameId, NO_ANSWER, elapsed));
+        return gameService.submitCardAnswer(gameId, NO_ANSWER);
       case 'JAIL_CHALLENGE':
-        return timedOut(gameService.submitJailAnswer(gameId, NO_ANSWER, elapsed));
+        return gameService.submitJailAnswer(gameId, NO_ANSWER);
       case 'LEVEL_UP_CHALLENGE':
-        return timedOut(gameService.submitLevelUpAnswer(gameId, NO_ANSWER, elapsed));
+        return gameService.submitLevelUpAnswer(gameId, NO_ANSWER);
       case 'BUY_DECISION':
         return advanced(gameService.skipBuy(gameId));
       case 'AUCTION':

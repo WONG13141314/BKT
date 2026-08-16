@@ -74,7 +74,7 @@ export function submitBotDuelAnswers(state: GameState): GameState {
     const player = next.players.find((p) => p.id === side.playerId);
     if (!player?.isBot) continue;
 
-    next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge), 3000);
+    next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge));
   }
 
   return next;
@@ -146,7 +146,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
 
       case 'ROLL_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processRollChallengeAnswer(currentState, answer, 3000);
+        const { newState } = processRollChallengeAnswer(currentState, answer);
         currentState = newState;
         steps.push({ state: currentState, action: 'roll_answer', delay: 1500 });
         break;
@@ -182,7 +182,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
 
       case 'SMART_BUY_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processSmartBuyAnswer(currentState, answer, 4000);
+        const { newState } = processSmartBuyAnswer(currentState, answer);
         currentState = newState;
         steps.push({ state: currentState, action: 'smart_buy_answer', delay: 1500 });
         break;
@@ -222,7 +222,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
 
       case 'CARD_MATH_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processCardChallengeAnswer(currentState, answer, 4000);
+        const { newState } = processCardChallengeAnswer(currentState, answer);
         currentState = newState;
         steps.push({ state: currentState, action: 'card_answer', delay: 1500 });
         break;
@@ -249,7 +249,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
 
       case 'JAIL_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processJailEscapeAnswer(currentState, answer, 4000);
+        const { newState } = processJailEscapeAnswer(currentState, answer);
         currentState = newState;
         steps.push({ state: currentState, action: 'jail_answer', delay: 1500 });
         break;
@@ -271,7 +271,7 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
 
       case 'LEVEL_UP_CHALLENGE': {
         const answer = botAnswer(currentState);
-        const { newState } = processLevelUpAnswer(currentState, answer, 5000);
+        const { newState } = processLevelUpAnswer(currentState, answer);
         currentState = newState;
         steps.push({ state: currentState, action: 'level_up_answer', delay: 1500 });
         break;

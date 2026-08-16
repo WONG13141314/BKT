@@ -86,8 +86,6 @@ export function GamePage() {
   const [duel, setDuel] = useState<PublicDuelState | null>(null);
   const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
 
-  const challengeStartTime = useRef<number>(Date.now());
-
   // Visual motion may delay a modal briefly, but it must never become the
   // authority for the turn. The server phase always controls legal actions.
   const [isDiceRolling, setIsDiceRolling] = useState(false);
@@ -183,7 +181,6 @@ export function GamePage() {
       }
       if (state.currentChallenge) {
         setActiveChallenge(state.currentChallenge);
-        challengeStartTime.current = Date.now();
       } else if (!isChallengePhase(state.turnPhase)) {
         setChallengePlayerId(null);
       }
@@ -198,7 +195,6 @@ export function GamePage() {
       setChallengePlayerId(data.playerId);
       setActiveChallenge(data.challenge);
       setAnswerResult(null);
-      challengeStartTime.current = Date.now();
       // The duel reveal lingers deliberately so the table can read it, but the
       // server has already advanced the turn. Drop it the moment the next
       // question arrives, or it would cover the new player's challenge.
@@ -219,7 +215,7 @@ export function GamePage() {
 
       setAnswerResult(data.result);
 
-      const { isCorrect, timedOut, correctAnswer } = data.result;
+      const { isCorrect, timedOut, correctAnswer, feedback } = data.result;
       // Onlookers receive the outcome only — no reward or answer details.
       const desc = data.result.reward?.description ? ` (${data.result.reward.description})` : '';
 
@@ -231,7 +227,7 @@ export function GamePage() {
       } else {
         msg = correctAnswer ? `Incorrect — answer was ${correctAnswer}${desc}` : 'Incorrect';
       }
-      addNotification(isCorrect ? 'reward' : 'penalty', msg);
+      addNotification(isCorrect ? 'reward' : 'penalty', feedback ? `${msg} ${feedback}` : msg);
 
       // Hold the panel open long enough to read the revealed answer.
       const holdMs = isCorrect ? 900 : 1800;
@@ -254,7 +250,6 @@ export function GamePage() {
       if (data.duel.resolution) return;
       setDuel(data.duel);
       setDuelChallenge(data.myChallenge);
-      if (data.myChallenge) challengeStartTime.current = Date.now();
     },
     onDuelResult: (data) => {
       setDuel(data.duel);
@@ -368,24 +363,23 @@ export function GamePage() {
 
   // ---- Answer Handler ----
   const handleAnswer = useCallback((selectedIndex: number) => {
-    const timeMs = Date.now() - challengeStartTime.current;
     if (!gameState) return;
 
     switch (gameState.turnPhase) {
       case 'ROLL_CHALLENGE':
-        emitRollAnswer(selectedIndex, timeMs);
+        emitRollAnswer(selectedIndex);
         break;
       case 'SMART_BUY_CHALLENGE':
-        emitSmartBuyAnswer(selectedIndex, timeMs);
+        emitSmartBuyAnswer(selectedIndex);
         break;
       case 'CARD_MATH_CHALLENGE':
-        emitCardAnswer(selectedIndex, timeMs);
+        emitCardAnswer(selectedIndex);
         break;
       case 'JAIL_CHALLENGE':
-        emitJailAnswer(selectedIndex, timeMs);
+        emitJailAnswer(selectedIndex);
         break;
       case 'LEVEL_UP_CHALLENGE':
-        emitLevelUpAnswer(selectedIndex, timeMs);
+        emitLevelUpAnswer(selectedIndex);
         break;
     }
   }, [gameState?.turnPhase, emitRollAnswer, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
@@ -395,7 +389,7 @@ export function GamePage() {
    * someone else's turn, so this must not be gated on whose turn it is.
    */
   const handleDuelAnswer = useCallback((selectedIndex: number) => {
-    emitDuelAnswer(selectedIndex, Date.now() - challengeStartTime.current);
+    emitDuelAnswer(selectedIndex);
     setDuelChallenge(null);
   }, [emitDuelAnswer]);
 

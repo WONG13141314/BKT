@@ -111,6 +111,11 @@ export async function flushWrites(): Promise<void> {
   }
 }
 
+/** Wait for a learner's queued attempt writes before reading their next priors. */
+export async function awaitPlayerWrites(playerId: string): Promise<void> {
+  await writeQueues.get(playerId);
+}
+
 // ---- Game start: load priors ----
 
 export interface PlayerPriors {
@@ -179,7 +184,7 @@ export interface AttemptRecord {
   /** The `Game.id` this attempt belongs to — see `GameState.dbGameId`. */
   dbGameId: string;
   challenge: MathChallenge;
-  selectedIndex: number;
+  selectedIndex: number | null;
   timeMs: number;
   previousMastery: number;
   newMastery: number;
@@ -243,13 +248,11 @@ export function buildAttemptData(
     // a server-side research table and needs the exact item that was shown.
     questionData: challenge.questionData as unknown as Prisma.InputJsonValue,
     correctAnswer: challenge.options[challenge.correctIndex] ?? '',
-    // -1 is the sentinel the server submits when a challenge deadline passes, so
-    // it is exactly the set of attempts where no answer was given. Flagged
-    // rather than dropped: a timeout is usually "didn't know", but sometimes it
-    // is a closed laptop, and the analysis must be able to tell them apart.
-    selectedAnswer: selectedIndex >= 0 ? challenge.options[selectedIndex] ?? null : null,
+    // Null is explicit no-answer evidence. Flag it rather than dropping it: a
+    // timeout is often "didn't know", but can also be a closed laptop.
+    selectedAnswer: selectedIndex === null ? null : challenge.options[selectedIndex] ?? null,
     isCorrect,
-    timedOut: selectedIndex < 0,
+    timedOut: selectedIndex === null,
     timeMs: Number.isFinite(timeMs) ? Math.max(0, Math.round(timeMs)) : null,
     hintLevel: challenge.hintLevel,
     pMasteryBefore: previousMastery,

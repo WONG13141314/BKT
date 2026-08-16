@@ -144,10 +144,9 @@ describe('Attempt rows', () => {
     expect(easy.predictedPCorrect).toBeGreaterThan(hard.predictedPCorrect);
   });
 
-  it('flags a timeout instead of inventing an answer', () => {
-    // -1 is the sentinel the server submits when the deadline passes.
+  it('flags a null timeout instead of inventing an answer or a mastery transition', () => {
     const data = buildAttemptData(
-      makeRecord({ selectedIndex: -1, isCorrect: false }),
+      makeRecord({ selectedIndex: null as unknown as number, isCorrect: false, previousMastery: 0.3, newMastery: 0.3 }),
       'skill-division',
       3,
       answeredAt
@@ -156,6 +155,7 @@ describe('Attempt rows', () => {
     expect(data.timedOut).toBe(true);
     expect(data.selectedAnswer).toBeNull();
     expect(data.isCorrect).toBe(false);
+    expect(data.pMasteryBefore).toBe(data.pMasteryAfter);
     // Still a real observation — it counts as an opportunity.
     expect(data.opportunityIndex).toBe(3);
   });

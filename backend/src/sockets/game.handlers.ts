@@ -12,6 +12,7 @@
 import { Server, Socket } from 'socket.io';
 import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
+import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
@@ -143,8 +144,9 @@ function emitAnswerResult(
           reward: result.reward,
           streakCount: result.streakCount,
           streakBroken: result.streakBroken,
-          showHintNext: result.showHintNext,
-          timedOut: result.timedOut,
+           showHintNext: result.showHintNext,
+           timedOut: result.timedOut,
+           feedback: result.feedback,
         }
       : { isCorrect: result.isCorrect, timedOut: result.timedOut };
 
@@ -647,12 +649,17 @@ export const registerGameHandlers = (
 
   // ---- Challenge answers ----
 
-  type AnswerPayload = { gameId: string; selectedIndex: number; timeMs: number };
+  type AnswerPayload = { gameId: string; selectedIndex: unknown };
+
+  const answerIndex = (gameId: string, selectedIndex: unknown): number | null => {
+    const challenge = gameService.getGameSync(gameId)?.currentChallenge;
+    return validateSelectedIndex(selectedIndex, challenge?.options.length ?? 0);
+  };
 
   // The Roll Challenge only unlocks the dice — the player still gets to see the
   // tile they land on and end the turn themselves.
   socket.on('game:roll-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitRollChallengeAnswer(id, d.selectedIndex, d.timeMs), {
+    runAnswer(d.gameId, (id) => gameService.submitRollChallengeAnswer(id, answerIndex(id, d.selectedIndex)), {
       autoEnd: false,
       errorMessage: 'No active Roll Challenge',
     }));
@@ -671,7 +678,15 @@ export const registerGameHandlers = (
     const seat = state.players.find((p) => p.playerId === playerId);
     if (!seat) return;
 
-    const outcome = gameService.submitDuelAnswer(d.gameId, seat.id, d.selectedIndex, d.timeMs);
+    const side = state.duelState.challenger.playerId === seat.id
+      ? state.duelState.challenger
+      : state.duelState.owner.playerId === seat.id ? state.duelState.owner : null;
+    if (!side) return;
+    const outcome = gameService.submitDuelAnswer(
+      d.gameId,
+      seat.id,
+      validateSelectedIndex(d.selectedIndex, side.challenge.options.length)
+    );
     if (!outcome) return;
 
     const socketRoom = getSocketRoom(d.gameId);
@@ -687,18 +702,18 @@ export const registerGameHandlers = (
   });
 
   socket.on('game:smart-buy-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitSmartBuyAnswer(id, d.selectedIndex, d.timeMs), {
+    runAnswer(d.gameId, (id) => gameService.submitSmartBuyAnswer(id, answerIndex(id, d.selectedIndex)), {
       errorMessage: 'No active Smart Buy challenge',
     }));
 
   socket.on('game:card-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitCardAnswer(id, d.selectedIndex, d.timeMs)));
+    runAnswer(d.gameId, (id) => gameService.submitCardAnswer(id, answerIndex(id, d.selectedIndex))));
 
   socket.on('game:jail-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitJailAnswer(id, d.selectedIndex, d.timeMs)));
+    runAnswer(d.gameId, (id) => gameService.submitJailAnswer(id, answerIndex(id, d.selectedIndex))));
 
   socket.on('game:level-up-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitLevelUpAnswer(id, d.selectedIndex, d.timeMs)));
+    runAnswer(d.gameId, (id) => gameService.submitLevelUpAnswer(id, answerIndex(id, d.selectedIndex))));
 
   // ---- Challenge starts (no turn advance — they open a question) ----
 

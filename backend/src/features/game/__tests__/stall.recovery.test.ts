@@ -1,4 +1,4 @@
-import { endTurn, initializeGameState } from '../game.engine';
+import { endTurn, initializeGameState, processCardChallengeAnswer } from '../game.engine';
 import { selectChallenge } from '../../../bkt/bkt.selector';
 import { gameService } from '../game.service';
 import { GameState } from '../game.types';
@@ -90,6 +90,35 @@ describe('resolveStalledTurn', () => {
 
     // And the turn is no longer blocked.
     expect(outcome!.state.turnPhase).not.toBe('ROLL_CHALLENGE');
+  });
+
+  it('records a timeout without changing BKT mastery or the failure hint counter', () => {
+    const state = gameService.getGameSync(gameId)!;
+    const challenge = {
+      ...selectChallenge({
+        masteryStates: state.players[0].masteryStates,
+        context: 'CHALLENGE_CARD' as const,
+        consecutiveFailures: {},
+      }),
+      startedAt: 1_000,
+    };
+    const opened = {
+      ...state,
+      turnPhase: 'CARD_MATH_CHALLENGE' as const,
+      currentChallenge: challenge,
+    };
+    const before = opened.players[0].masteryStates[challenge.skillName];
+
+    const outcome = processCardChallengeAnswer(opened, null as unknown as number, 26_000);
+
+    expect(outcome.result.timedOut).toBe(true);
+    expect(outcome.result.previousMastery).toBe(before);
+    expect(outcome.result.newMastery).toBe(before);
+    expect(outcome.newState.players[0].consecutiveFailures[challenge.skillName]).toBe(0);
+    expect(outcome.newState.players[0].totalQuestions).toBe(opened.players[0].totalQuestions + 1);
+    expect(outcome.newState.players[0].streak).toBe(0);
+    expect(outcome.result.reward.type).toBe('NONE');
+    expect(outcome.newState.players[0].money).toBe(opened.players[0].money);
   });
 
   it('settles an abandoned duel at full rent', () => {

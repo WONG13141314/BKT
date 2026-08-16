@@ -55,6 +55,7 @@ import { updateMastery } from '../../bkt/bkt.engine';
 import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
 import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 import { checkMastery } from '../../bkt/bkt.utils';
+import { buildWorkedFeedback } from '../../bkt/feedback';
 
 // ============================================
 // GAME INITIALIZATION
@@ -217,15 +218,15 @@ function rollDie(): number {
  */
 export function processRollChallengeAnswer(
   state: GameState,
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
+  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
   );
 
   const diceCount: 1 | 2 = isCorrect ? 2 : 1;
@@ -242,7 +243,7 @@ export function processRollChallengeAnswer(
   const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
     ...p,
     money: isCorrect ? p.money + ROLL_CHALLENGE_BONUS : p.money,
-    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery),
+    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery, timedOut),
   }));
 
   return {
@@ -254,7 +255,7 @@ export function processRollChallengeAnswer(
       turnPhase: 'MOVING',
       currentChallenge: null,
     },
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
   };
 }
 
@@ -454,8 +455,7 @@ function buildDuel(
 export function submitDuelAnswer(
   state: GameState,
   playerId: string,
-  selectedIndex: number,
-  timeMs: number,
+  selectedIndex: number | null,
   receivedAt: number = Date.now()
 ): GameState {
   const duel = state.duelState;
@@ -475,10 +475,12 @@ export function submitDuelAnswer(
   }
 
   const side = duel[which];
+  const { isCorrect, timedOut, timeMs } = answerEvidence(side.challenge, selectedIndex, receivedAt);
   const answered: DuelSide = {
     ...side,
     selectedIndex,
-    isCorrect: selectedIndex === side.challenge.correctIndex,
+    isCorrect,
+    timedOut,
     timeMs,
   };
 
@@ -583,14 +585,15 @@ export function resolveDuel(state: GameState): {
     const idx = players.findIndex((p) => p.id === side.playerId);
     if (idx === -1) return side;
 
-    const correct = side.isCorrect === true;
+    const timedOut = side.timedOut === true || side.selectedIndex === null;
+    const correct = !timedOut && side.isCorrect === true;
     const { newMastery, previousMastery } = updatePlayerMastery(
-      players[idx], side.challenge.skillName as SkillName, correct, side.challenge.difficulty
+      players[idx], side.challenge.skillName as SkillName, correct, side.challenge.difficulty, timedOut
     );
 
     players = updatePlayerInList(players, idx, (p) => ({
       ...p,
-      ...applyAnswerToPlayer(p, side.challenge.skillName, correct, newMastery),
+      ...applyAnswerToPlayer(p, side.challenge.skillName, correct, newMastery, timedOut),
     }));
 
     // An unanswered side is graded wrong, and says so explicitly.
@@ -715,16 +718,16 @@ export function startSmartBuyChallenge(state: GameState): GameState {
 /** Process Smart Buy answer */
 export function processSmartBuyAnswer(
   state: GameState,
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
   const event = state.pendingTileEvent!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
+  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
   );
 
   const fullPrice = event.propertyPrice!;
@@ -739,7 +742,7 @@ export function processSmartBuyAnswer(
   // they can decline it and open the property to the rest of the table.
   const actualPrice = finalPrice;
 
-  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
 
   return {
     newState: {
@@ -754,7 +757,7 @@ export function processSmartBuyAnswer(
         bankOfferApproved: isCorrect,
       },
     },
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
   };
 }
 
@@ -910,21 +913,23 @@ function resolveChallengeCardTile(state: GameState, player: PlayerState): GameSt
 /** Process a math challenge card answer */
 export function processCardChallengeAnswer(
   state: GameState,
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
   const card = state.pendingTileEvent?.card || getCardById(8)!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
+  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
   );
 
   const fallbackEffect: CardEffect = { type: 'GAIN_MONEY', amount: isCorrect ? 80 : 20 };
-  const effect = (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
-  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  const effect = timedOut
+    ? { type: 'NOTHING' } as CardEffect
+    : (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
+  const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
   let stateAfterEffect = { ...state, players: updatedPlayers };
   const positionBefore = getCurrentPlayer(stateAfterEffect).position;
   stateAfterEffect = applyCardEffect(stateAfterEffect, effect, getCurrentPlayer(stateAfterEffect));
@@ -935,7 +940,9 @@ export function processCardChallengeAnswer(
   const wasMoved = movedPlayer.position !== positionBefore && !movedPlayer.isInJail;
 
   const cardName = card?.name || 'Challenge Card';
-  const reward: RewardResult = isCorrect
+  const reward: RewardResult = timedOut
+    ? { type: 'NONE', value: 0, description: 'Time ran out — no card reward this time.' }
+    : isCorrect
     ? { type: 'BONUS_CASH', value: 0, description: `${cardName} — Correct! ${describeEffect(effect)}` }
     : { type: 'NONE', value: 0, description: `${cardName} — ${describeEffect(effect)}` };
 
@@ -946,7 +953,7 @@ export function processCardChallengeAnswer(
       currentChallenge: null,
       pendingTileEvent: null,
     },
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
   };
 }
 
@@ -1164,18 +1171,18 @@ export function startJailMathEscape(state: GameState): GameState {
 /** Process jail escape answer */
 export function processJailEscapeAnswer(
   state: GameState,
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
+  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
   );
 
-  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
   const newJailTurns = player.jailTurns + 1;
 
   if (isCorrect || newJailTurns >= MAX_JAIL_TURNS) {
@@ -1203,7 +1210,7 @@ export function processJailEscapeAnswer(
         turnPhase: 'MOVING',
         currentChallenge: null,
       },
-      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
     };
   } else {
     // Stay jailed for now, increment jail turns
@@ -1225,7 +1232,7 @@ export function processJailEscapeAnswer(
         turnPhase: 'END_TURN',
         currentChallenge: null,
       },
-      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+      result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
     };
   }
 }
@@ -1393,19 +1400,19 @@ export function startLevelUpChallenge(state: GameState): GameState {
 /** Process Level Up answer */
 export function processLevelUpAnswer(
   state: GameState,
-  selectedIndex: number,
-  timeMs: number
+  selectedIndex: number | null,
+  receivedAt: number = Date.now()
 ): { newState: GameState; result: AnswerResult } {
   const player = getCurrentPlayer(state);
   const challenge = state.currentChallenge!;
   const event = state.pendingTileEvent!;
-  const isCorrect = selectedIndex === challenge.correctIndex;
+  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
   );
 
-  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery);
+  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
   let updatedProperties = state.properties;
 
   const reward: RewardResult = isCorrect
@@ -1438,7 +1445,7 @@ export function processLevelUpAnswer(
       // Mark that level up was already handled this turn — prevent re-check loop
       _skipLevelUpCheck: true,
     } as GameState,
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player),
+    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
   };
 }
 
@@ -1674,11 +1681,12 @@ function updatePlayerMastery(
   player: PlayerState,
   skill: SkillName,
   isCorrect: boolean,
-  difficulty: 1 | 2 | 3
+  difficulty: 1 | 2 | 3,
+  timedOut: boolean = false
 ): { newMastery: number; previousMastery: number } {
   const previousMastery = player.masteryStates[skill] ?? INITIAL_MASTERY;
   const params = getAdjustedParams(difficulty);
-  const newMastery = updateMastery(previousMastery, isCorrect, params);
+  const newMastery = timedOut ? previousMastery : updateMastery(previousMastery, isCorrect, params);
   return { newMastery, previousMastery };
 }
 
@@ -1693,7 +1701,8 @@ function applyAnswerToPlayer(
   player: PlayerState,
   skillName: string,
   isCorrect: boolean,
-  newMastery: number
+  newMastery: number,
+  timedOut: boolean = false
 ): Partial<PlayerState> {
   return {
     totalQuestions: player.totalQuestions + 1,
@@ -1706,7 +1715,9 @@ function applyAnswerToPlayer(
     },
     consecutiveFailures: {
       ...player.consecutiveFailures,
-      [skillName]: isCorrect ? 0 : (player.consecutiveFailures[skillName] ?? 0) + 1,
+      [skillName]: timedOut
+        ? (player.consecutiveFailures[skillName] ?? 0)
+        : isCorrect ? 0 : (player.consecutiveFailures[skillName] ?? 0) + 1,
     },
   };
 }
@@ -1715,21 +1726,23 @@ function updatePlayerAfterAnswer(
   state: GameState,
   isCorrect: boolean,
   challenge: { skillName: string },
-  newMastery: number
+  newMastery: number,
+  timedOut: boolean = false
 ): PlayerState[] {
   return updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
     ...p,
-    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery),
+    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery, timedOut),
   }));
 }
 
 function buildAnswerResult(
   isCorrect: boolean,
-  challenge: { options: string[]; correctIndex: number; skillName: string },
+  challenge: MathChallenge,
   newMastery: number,
   previousMastery: number,
   reward: RewardResult,
-  player: PlayerState
+  player: PlayerState,
+  timedOut: boolean = false
 ): AnswerResult {
   return {
     isCorrect,
@@ -1739,7 +1752,21 @@ function buildAnswerResult(
     reward,
     streakCount: isCorrect ? player.streak + 1 : 0,
     streakBroken: !isCorrect && player.streak > 0,
-    showHintNext: !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
-    timedOut: false,
+    showHintNext: !timedOut && !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
+    timedOut,
+    feedback: buildWorkedFeedback(challenge),
+  };
+}
+
+function answerEvidence(
+  challenge: MathChallenge,
+  selectedIndex: number | null,
+  receivedAt: number
+): { isCorrect: boolean; timedOut: boolean; timeMs: number } {
+  const timedOut = selectedIndex === null;
+  return {
+    isCorrect: !timedOut && selectedIndex === challenge.correctIndex,
+    timedOut,
+    timeMs: Math.max(0, receivedAt - challenge.startedAt),
   };
 }

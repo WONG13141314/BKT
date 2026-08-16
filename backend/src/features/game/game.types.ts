@@ -338,6 +338,8 @@ export interface AnswerResult {
   showHintNext: boolean;
   /** True when the server auto-submitted because the timer ran out. */
   timedOut: boolean;
+  /** Private, operation-specific worked line for the learner who answered. */
+  feedback: string;
 }
 
 // ---- Rewards ----

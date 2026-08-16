@@ -206,8 +206,9 @@ export interface AnswerResult {
   streakCount: number;
   streakBroken: boolean;
   /** True when the server auto-submitted because the timer ran out. */
-  timedOut?: boolean;
+  timedOut: boolean;
   showHintNext: boolean;
+  feedback: string;
 }
 
 // ---- Tile Events ----
