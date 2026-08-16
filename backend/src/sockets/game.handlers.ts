@@ -14,6 +14,7 @@ import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
+import { buildWorkedFeedback } from '../bkt/feedback';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
@@ -199,6 +200,52 @@ function clearPhaseTimer(gameId: string) {
   phaseTimers.clear(gameId);
 }
 
+/** Sends reveal details only to the authenticated learner who answered a duel side. */
+function emitPrivateDuelAnswerResult(
+  io: Server,
+  socketRoom: string,
+  state: GameState,
+  seatId: string
+) {
+  const duel = state.duelState;
+  const side = duel && [duel.challenger, duel.owner].find((candidate) => candidate.playerId === seatId);
+  const learner = state.players.find((player) => player.id === seatId);
+  const room = io.sockets.adapter.rooms.get(socketRoom);
+  if (!side || !learner || learner.isBot || !room) return;
+
+  const result = {
+    isCorrect: side.isCorrect === true,
+    correctAnswer: side.challenge.options[side.challenge.correctIndex] ?? '',
+    reward: { type: 'NONE' as const, value: 0, description: 'Duel answer recorded.' },
+    streakCount: learner.streak,
+    streakBroken: false,
+    showHintNext: false,
+    timedOut: side.timedOut === true,
+    feedback: buildWorkedFeedback(side.challenge),
+  };
+
+  for (const socketId of room) {
+    const recipient = io.sockets.sockets.get(socketId);
+    if (recipient?.data?.player?.id !== learner.playerId) continue;
+    recipient.emit('game:answer-result', { result, playerId: learner.id });
+  }
+}
+
+function emitTimedOutDuelAnswerResults(
+  io: Server,
+  socketRoom: string,
+  state: GameState,
+  exceptSeatId?: string
+) {
+  const duel = state.duelState;
+  if (!duel?.resolution) return;
+  for (const side of [duel.challenger, duel.owner]) {
+    if (side.timedOut && side.playerId !== exceptSeatId) {
+      emitPrivateDuelAnswerResult(io, socketRoom, state, side.playerId);
+    }
+  }
+}
+
 function canBuildOnEndTurn(state: GameState): boolean {
   if (state.turnPhase !== 'END_TURN') return false;
 
@@ -305,6 +352,7 @@ async function resolveStall(io: Server, gameId: string) {
 
   // A duel forced to settle reveals its result like a normal one.
   emitDuelResult(io, socketRoom, outcome.state);
+  emitTimedOutDuelAnswerResults(io, socketRoom, outcome.state);
 
   publishTransition(io, gameId, socketRoom, outcome.state, stalledPhase === 'MOVING');
 
@@ -690,10 +738,12 @@ export const registerGameHandlers = (
     if (!outcome) return;
 
     const socketRoom = getSocketRoom(d.gameId);
+    emitPrivateDuelAnswerResult(io, socketRoom, outcome.state, seat.id);
     broadcastState(io, socketRoom, outcome.state);
 
     if (outcome.resolution) {
       emitDuelResult(io, socketRoom, outcome.state);
+      emitTimedOutDuelAnswerResults(io, socketRoom, outcome.state, seat.id);
       // A human landlord may be the last respondent during a bot's turn. The
       // bot has nothing left to review or click, so hand play back immediately.
       // Human challengers keep the result visible until they end their turn.

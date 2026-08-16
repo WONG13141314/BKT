@@ -53,4 +53,20 @@ describe('buildWorkedFeedback', () => {
       correctIndex: 0,
     }))).toBe('Division: 86 ÷ 4 = 21 remainder 2.');
   });
+
+  it.each([
+    ['Addition', 'Bank offer: 30% off RM100 saves RM30. RM70 + RM30 = ?', '100', 'Addition: RM70 + RM30 = RM100.'],
+    ['Subtraction', 'Bank offer: 30% off RM100 saves RM30. What is RM100 − RM30?', '70', 'Subtraction: RM100 − RM30 = RM70.'],
+    ['Multiplication', 'Bank offer: 30% of RM100 is the saving. What is RM100 × 0.3?', '30', 'Multiplication: RM100 × 0.3 = RM30.'],
+    ['Division', 'Bank offer: 30% off RM100 makes the price RM70. Split it into 2 equal payments: RM70 ÷ 2 = ?', '35', 'Division: RM70 ÷ 2 = RM35.'],
+  ] as const)('works the contextual Smart Buy %s calculation', (skillName, text, answer, expected) => {
+    expect(buildWorkedFeedback(challenge({
+      skillName,
+      context: 'SMART_BUY',
+      questionData: { type: 'mcq', text },
+      text,
+      options: ['0', answer, '99', '101'],
+      correctIndex: 1,
+    }))).toBe(expected);
+  });
 });

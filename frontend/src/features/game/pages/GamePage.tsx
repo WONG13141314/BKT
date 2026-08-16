@@ -85,6 +85,7 @@ export function GamePage() {
   // arrives on its own channel rather than inside the shared state broadcast.
   const [duel, setDuel] = useState<PublicDuelState | null>(null);
   const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
+  const visibleChallengeIdRef = useRef<string | null>(null);
 
   // Visual motion may delay a modal briefly, but it must never become the
   // authority for the turn. The server phase always controls legal actions.
@@ -180,8 +181,10 @@ export function GamePage() {
         setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
       }
       if (state.currentChallenge) {
+        visibleChallengeIdRef.current = state.currentChallenge.id;
         setActiveChallenge(state.currentChallenge);
       } else if (!isChallengePhase(state.turnPhase)) {
+        visibleChallengeIdRef.current = null;
         setChallengePlayerId(null);
       }
       // The server has moved past the duel — clear it if it's still unresolved,
@@ -193,6 +196,7 @@ export function GamePage() {
     },
     onChallenge: (data) => {
       setChallengePlayerId(data.playerId);
+      visibleChallengeIdRef.current = data.challenge.id;
       setActiveChallenge(data.challenge);
       setAnswerResult(null);
       // The duel reveal lingers deliberately so the table can read it, but the
@@ -239,6 +243,8 @@ export function GamePage() {
       const answeredId = activeChallenge?.id;
 
       setTimeout(() => {
+        if (visibleChallengeIdRef.current !== answeredId) return;
+        visibleChallengeIdRef.current = null;
         setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
         setAnswerResult(null);
         setChallengePlayerId(null);

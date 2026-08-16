@@ -46,7 +46,7 @@ import {
   DuelResolution,
 } from './game.types';
 import { executeBotTurn, submitBotDuelAnswers, BotTurnStep } from './bot.engine';
-import { awaitPlayerWrites, loadMasteryPriors, newGameId, recordAttempt } from './game.persistence';
+import { loadMasteryPriorsAfterWrites, newGameId, recordAttempt } from './game.persistence';
 
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
@@ -87,8 +87,11 @@ function submitAnswer(
   // Captured before grading — the engine clears the challenge as it resolves.
   const challenge = state.currentChallenge;
   const player = state.players[state.currentPlayerIndex];
+  const acceptedIndex = receivedAt >= challenge.startedAt + challenge.timeLimit * 1_000
+    ? null
+    : selectedIndex;
 
-  const { newState, result } = process(state, selectedIndex, receivedAt);
+  const { newState, result } = process(state, acceptedIndex, receivedAt);
   activeGames.set(gameId, newState);
 
   // Fire-and-forget: gameplay never waits on the database.
@@ -96,7 +99,7 @@ function submitAnswer(
     player,
     dbGameId: state.dbGameId,
     challenge,
-    selectedIndex,
+    selectedIndex: acceptedIndex,
     timeMs: Math.max(0, receivedAt - challenge.startedAt),
     previousMastery: result.previousMastery,
     newMastery: result.newMastery,
@@ -142,8 +145,7 @@ export const gameService = {
   createGame: async (gameId: string, players: GamePlayerSeed[]): Promise<GameState> => {
     // Resume each returning player's BKT chain. Bots have no Player row.
     const humanIds = players.filter((p) => !p.isBot).map((p) => p.playerId);
-    await Promise.all(humanIds.map(awaitPlayerWrites));
-    const priors = await loadMasteryPriors(humanIds);
+    const priors = await loadMasteryPriorsAfterWrites(humanIds);
 
     const seeded = players.map((p) => {
       const prior = p.isBot ? undefined : priors.get(p.playerId);

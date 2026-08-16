@@ -86,34 +86,46 @@ export async function warmPersistence(): Promise<void> {
 // Chained per player so two answers can never race on the same MasteryState.
 // Serial per player, concurrent across players.
 
-const writeQueues = new Map<string, Promise<unknown>>();
+export class PlayerWriteQueue {
+  private readonly tails = new Map<string, Promise<unknown>>();
 
-function enqueue(key: string, task: () => Promise<unknown>): void {
-  const previous = writeQueues.get(key) ?? Promise.resolve();
+  /** Serializes both writes and read barriers for one learner. */
+  enqueue<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.tails.get(key) ?? Promise.resolve();
+    const next = previous.then(task);
+    const tail = next.catch((err) => {
+      console.error(`[persistence] operation failed for player ${key}:`, err);
+    });
+    this.tails.set(key, tail);
 
-  const next = previous.then(task).catch((err) => {
-    console.error(`[persistence] write failed for player ${key}:`, err);
-  });
+    // Drop the entry only if this settled operation remains the tail; a newer
+    // write/read barrier must keep its queue alive.
+    void tail.then(() => {
+      if (this.tails.get(key) === tail) this.tails.delete(key);
+    });
 
-  writeQueues.set(key, next);
+    return tail as Promise<T>;
+  }
 
-  // Drop the entry once this task is the tail and has settled, so the map does
-  // not grow for the lifetime of the process.
-  void next.then(() => {
-    if (writeQueues.get(key) === next) writeQueues.delete(key);
-  });
+  async waitFor(playerId: string): Promise<void> {
+    await this.tails.get(playerId);
+  }
+
+  async drain(): Promise<void> {
+    while (this.tails.size > 0) await Promise.all([...this.tails.values()]);
+  }
 }
+
+const playerWriteQueue = new PlayerWriteQueue();
 
 /** Wait for all queued writes to drain. Tests only — nothing in the game waits. */
 export async function flushWrites(): Promise<void> {
-  while (writeQueues.size > 0) {
-    await Promise.all([...writeQueues.values()]);
-  }
+  await playerWriteQueue.drain();
 }
 
 /** Wait for a learner's queued attempt writes before reading their next priors. */
 export async function awaitPlayerWrites(playerId: string): Promise<void> {
-  await writeQueues.get(playerId);
+  await playerWriteQueue.waitFor(playerId);
 }
 
 // ---- Game start: load priors ----
@@ -177,6 +189,21 @@ export async function loadMasteryPriors(
   return result;
 }
 
+/**
+ * Queue each learner's prior read behind their writes. This is a read barrier,
+ * not a snapshot wait: each query has a single linear position in that
+ * learner's queue, so a write already enqueued cannot be missed by a new game.
+ */
+export async function loadMasteryPriorsAfterWrites(
+  playerIds: string[]
+): Promise<Map<string, PlayerPriors>> {
+  const entries = await Promise.all(playerIds.map(async (playerId) => {
+    const priors = await playerWriteQueue.enqueue(playerId, () => loadMasteryPriors([playerId]));
+    return [playerId, priors.get(playerId)] as const;
+  }));
+  return new Map(entries.filter((entry): entry is readonly [string, PlayerPriors] => entry[1] !== undefined));
+}
+
 // ---- Each answer: record the attempt ----
 
 export interface AttemptRecord {
@@ -221,7 +248,7 @@ export function recordAttempt(record: AttemptRecord): void {
   const { player } = record;
   if (!isRecordablePlayer(player) || PERSISTENCE_DISABLED) return;
 
-  enqueue(player.playerId, () => writeAttempt(record));
+  void playerWriteQueue.enqueue(player.playerId, () => writeAttempt(record));
 }
 
 /**
@@ -315,7 +342,7 @@ export function newGameId(): string {
  */
 export function recordGameResult(state: GameState, scores: FinalScore[]): void {
   if (PERSISTENCE_DISABLED) return;
-  enqueue(`game:${state.dbGameId}`, () => writeGameResult(state, scores));
+  void playerWriteQueue.enqueue(`game:${state.dbGameId}`, () => writeGameResult(state, scores));
 }
 
 async function writeGameResult(state: GameState, scores: FinalScore[]): Promise<void> {

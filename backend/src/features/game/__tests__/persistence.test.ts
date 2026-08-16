@@ -9,9 +9,12 @@ import { initializeGameState } from '../game.engine';
 import {
   buildAttemptData,
   isRecordablePlayer,
+  PlayerWriteQueue,
   recordAttempt,
   type AttemptRecord,
 } from '../game.persistence';
+import * as persistence from '../game.persistence';
+import { gameService } from '../game.service';
 import { INITIAL_MASTERY } from '../../../bkt/bkt.defaults';
 import { getAdjustedParams } from '../../../bkt/bkt.selector';
 import { SKILL_NAMES } from '../game.constants';
@@ -94,6 +97,45 @@ describe('Resuming mastery across sessions', () => {
 
     expect(first.id).toBe(second.id);
     expect(first.dbGameId).not.toBe(second.dbGameId);
+  });
+});
+
+describe('Per-player prior read barriers', () => {
+  it('runs a deferred read after the learner write already queued before it', async () => {
+    const queue = new PlayerWriteQueue();
+    let mastery = 0.1;
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve; });
+
+    const write = queue.enqueue('db-alice', async () => {
+      await writeGate;
+      mastery = 0.82;
+    });
+    const read = queue.enqueue('db-alice', async () => mastery);
+
+    releaseWrite();
+    await write;
+    expect(await read).toBe(0.82);
+  });
+
+  it('makes createGame wait for the queued prior read that observes the latest attempt', async () => {
+    let releaseRead!: () => void;
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const latest = new Map([['db-alice', { mastery: { Addition: 0.82 }, attempts: { Addition: 6 } }]]);
+    const barrier = jest.spyOn(persistence, 'loadMasteryPriorsAfterWrites').mockImplementation(async () => {
+      await readGate;
+      return latest;
+    });
+
+    const creating = gameService.createGame('game_QUEUE_BARRIER', [BASE_PLAYERS[0]]);
+    expect(barrier).toHaveBeenCalledWith(['db-alice']);
+    releaseRead();
+
+    const state = await creating;
+    expect(state.players[0].masteryStates.Addition).toBe(0.82);
+    expect(state.players[0].skillAttempts.Addition).toBe(6);
+    gameService.removeGame('game_QUEUE_BARRIER');
+    barrier.mockRestore();
   });
 });
 

@@ -1763,7 +1763,9 @@ function answerEvidence(
   selectedIndex: number | null,
   receivedAt: number
 ): { isCorrect: boolean; timedOut: boolean; timeMs: number } {
-  const timedOut = selectedIndex === null;
+  // The answer window is [startedAt, expiresAt): an answer received exactly at
+  // expiresAt is too late, regardless of presentation grace or timer callback.
+  const timedOut = selectedIndex === null || receivedAt >= challenge.startedAt + challenge.timeLimit * 1_000;
   return {
     isCorrect: !timedOut && selectedIndex === challenge.correctIndex,
     timedOut,

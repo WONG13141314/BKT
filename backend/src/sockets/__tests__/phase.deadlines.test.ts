@@ -202,7 +202,7 @@ describe('movement acknowledgement', () => {
     const state = makeGameState({
       id: gameId,
       turnPhase: 'JAIL_CHALLENGE',
-      currentChallenge: makePrivateChallenge({ context: 'JAIL_ESCAPE' }),
+      currentChallenge: makePrivateChallenge({ context: 'JAIL_ESCAPE', startedAt: Date.now() }),
     });
     state.players[0] = { ...state.players[0], isInJail: true };
     gameService.replaceState(gameId, state);
