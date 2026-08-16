@@ -16,8 +16,8 @@ import { getCurrentPlayer } from '../features/game/game.engine';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
-  findMasteryReportForSocket,
   publishFinishedToSocket,
+  publishGameRecoveryToSocket,
   publishGameState,
   publishGameStateToSocket,
   toPublicDuelState,
@@ -168,13 +168,12 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
     // side by side tells the weakest child, in front of their friends, that they
     // are bottom of the table. Each player gets their own report and no one
     // else's.
-    const reports = gameService.getMasteryReports(state.id) ?? [];
     const room = io.sockets.adapter.rooms.get(socketRoom);
 
     for (const socketId of room ?? []) {
       const s = io.sockets.sockets.get(socketId);
       if (!s) continue;
-      const report = findMasteryReportForSocket(s, reports, state);
+      const report = gameService.getMasteryReportForPlayer(state.id, s.data?.player?.id);
       publishFinishedToSocket(s, state, scores, report);
     }
 
@@ -560,16 +559,10 @@ export const registerGameHandlers = (
     socket.data.gameId = data.gameId;
 
     if (state.phase === 'FINISHED') {
-      publishGameStateToSocket(socket, state);
-      const scores = gameService.getScores(state.id);
-      if (scores) {
-        publishFinishedToSocket(
-          socket,
-          state,
-          scores,
-          findMasteryReportForSocket(socket, gameService.getMasteryReports(state.id) ?? [], state)
-        );
-      }
+      publishGameRecoveryToSocket(socket, state, {
+        scores: gameService.getScores(state.id),
+        masteryReport: gameService.getMasteryReportForPlayer(state.id, playerId),
+      });
       return;
     }
 
@@ -577,13 +570,14 @@ export const registerGameHandlers = (
     const isActivePlayer = activePlayer?.playerId === playerId;
 
     // The player is back — replace disconnect grace with this phase's normal
-    // deadline before publishing their restored snapshot.
-    if (isActivePlayer) {
+    // deadline before publishing their restored snapshot. MOVING already has
+    // a shorter presentation fallback, so reconnecting must not extend it.
+    if (isActivePlayer && state.turnPhase !== 'MOVING') {
       savePhaseDeadline(data.gameId, state, null);
       armPhaseTimer(io, data.gameId);
     }
 
-    publishGameStateToSocket(socket, gameService.getGameSync(data.gameId) ?? state);
+    publishGameRecoveryToSocket(socket, gameService.getGameSync(data.gameId) ?? state);
   });
 
   socket.on('game:request-challenge', async (data: { gameId: string }) => {

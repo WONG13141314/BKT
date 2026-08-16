@@ -106,6 +106,21 @@ export function publishGameStateToSocket(socket: Socket, state: GameState): void
   publishDuelToSocket(socket, state);
 }
 
+/** Restores every authoritative payload a single recipient may receive. */
+export function publishGameRecoveryToSocket(
+  socket: Socket,
+  state: GameState,
+  finished: { scores: FinalScore[] | null; masteryReport: MasteryReport | null } = {
+    scores: null,
+    masteryReport: null,
+  }
+): void {
+  publishGameStateToSocket(socket, state);
+  if (state.phase === 'FINISHED' && finished.scores) {
+    publishFinishedToSocket(socket, state, finished.scores, finished.masteryReport);
+  }
+}
+
 /** Sends the public scores and only the caller's private learning report. */
 export function publishFinishedToSocket(
   socket: Socket,

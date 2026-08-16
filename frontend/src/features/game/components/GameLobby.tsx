@@ -23,6 +23,10 @@ interface RoomState {
   status: string;
 }
 
+function lobbySeatStorageKey(playerId: string): string {
+  return `mm.lobby-seat.${playerId}`;
+}
+
 export function GameLobby() {
   const { socket, isConnected, connectSocket } = useSocket();
   const navigate = useNavigate();
@@ -49,14 +53,18 @@ export function GameLobby() {
     if (!isConnected) return;
     if (hasJoined) return;
 
-    if (action === 'host') {
+    const savedRoomCode = myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null;
+    if (savedRoomCode) {
+      socket.emit('room:resume', { code: savedRoomCode });
+      setHasJoined(true);
+    } else if (action === 'host') {
       socket.emit('room:create');
       setHasJoined(true);
     } else if (action === 'join' && codeParam) {
       socket.emit('room:join', { code: codeParam });
       setHasJoined(true);
     }
-  }, [socket, isConnected, action, codeParam, connectSocket, hasJoined]);
+  }, [socket, isConnected, action, codeParam, connectSocket, hasJoined, myId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -66,31 +74,53 @@ export function GameLobby() {
       setError(null);
       if (myId && data.players.some((seat) => seat.id === myId)) {
         sessionStorage.setItem(`mm.game-seat.${data.code}`, myId);
+        sessionStorage.setItem(lobbySeatStorageKey(myId), data.code);
       }
     };
     const onRoomError = (data: { message: string }) => setError(data.message);
     const onGameStart = (data: { roomCode: string }) => navigate(`/game?code=${data.roomCode}`);
     const onRoomDeleted = () => {
+      if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
       setRoom(null);
       setError('The room has been closed.');
+    };
+    const onRoomRemoved = (data: { code: string; message: string }) => {
+      if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+      setHasJoined(false);
+      setRoom(null);
+      setError(data.message);
+    };
+    const resumeRoom = () => {
+      const code = room?.code ?? (myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null);
+      if (code) socket.emit('room:resume', { code });
     };
 
     socket.on('room:update', onRoomUpdate);
     socket.on('room:error', onRoomError);
     socket.on('game:start', onGameStart);
     socket.on('room:deleted', onRoomDeleted);
+    socket.on('room:removed', onRoomRemoved);
+    socket.on('connect', resumeRoom);
+
+    if (socket.connected && room?.code) resumeRoom();
 
     return () => {
       socket.off('room:update', onRoomUpdate);
       socket.off('room:error', onRoomError);
       socket.off('game:start', onGameStart);
       socket.off('room:deleted', onRoomDeleted);
+      socket.off('room:removed', onRoomRemoved);
+      socket.off('connect', resumeRoom);
     };
-  }, [socket, navigate, myId]);
+  }, [socket, navigate, myId, room?.code]);
 
   const toggleReady = () => { if (socket) socket.emit('room:ready'); };
   const startGame = () => { if (socket) socket.emit('room:start'); };
-  const leaveRoom = () => { if (socket) socket.emit('room:leave'); navigate('/'); };
+  const leaveRoom = () => {
+    if (socket) socket.emit('room:leave');
+    if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+    navigate('/');
+  };
 
   const addBot = () => {
     if (socket) socket.emit('room:add-bot', { difficulty: botDifficulty });

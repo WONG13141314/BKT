@@ -539,4 +539,13 @@ export const gameService = {
       .filter((p) => !p.isBot)
       .map((p) => generateMasteryReport(p));
   },
+
+  /** Returns only the authenticated human player's private learning report. */
+  getMasteryReportForPlayer: (gameId: string, dbPlayerId: string): MasteryReport | null => {
+    const state = activeGames.get(gameId);
+    const player = state?.players.find((candidate) =>
+      candidate.playerId === dbPlayerId && !candidate.isBot
+    );
+    return player ? generateMasteryReport(player) : null;
+  },
 };
