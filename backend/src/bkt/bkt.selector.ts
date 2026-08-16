@@ -58,6 +58,27 @@ function getDifficultyFromMastery(pMastery: number, attempts: number): 1 | 2 | 3
   return difficulty;
 }
 
+/**
+ * Division remains its own BKT skill. Multiplication and subtraction are used
+ * only as readiness evidence because both procedures are prerequisites for
+ * completing a long-division step.
+ */
+export function capDivisionDifficulty(
+  proposed: 1 | 2 | 3,
+  mastery: Record<string, number>,
+  attempts: Record<string, number>
+): 1 | 2 | 3 {
+  const prerequisite = Math.min(
+    mastery.Multiplication ?? INITIAL_MASTERY,
+    mastery.Subtraction ?? INITIAL_MASTERY
+  );
+  const evidence = Math.min(attempts.Multiplication ?? 0, attempts.Subtraction ?? 0);
+
+  if (prerequisite < 0.35 || evidence < 2) return 1;
+  if (prerequisite < 0.65 || evidence < 5) return Math.min(proposed, 2) as 1 | 2;
+  return proposed;
+}
+
 // ---- BKT Parameters by Difficulty ----
 
 export interface AdjustedBktParams {
@@ -265,6 +286,10 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   const skillFailures = consecutiveFailures[selectedSkill] ?? 0;
   if (skillFailures >= 2) {
     difficulty = 1; // Rebuild confidence after consecutive failures
+  }
+
+  if (selectedSkill === 'Division') {
+    difficulty = capDivisionDifficulty(difficulty, masteryStates, skillAttempts ?? {});
   }
 
   // 3. Generate the question using the selected skill and difficulty

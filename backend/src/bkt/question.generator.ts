@@ -11,6 +11,7 @@ import {
   LongDivisionStep,
   QuestionData,
 } from '../features/game/game.types';
+import { SMART_BUY_DISCOUNT } from '../features/game/game.constants';
 
 // ---- Public Interface ----
 
@@ -752,7 +753,53 @@ export function generateSmartBuyQuestion(
   skillName?: string
 ): GeneratedQuestion {
   const targetSkill = skillName || 'Subtraction';
-  return generateQuestion(targetSkill, difficulty);
+  const discountedPrice = Math.floor(propertyPrice * (1 - SMART_BUY_DISCOUNT));
+  const discountAmount = propertyPrice - discountedPrice;
+  const discountPercent = SMART_BUY_DISCOUNT * 100;
+
+  let text: string;
+  let correct: number;
+  let misconceptions: number[];
+
+  switch (targetSkill) {
+    case 'Addition':
+      text = `Bank offer: ${discountPercent}% off RM${propertyPrice} saves RM${discountAmount}. RM${discountedPrice} + RM${discountAmount} = ?`;
+      correct = propertyPrice;
+      misconceptions = [discountedPrice, discountAmount, propertyPrice + discountAmount];
+      break;
+    case 'Multiplication':
+      text = `Bank offer: ${discountPercent}% of RM${propertyPrice} is the saving. What is RM${propertyPrice} × ${SMART_BUY_DISCOUNT}?`;
+      correct = discountAmount;
+      misconceptions = [propertyPrice, discountedPrice, discountAmount * 2];
+      break;
+    case 'Division': {
+      const preferredPayments = [2, 4, 8][difficulty - 1];
+      const paymentCount = discountedPrice % preferredPayments === 0
+        ? preferredPayments
+        : [4, 2, 5, 3].find((count) => discountedPrice % count === 0) ?? 1;
+      text = `Bank offer: ${discountPercent}% off RM${propertyPrice} makes the price RM${discountedPrice}. Split it into ${paymentCount} equal payments: RM${discountedPrice} ÷ ${paymentCount} = ?`;
+      correct = discountedPrice / paymentCount;
+      misconceptions = [discountedPrice, discountAmount, correct * paymentCount];
+      break;
+    }
+    case 'Subtraction':
+    default:
+      text = `Bank offer: ${discountPercent}% off RM${propertyPrice} saves RM${discountAmount}. What is RM${propertyPrice} − RM${discountAmount}?`;
+      correct = discountedPrice;
+      misconceptions = [propertyPrice, discountAmount, discountedPrice + discountAmount];
+      break;
+  }
+
+  const { options, correctIndex } = makeOptionsFrom(correct, misconceptions, String, Math.max(3, Math.ceil(propertyPrice * 0.1)));
+
+  return {
+    questionData: { type: 'mcq', text },
+    text,
+    options,
+    correctIndex,
+    difficulty,
+    skillName: targetSkill,
+  };
 }
 
 // ============================================

@@ -1,4 +1,4 @@
-import { generateQuestion, generateQuestionBank } from '../question.generator';
+import { generateQuestion, generateQuestionBank, generateSmartBuyQuestion } from '../question.generator';
 
 describe('Question Generator — Redesigned Math Monopoly', () => {
   describe('generateQuestion', () => {
@@ -55,6 +55,44 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
         expect(q.questionData.divisor).toBeGreaterThan(0);
         expect(q.questionData.steps.length).toBeGreaterThan(0);
       }
+    });
+
+    it.each([1, 2] as const)('generates exact division at difficulty %s', (difficulty) => {
+      for (let i = 0; i < 500; i += 1) {
+        const question = generateQuestion('Division', difficulty).questionData;
+
+        expect(question.type).toBe('long_division');
+        if (question.type === 'long_division') expect(question.remainder).toBe(0);
+      }
+    });
+
+    it('reserves non-zero remainders and remainder prompts for hard division', () => {
+      const targets = new Set<string>();
+
+      for (let i = 0; i < 500; i += 1) {
+        const question = generateQuestion('Division', 3).questionData;
+
+        expect(question.type).toBe('long_division');
+        if (question.type === 'long_division') {
+          expect(question.remainder).toBeGreaterThan(0);
+          targets.add(question.missingTarget);
+        }
+      }
+
+      expect(targets).toContain('remainder');
+    });
+
+    it.each([
+      ['Addition', 240],
+      ['Subtraction', 192],
+      ['Multiplication', 48],
+      ['Division', 48],
+    ] as const)('uses the property price for %s Smart Buy calculations', (skill, expectedAnswer) => {
+      const question = generateSmartBuyQuestion(240, 2, skill);
+
+      expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
+      expect(question.text).toContain('240');
+      expect(question.options[question.correctIndex]).toBe(String(expectedAnswer));
     });
   });
 
@@ -125,6 +163,33 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
           }
         }
       }
+    });
+  });
+
+  describe('Smart Buy question bank', () => {
+    it('keeps 24,000 price-context options valid, unique, and balanced', () => {
+      const correctIndexCounts = [0, 0, 0, 0];
+      const prices = [40, 80, 120, 160, 200, 240];
+      const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'] as const;
+
+      for (const skill of skills) {
+        for (const difficulty of [1, 2, 3] as const) {
+          for (let i = 0; i < 2_000; i += 1) {
+            const price = prices[i % prices.length];
+            const question = generateSmartBuyQuestion(price, difficulty, skill);
+
+            expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
+            expect(question.text).toContain(String(price));
+            expect(question.options).toHaveLength(4);
+            expect(new Set(question.options).size).toBe(4);
+            expect(question.options[question.correctIndex]).toBeDefined();
+            expect(question.options.every((option) => Number.isFinite(Number(option)) && Number(option) >= 0)).toBe(true);
+            correctIndexCounts[question.correctIndex] += 1;
+          }
+        }
+      }
+
+      for (const count of correctIndexCounts) expect(count).toBeGreaterThan(5_000);
     });
   });
 });

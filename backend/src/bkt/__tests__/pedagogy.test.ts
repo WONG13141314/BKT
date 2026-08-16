@@ -8,7 +8,7 @@ import {
   subtractSmallerFromLarger,
   generateQuestion,
 } from '../question.generator';
-import { determineHint, selectChallenge } from '../bkt.selector';
+import { capDivisionDifficulty, determineHint, selectChallenge } from '../bkt.selector';
 import { BOARD_TILES } from '../../features/game/board.config';
 import { SKILL_NAMES } from '../../features/game/game.constants';
 import type { ColumnQuestion, LongDivisionQuestion } from '../../features/game/game.types';
@@ -171,6 +171,27 @@ describe('Hints', () => {
     }
 
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe('Division readiness', () => {
+  it('caps division when multiplication or subtraction evidence is weak', () => {
+    expect(capDivisionDifficulty(3, {
+      Division: 0.9, Multiplication: 0.2, Subtraction: 0.9, Addition: 0.9,
+    }, { Division: 10, Multiplication: 1, Subtraction: 10, Addition: 10 })).toBe(1);
+  });
+
+  it('applies prerequisite readiness only after Division is selected', () => {
+    const challenge = selectChallenge({
+      masteryStates: { Division: 0.9, Multiplication: 0.9, Subtraction: 0.2, Addition: 0.9 },
+      context: 'ROLL_CHALLENGE',
+      consecutiveFailures: { Addition: 0, Subtraction: 0, Multiplication: 0, Division: 0 },
+      skillAttempts: { Addition: 10, Subtraction: 1, Multiplication: 10, Division: 10 },
+      forceSkill: 'Division',
+    });
+
+    expect(challenge.skillName).toBe('Division');
+    expect(challenge.difficulty).toBe(1);
   });
 });
 
