@@ -6,7 +6,7 @@ import './GameOverScreen.css';
 interface GameOverScreenProps {
   scores: FinalScore[];
   players: Player[];
-  masteryReports?: MasteryReport[] | null;
+  masteryReport?: MasteryReport | null;
   onPlayAgain?: () => void;
   onExit?: () => void;
 }
@@ -17,7 +17,7 @@ const RANK_CONFIG: Record<number, { icon: React.ReactNode; className: string }> 
   3: { icon: <Award size={18} />, className: 'rank--bronze' },
 };
 
-export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, onExit }: GameOverScreenProps) {
+export function GameOverScreen({ scores, players, masteryReport, onPlayAgain, onExit }: GameOverScreenProps) {
   const [revealStage, setRevealStage] = useState(0);
   const [showMastery, setShowMastery] = useState(false);
 
@@ -116,7 +116,7 @@ export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, o
         )}
 
         {/* Mastery Report Toggle */}
-        {revealStage >= 3 && masteryReports && masteryReports.length > 0 && (
+        {revealStage >= 3 && masteryReport && (
           <div className="gameover-mastery gameover-reveal">
             <button
               className="mastery-toggle"
@@ -128,38 +128,36 @@ export function GameOverScreen({ scores, players, masteryReports, onPlayAgain, o
 
             {showMastery && (
               <div className="mastery-reports">
-                {masteryReports.map((report) => (
-                  <div key={report.playerId} className="mastery-card">
-                    <h4 className="mastery-player">{report.playerName}</h4>
-                    <div className="mastery-skills">
-                      {report.skills.map((skill) => (
-                        <div key={skill.skillName} className="mastery-bar">
-                          <span className="mastery-label">
-                            {skill.skillName}
-                            {skill.isMastered && (
-                              <span className="mastery-badge" title="Mastered">★</span>
-                            )}
-                          </span>
-                          <div className="mastery-track">
-                            <div
-                              className={`mastery-fill ${skill.isMastered ? 'mastery-fill--mastered' : ''}`}
-                              style={{ width: `${Math.round(skill.mastery * 100)}%` }}
-                            />
-                          </div>
-                          {/* Questions asked, not a percentage: the mastery figure
-                              is a confidence estimate and reads as a test score. */}
-                          <span className="mastery-count">
-                            {skill.totalAttempts > 0 ? `${skill.totalAttempts} asked` : '—'}
-                          </span>
+                <div className="mastery-card">
+                  <h4 className="mastery-player">{masteryReport.playerName}</h4>
+                  <div className="mastery-skills">
+                    {masteryReport.skills.map((skill) => (
+                      <div key={skill.skillName} className="mastery-bar">
+                        <span className="mastery-label">
+                          {skill.skillName}
+                          {skill.isMastered && (
+                            <span className="mastery-badge" title="Mastered">★</span>
+                          )}
+                        </span>
+                        <div className="mastery-track">
+                          <div
+                            className={`mastery-fill ${skill.isMastered ? 'mastery-fill--mastered' : ''}`}
+                            style={{ width: `${Math.round(skill.mastery * 100)}%` }}
+                          />
                         </div>
-                      ))}
-                    </div>
-                    <p className="mastery-summary">
-                      Best: {report.bestSkill} · Needs work: {report.weakestSkill} · 
-                      Accuracy: {Math.round(report.overallAccuracy * 100)}%
-                    </p>
+                        {/* Questions asked, not a percentage: the mastery figure
+                            is a confidence estimate and reads as a test score. */}
+                        <span className="mastery-count">
+                          {skill.totalAttempts > 0 ? `${skill.totalAttempts} asked` : '—'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  <p className="mastery-summary">
+                    Best: {masteryReport.bestSkill} · Needs work: {masteryReport.weakestSkill} ·
+                    Accuracy: {Math.round(masteryReport.overallAccuracy * 100)}%
+                  </p>
+                </div>
               </div>
             )}
           </div>

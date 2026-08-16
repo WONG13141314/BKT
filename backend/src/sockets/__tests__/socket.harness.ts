@@ -1,8 +1,42 @@
-import type { Socket } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 
-export function makeSocket(data: Record<string, unknown> = {}): Socket {
-  return {
+type SocketListener = (...args: any[]) => unknown;
+
+export type SocketHarness = Socket & {
+  trigger(event: string, ...args: any[]): Promise<unknown>;
+};
+
+export type ServerHarness = Server & {
+  roomEmitter: { emit: jest.Mock };
+};
+
+let socketNumber = 0;
+
+export function makeSocket(data: Record<string, unknown> = {}): SocketHarness {
+  const listeners = new Map<string, SocketListener>();
+  const socket = {
+    id: `socket-${socketNumber++}`,
     data,
     emit: jest.fn(),
-  } as unknown as Socket;
+    join: jest.fn(),
+    on: jest.fn((event: string, listener: SocketListener) => {
+      listeners.set(event, listener);
+      return socket;
+    }),
+    trigger: async (event: string, ...args: any[]) => listeners.get(event)?.(...args),
+  } as unknown as SocketHarness;
+  return socket;
+}
+
+export function makeServer(sockets: SocketHarness[], gameId = 'game_TEST'): ServerHarness {
+  const roomEmitter = { emit: jest.fn() };
+  const socketRoom = `room:${gameId.replace('game_', '')}`;
+  return {
+    to: jest.fn(() => roomEmitter),
+    sockets: {
+      adapter: { rooms: new Map([[socketRoom, new Set(sockets.map((socket) => socket.id))]]) },
+      sockets: new Map(sockets.map((socket) => [socket.id, socket])),
+    },
+    roomEmitter,
+  } as unknown as ServerHarness;
 }

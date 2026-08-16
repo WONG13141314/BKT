@@ -26,6 +26,21 @@ export function toPublicDuelState(duel: DuelState): PublicDuelState {
   };
 }
 
+/** Finds the sole private learning report that belongs to a socket recipient. */
+export function findMasteryReportForSocket(
+  socket: Socket,
+  reports: MasteryReport[],
+  state?: GameState
+): MasteryReport | null {
+  const viewerId = socket.data?.player?.id;
+  const seat = state?.players.find((player) =>
+    player.playerId === viewerId || player.id === viewerId
+  );
+  return reports.find((report) =>
+    report.playerId === viewerId || report.playerId === seat?.id || report.playerId === seat?.playerId
+  ) ?? null;
+}
+
 function isSocketPlayer(socket: Socket, playerId: string): boolean {
   const viewerId = socket.data?.player?.id;
   return viewerId === playerId;

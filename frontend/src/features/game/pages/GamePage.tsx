@@ -71,7 +71,7 @@ export function GamePage() {
 
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
-  const [masteryReports, setMasteryReports] = useState<MasteryReport[] | null>(null);
+  const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
   const [auctionSeconds, setAuctionSeconds] = useState(0);
   const [rollRequested, setRollRequested] = useState(false);
@@ -267,7 +267,7 @@ export function GamePage() {
     },
     onGameFinished: (data) => {
       setFinalScores(data.scores);
-      setMasteryReports(data.masteryReports ?? null);
+      setMasteryReport(data.masteryReport ?? null);
     },
     onBotAction: () => {
       // Bot actions are communicated through board animations (dice, piece movement).
@@ -519,7 +519,7 @@ export function GamePage() {
       <GameOverScreen
         scores={finalScores}
         players={gameState.players}
-        masteryReports={masteryReports}
+        masteryReport={masteryReport}
         onExit={() => navigate('/')}
       />
     );

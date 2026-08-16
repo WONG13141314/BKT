@@ -21,7 +21,7 @@ interface GameSocketEvents {
   /** Duel opened or updated. `myChallenge` is null for onlookers and once answered. */
   onDuel: (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => void;
   onDuelResult: (data: { duel: PublicDuelState; resolution: DuelResolution }) => void;
-  onGameFinished: (data: { scores: FinalScore[]; masteryReports: MasteryReport[] | null }) => void;
+  onGameFinished: (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => void;
   onBotAction: (data: { botId: string; botName: string; action: string }) => void;
   onSeatMismatch: (data: { seats: { playerId: string; name: string }[] }) => void;
   onError: (data: { message: string; code?: string }) => void;
@@ -41,7 +41,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleAnswerResult = (data: { result: AnswerResult; playerId: string }) => eventsRef.current.onAnswerResult(data);
     const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => eventsRef.current.onDuel(data);
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
-    const handleFinished = (data: { scores: FinalScore[]; masteryReports: MasteryReport[] | null }) => eventsRef.current.onGameFinished(data);
+    const handleFinished = (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => eventsRef.current.onGameFinished(data);
     const handleBotAction = (data: { botId: string; botName: string; action: string }) => eventsRef.current.onBotAction(data);
     const handleSeatMismatch = (data: { seats: { playerId: string; name: string }[] }) => eventsRef.current.onSeatMismatch(data);
     const handleError = (data: { message: string; code?: string }) => eventsRef.current.onError(data);

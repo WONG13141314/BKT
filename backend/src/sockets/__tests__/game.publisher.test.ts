@@ -1,7 +1,11 @@
 import { toPublicGameState } from '../../features/game/game.public';
-import { publishFinishedToSocket } from '../game.publisher';
+import {
+  findMasteryReportForSocket,
+  publishFinishedToSocket,
+  publishGameState,
+} from '../game.publisher';
 import { makeFinishedFixture, makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
-import { makeSocket } from './socket.harness';
+import { makeServer, makeSocket } from './socket.harness';
 
 describe('game publisher', () => {
   it('projects only public player and game fields', () => {
@@ -30,5 +34,83 @@ describe('game publisher', () => {
       scores,
       masteryReport: report,
     });
+  });
+
+  it('gives the active learner a redacted challenge and observers no answer data', () => {
+    const state = makeGameState({ currentChallenge: makePrivateChallenge({ correctIndex: 2 }) });
+    state.players[0].masteryStates = { Addition: 0.91 };
+    const activeSocket = makeSocket({ player: { id: 'db-player-1' } });
+    const observerSocket = makeSocket({ player: { id: 'db-player-2' } });
+    const io = makeServer([activeSocket, observerSocket]);
+
+    publishGameState(io, state);
+
+    const statePayload = io.roomEmitter.emit.mock.calls.find(([event]) => event === 'game:state')?.[1];
+    expect(JSON.stringify(statePayload)).not.toContain('correctIndex');
+    expect(JSON.stringify(statePayload)).not.toContain('masteryStates');
+    expect(activeSocket.emit).toHaveBeenCalledWith('game:challenge', expect.objectContaining({
+      playerId: 'seat-1',
+      challenge: expect.not.objectContaining({ correctIndex: expect.anything() }),
+    }));
+    expect(observerSocket.emit).toHaveBeenCalledWith('game:challenge-started', {
+      playerId: 'seat-1',
+      context: 'CHALLENGE_CARD',
+    });
+    expect(observerSocket.emit).not.toHaveBeenCalledWith('game:challenge', expect.anything());
+  });
+
+  it('gives each duellist only their own redacted challenge and gives observers none', () => {
+    const state = makeGameState();
+    const challengerChallenge = makePrivateChallenge({ id: 'challenger', correctIndex: 1 });
+    const ownerChallenge = makePrivateChallenge({ id: 'owner', correctIndex: 3 });
+    state.duelState = {
+      tileIndex: 1,
+      tileName: 'Tambah Town',
+      skillName: 'Addition',
+      rentAmount: 50,
+      challenger: {
+        playerId: state.players[0].id,
+        challenge: challengerChallenge,
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      owner: {
+        playerId: state.players[1].id,
+        challenge: ownerChallenge,
+        selectedIndex: null,
+        isCorrect: null,
+        timeMs: null,
+        previousMastery: null,
+        newMastery: null,
+      },
+      startedAt: 1_000,
+      timeLimit: 20,
+      resolution: null,
+    };
+    const challengerSocket = makeSocket({ player: { id: 'db-player-1' } });
+    const ownerSocket = makeSocket({ player: { id: 'db-player-2' } });
+    const observerSocket = makeSocket({ player: { id: 'db-observer' } });
+    const io = makeServer([challengerSocket, ownerSocket, observerSocket]);
+
+    publishGameState(io, state);
+
+    const challengerPayload = challengerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    const ownerPayload = ownerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    const observerPayload = observerSocket.emit.mock.calls.find(([event]) => event === 'game:duel')?.[1];
+    expect(challengerPayload.myChallenge.id).toBe('challenger');
+    expect(ownerPayload.myChallenge.id).toBe('owner');
+    expect(observerPayload.myChallenge).toBeNull();
+    expect(JSON.stringify([challengerPayload, ownerPayload, observerPayload])).not.toContain('correctIndex');
+  });
+
+  it('looks up only the report belonging to the finished-payload recipient', () => {
+    const socket = makeSocket({ player: { id: 'db-player-2' } });
+    const { report } = makeFinishedFixture();
+    const otherReport = { ...report, playerId: 'db-player-2', playerName: 'Ben' };
+
+    expect(findMasteryReportForSocket(socket, [report, otherReport])).toBe(otherReport);
   });
 });

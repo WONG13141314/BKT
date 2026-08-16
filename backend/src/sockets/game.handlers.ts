@@ -15,6 +15,7 @@ import { AnswerResult, GameState } from '../features/game/game.types';
 import { getCurrentPlayer } from '../features/game/game.engine';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
+  findMasteryReportForSocket,
   publishFinishedToSocket,
   publishGameState,
   publishGameStateToSocket,
@@ -164,7 +165,7 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
     for (const socketId of room ?? []) {
       const s = io.sockets.sockets.get(socketId);
       if (!s) continue;
-      const report = reports.find((item) => item.playerId === s.data?.player?.id) ?? null;
+      const report = findMasteryReportForSocket(s, reports, state);
       publishFinishedToSocket(s, state, scores, report);
     }
 
@@ -514,6 +515,19 @@ export const registerGameHandlers = (io: Server, socket: Socket) => {
     socket.data.gameId = data.gameId;
 
     publishGameStateToSocket(socket, state);
+
+    if (state.phase === 'FINISHED') {
+      const scores = gameService.getScores(state.id);
+      if (scores) {
+        publishFinishedToSocket(
+          socket,
+          state,
+          scores,
+          findMasteryReportForSocket(socket, gameService.getMasteryReports(state.id) ?? [], state)
+        );
+      }
+      return;
+    }
 
     const activePlayer = state.players[state.currentPlayerIndex];
     const isActivePlayer = activePlayer && (activePlayer.playerId === playerId || activePlayer.id === playerId);
