@@ -24,6 +24,7 @@ export function makePrivateChallenge(overrides: Partial<MathChallenge> = {}): Ma
     startedAt: 1_000,
     hintLevel: 0,
     hintContent: null,
+    fingerprint: 'mcq:1 + 1 = ?',
     ...overrides,
   };
 }

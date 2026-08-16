@@ -36,6 +36,7 @@ function makeChallenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     startedAt: Date.now(),
     hintLevel: 1,
     hintContent: 'Take it one column at a time.',
+    fingerprint: 'mcq:84 ÷ 4 = ?',
     ...overrides,
   };
 }

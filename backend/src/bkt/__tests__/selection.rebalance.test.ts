@@ -4,7 +4,10 @@
 // distribution rather than on any single pick.
 
 import { selectChallenge } from '../bkt.selector';
+import { questionFingerprint } from '../question.fingerprint';
+import * as questionGenerator from '../question.generator';
 import { ACTIVE_SKILL_NAMES, type SkillName } from '../../features/game/game.constants';
+import type { GeneratedQuestion } from '../question.generator';
 
 const DRAWS = 600;
 
@@ -15,6 +18,24 @@ function tally(pick: () => SkillName): Record<string, number> {
 }
 
 const NO_FAILURES: Record<string, number> = {};
+
+function additionQuestion(topNumber: number, bottomNumber: number): GeneratedQuestion {
+  return {
+    questionData: {
+      type: 'column', operation: '+', topNumber, bottomNumber,
+      placeValues: { tens: { top: 0, bottom: 0 }, ones: { top: topNumber, bottom: bottomNumber } },
+      answer: topNumber + bottomNumber,
+      hasRegrouping: false,
+      answerDigits: { tens: 0, ones: topNumber + bottomNumber },
+      missingPosition: 'answer',
+    },
+    text: `${topNumber} + ${bottomNumber} = (?)`,
+    options: ['0', '1', '2', '3'],
+    correctIndex: 0,
+    difficulty: 1,
+    skillName: 'Addition',
+  };
+}
 
 function withSeededRandom<T>(seed: number, action: () => T): T {
   const originalRandom = Math.random;
@@ -182,5 +203,28 @@ describe('Difficulty pacing', () => {
     });
 
     expect(challenge.difficulty).toBe(1);
+  });
+});
+
+describe('Question rebalance', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('regenerates a normal challenge whose semantic fingerprint is recent', () => {
+    const repeated = additionQuestion(7, 5);
+    const fresh = additionQuestion(8, 5);
+    const generate = jest.spyOn(questionGenerator, 'generateQuestion')
+      .mockReturnValueOnce(repeated)
+      .mockReturnValueOnce(fresh);
+
+    const challenge = selectChallenge({
+      masteryStates: { Addition: 0.1 },
+      context: 'ROLL_CHALLENGE',
+      consecutiveFailures: NO_FAILURES,
+      forceSkill: 'Addition',
+      recentQuestionFingerprints: [questionFingerprint(additionQuestion(5, 7))],
+    });
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(challenge.fingerprint).toBe(questionFingerprint(fresh));
   });
 });

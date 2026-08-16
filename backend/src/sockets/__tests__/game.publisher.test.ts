@@ -13,15 +13,19 @@ describe('game publisher', () => {
     state.players[0].masteryStates = { Addition: 0.91 };
     state.players[0].skillAttempts = { Addition: 8 };
     state.players[0].consecutiveFailures = { Addition: 2 };
-    state.currentChallenge = makePrivateChallenge({ correctIndex: 2 });
+    state.players[0].recentQuestionFingerprints = ['private-history-fingerprint'];
+    state.currentChallenge = makePrivateChallenge({ correctIndex: 2, fingerprint: 'private-challenge-fingerprint' });
 
     const publicState = toPublicGameState(state);
 
     expect(publicState.players[0]).not.toHaveProperty('masteryStates');
     expect(publicState.players[0]).not.toHaveProperty('skillAttempts');
     expect(publicState.players[0]).not.toHaveProperty('consecutiveFailures');
+    expect(publicState.players[0]).not.toHaveProperty('recentQuestionFingerprints');
     expect(publicState).not.toHaveProperty('currentChallenge');
     expect(JSON.stringify(publicState)).not.toContain('correctIndex');
+    expect(JSON.stringify(publicState)).not.toContain('private-history-fingerprint');
+    expect(JSON.stringify(publicState)).not.toContain('private-challenge-fingerprint');
   });
 
   it('sends only the requesting learner report in a finished payload', () => {
@@ -63,9 +67,11 @@ describe('game publisher', () => {
     const state = makeGameState();
     const challengerChallenge = makePrivateChallenge({
       id: 'challenger', correctIndex: 1, difficulty: 1, timeLimit: 25, startedAt: 1_000,
+      fingerprint: 'challenger-private-fingerprint',
     });
     const ownerChallenge = makePrivateChallenge({
       id: 'owner', correctIndex: 3, difficulty: 3, timeLimit: 15, startedAt: 1_000,
+      fingerprint: 'owner-private-fingerprint',
     });
     state.duelState = {
       tileIndex: 1,
@@ -110,6 +116,7 @@ describe('game publisher', () => {
     expect(challengerPayload.duel.timeLimit).toBeUndefined();
     expect(observerPayload.myChallenge).toBeNull();
     expect(JSON.stringify([challengerPayload, ownerPayload, observerPayload])).not.toContain('correctIndex');
+    expect(JSON.stringify([challengerPayload, ownerPayload, observerPayload])).not.toContain('private-fingerprint');
   });
 
   it('withholds a timed-out duellist question while preserving the opponent deadline', () => {

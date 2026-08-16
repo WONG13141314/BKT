@@ -79,6 +79,8 @@ export interface PlayerState {
    */
   skillAttempts: Record<string, number>;
   consecutiveFailures: Record<string, number>; // skillName → consecutive wrong count
+  /** Last eight learning tasks issued to this player; server-only. */
+  recentQuestionFingerprints: string[];
 
   // Bot-specific
   isBot: boolean;
@@ -187,6 +189,8 @@ export interface MathChallenge {
   startedAt: number;            // Unix ms — when the challenge was issued
   hintLevel: 0 | 1 | 2 | 3;
   hintContent: string | null;
+  /** Semantic task identity used only for server-side repetition control. */
+  fingerprint: string;
 }
 
 // ============================================

@@ -185,6 +185,15 @@ describe('Duel payoff matrix', () => {
 });
 
 describe('Duel mechanics', () => {
+  it('records each side\'s fingerprint when a duel is created', () => {
+    const before = stateLandingOnOwnedProperty();
+    const duelState = resolveTileEvent(before);
+    const duel = duelState.duelState!;
+
+    expect(duelState.players[0].recentQuestionFingerprints).toEqual([duel.challenger.challenge.fingerprint]);
+    expect(duelState.players[1].recentQuestionFingerprints).toEqual([duel.owner.challenge.fingerprint]);
+  });
+
   it('keeps all four skills reachable in live property duels', () => {
     const observed = withSeededRandom(0xD0E1, () => {
       const skills = new Set<string>();

@@ -60,6 +60,10 @@ describe('Game Engine — MathOpoly Redesign', () => {
       }
     });
 
+    it('starts each learner with an empty private recent-question window', () => {
+      expect(gameState.players.map((player) => player.recentQuestionFingerprints)).toEqual([[], [], [], []]);
+    });
+
     it('should create property states for all property tiles', () => {
       const propertyCount = gameState.tiles.filter((t) => t.type === 'PROPERTY').length;
       expect(gameState.properties).toHaveLength(propertyCount);
@@ -233,6 +237,48 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(answered.turnPhase).toBe('BUY_DECISION');
       expect(answered.pendingTileEvent?.bankOfferAttempted).toBe(true);
       expect(startSmartBuyChallenge(answered)).toBe(answered);
+    });
+
+    it('records a Smart Buy fingerprint as soon as the question is issued', () => {
+      const offered: GameState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+      };
+
+      const challenged = startSmartBuyChallenge(offered);
+
+      expect(challenged.players[0].recentQuestionFingerprints).toEqual([
+        challenged.currentChallenge!.fingerprint,
+      ]);
+    });
+
+    it('keeps only the eight most recently issued fingerprints', () => {
+      const offered: GameState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: {
+          type: 'PROPERTY',
+          tileIndex: 1,
+          tileName: 'Tambah Alley',
+          propertyPrice: 80,
+        },
+      };
+
+      const afterNineIssues = Array.from({ length: 9 }).reduce<GameState>(
+        (state) => startSmartBuyChallenge(state),
+        offered
+      );
+
+      expect(afterNineIssues.players[0].recentQuestionFingerprints).toHaveLength(8);
+      expect(afterNineIssues.players[0].recentQuestionFingerprints.at(-1)).toBe(
+        afterNineIssues.currentChallenge!.fingerprint
+      );
     });
 
     it('opens an auction and transfers the deed to the highest bidder', () => {

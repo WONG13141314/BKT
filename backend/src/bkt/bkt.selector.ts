@@ -15,7 +15,9 @@ import { ACTIVE_SKILL_NAMES, QUESTION_TIME_LIMITS, SkillName } from '../features
 import {
   generateQuestion,
   generateSmartBuyQuestion,
+  type GeneratedQuestion,
 } from './question.generator';
+import { generateDistinctQuestion } from './question.fingerprint';
 import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 
 // ---- Context-to-Skill Mapping ----
@@ -195,6 +197,8 @@ export interface SelectionInput {
   propertySkillTheme?: SkillName;
   /** Force a skill. Used by the Math Duel so both players face the same one. */
   forceSkill?: SkillName;
+  /** Fingerprints recently issued to this learner; used to avoid repetition. */
+  recentQuestionFingerprints?: readonly string[];
 }
 
 /**
@@ -224,6 +228,7 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     propertyPrice,
     propertySkillTheme,
     forceSkill,
+    recentQuestionFingerprints,
   } = input;
 
   // 1. Eligible skills for this context
@@ -263,12 +268,12 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   }
 
   // 3. Generate the question using the selected skill and difficulty
-  let generated;
-  if (context === 'SMART_BUY' && propertyPrice != null) {
-    generated = generateSmartBuyQuestion(propertyPrice, difficulty, selectedSkill);
-  } else {
-    generated = generateQuestion(selectedSkill, difficulty);
-  }
+  const generated = generateDistinctQuestion((): GeneratedQuestion => {
+    if (context === 'SMART_BUY' && propertyPrice != null) {
+      return generateSmartBuyQuestion(propertyPrice, difficulty, selectedSkill);
+    }
+    return generateQuestion(selectedSkill, difficulty);
+  }, recentQuestionFingerprints ?? []);
 
   // 4. Determine the hint — after generation, so it can point at the actual
   //    column, row or division step the player has to fill in.
@@ -282,7 +287,7 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
 // ---- Helpers ----
 
 function buildChallenge(
-  generated: { questionData: QuestionData; text: string; options: string[]; correctIndex: number },
+  generated: GeneratedQuestion & { fingerprint: string },
   skill: SkillName,
   difficulty: 1 | 2 | 3,
   context: ChallengeContext,
@@ -303,6 +308,7 @@ function buildChallenge(
     startedAt: Date.now(),
     hintLevel: hint.level,
     hintContent: hint.content,
+    fingerprint: generated.fingerprint,
   };
 }
 

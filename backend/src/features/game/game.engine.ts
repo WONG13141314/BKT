@@ -20,6 +20,7 @@ import {
   DuelSide,
   DuelOutcome,
   DuelResolution,
+  MathChallenge,
 } from './game.types';
 import { SKILL_NAMES, SkillName } from './game.constants';
 import {
@@ -112,6 +113,7 @@ export function initializeGameState(
       SKILL_NAMES.map((s) => [s, p.attemptPriors?.[s] ?? 0])
     ),
     consecutiveFailures: Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])),
+    recentQuestionFingerprints: [],
     isBot: p.isBot ?? false,
     botDifficulty: p.botDifficulty,
   }));
@@ -378,11 +380,17 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
   };
 
   // The rent is disputed: challenger and owner answer at the same time.
+  const duelState = buildDuel(player, owner, tile, rent);
   return {
     ...state,
+    players: state.players.map((seat) => {
+      if (seat.id === duelState.challenger.playerId) return rememberIssuedQuestion(seat, duelState.challenger.challenge);
+      if (seat.id === duelState.owner.playerId) return rememberIssuedQuestion(seat, duelState.owner.challenge);
+      return seat;
+    }),
     turnPhase: 'MATH_DUEL',
     pendingTileEvent: event,
-    duelState: buildDuel(player, owner, tile, rent),
+    duelState,
   };
 }
 
@@ -413,6 +421,7 @@ function buildDuel(
       consecutiveFailures: player.consecutiveFailures,
       skillAttempts: player.skillAttempts,
       propertySkillTheme: tile.skillTheme ?? undefined,
+      recentQuestionFingerprints: player.recentQuestionFingerprints,
     }), startedAt });
 
   const side = (player: PlayerState): DuelSide => ({
@@ -692,10 +701,12 @@ export function startSmartBuyChallenge(state: GameState): GameState {
     skillAttempts: player.skillAttempts,
     propertyPrice: event.propertyPrice,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
+    recentQuestionFingerprints: player.recentQuestionFingerprints,
   });
 
   return {
     ...state,
+    players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
     turnPhase: 'SMART_BUY_CHALLENGE',
     currentChallenge: challenge,
   };
@@ -867,11 +878,13 @@ function resolveChallengeCardTile(state: GameState, player: PlayerState): GameSt
       masteryStates: player.masteryStates,
       context: 'CHALLENGE_CARD',
       consecutiveFailures: player.consecutiveFailures,
-    skillAttempts: player.skillAttempts,
+      skillAttempts: player.skillAttempts,
+      recentQuestionFingerprints: player.recentQuestionFingerprints,
     });
 
     return {
       ...state,
+      players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
       challengeCardDeck: newDeck,
       challengeCardIndex: newIndex,
       turnPhase: 'CARD_MATH_CHALLENGE',
@@ -1137,10 +1150,12 @@ export function startJailMathEscape(state: GameState): GameState {
     context: 'JAIL_ESCAPE',
     consecutiveFailures: player.consecutiveFailures,
     skillAttempts: player.skillAttempts,
+    recentQuestionFingerprints: player.recentQuestionFingerprints,
   });
 
   return {
     ...state,
+    players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
     turnPhase: 'JAIL_CHALLENGE',
     currentChallenge: challenge,
   };
@@ -1364,10 +1379,12 @@ export function startLevelUpChallenge(state: GameState): GameState {
     consecutiveFailures: player.consecutiveFailures,
     skillAttempts: player.skillAttempts,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
+    recentQuestionFingerprints: player.recentQuestionFingerprints,
   });
 
   return {
     ...state,
+    players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
     turnPhase: 'LEVEL_UP_CHALLENGE',
     currentChallenge: challenge,
   };
@@ -1628,6 +1645,19 @@ function updatePlayerInList(
   updater: (p: PlayerState) => PlayerState
 ): PlayerState[] {
   return players.map((p, i) => (i === index ? updater(p) : p));
+}
+
+const RECENT_QUESTION_FINGERPRINT_LIMIT = 8;
+
+/** Record issuance, rather than grading, so abandoned prompts still count. */
+function rememberIssuedQuestion(player: PlayerState, challenge: MathChallenge): PlayerState {
+  return {
+    ...player,
+    recentQuestionFingerprints: [
+      ...player.recentQuestionFingerprints,
+      challenge.fingerprint,
+    ].slice(-RECENT_QUESTION_FINGERPRINT_LIMIT),
+  };
 }
 
 function updatePlayerMoney(state: GameState, playerIdx: number, amount: number): GameState {
