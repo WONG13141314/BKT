@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Local feature worktrees
+/.worktrees/
+
 # Environment
 .env
 .env.local
