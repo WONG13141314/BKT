@@ -8,7 +8,6 @@ import {
   initializeGameState,
   getCurrentPlayer,
   startRollPhase,
-  processRollChallengeAnswer,
   movePlayer,
   resolveTileEvent,
   buyPropertyFullPrice,
@@ -26,9 +25,6 @@ import {
   processJailEscapeAnswer,
   payBail,
   waitInJail,
-  startLevelUpChallenge,
-  processLevelUpAnswer,
-  declineLevelUp,
   endTurn,
   calculateFinalScores,
   generateMasteryReport,
@@ -55,16 +51,22 @@ function normalizeRestoredState(state: GameState): GameState {
   // raw boundary value without putting obsolete auction fields back in the
   // live state types.
   const rawState = state as unknown as Record<string, unknown>;
-  const wasLegacyAuction = rawState.turnPhase === 'AUCTION';
+  const liveTurnPhases = new Set<TurnPhase>([
+    'ROLL_PHASE', 'MOVING', 'RESOLVE_TILE', 'BUY_DECISION',
+    'SMART_BUY_CHALLENGE', 'MATH_DUEL', 'CARD_DRAW',
+    'CARD_MATH_CHALLENGE', 'JAIL_DECISION', 'JAIL_CHALLENGE', 'END_TURN',
+  ]);
+  const wasLegacyPhase = !liveTurnPhases.has(rawState.turnPhase as TurnPhase);
   const { auctionState: _legacyAuctionState, ...withoutAuction } = rawState;
   const currentState = withoutAuction as unknown as GameState;
 
   return {
     ...currentState,
-    turnPhase: wasLegacyAuction ? 'END_TURN' : currentState.turnPhase,
-    pendingTileEvent: wasLegacyAuction ? null : currentState.pendingTileEvent,
-    phaseDeadline: wasLegacyAuction ? null : currentState.phaseDeadline,
-    phaseDeadlineFor: wasLegacyAuction ? null : currentState.phaseDeadlineFor,
+    turnPhase: wasLegacyPhase ? 'END_TURN' : currentState.turnPhase,
+    currentChallenge: wasLegacyPhase ? null : currentState.currentChallenge,
+    pendingTileEvent: wasLegacyPhase ? null : currentState.pendingTileEvent,
+    phaseDeadline: wasLegacyPhase ? null : currentState.phaseDeadline,
+    phaseDeadlineFor: wasLegacyPhase ? null : currentState.phaseDeadlineFor,
     players: currentState.players.map((player) => ({
       ...player,
       recentQuestionFingerprints: Array.isArray(player.recentQuestionFingerprints)
@@ -199,15 +201,6 @@ export const gameService = {
     activeGames.set(gameId, newState);
     return newState;
   },
-
-  // ---- Roll Challenge ----
-
-  submitRollChallengeAnswer: (
-    gameId: string,
-    selectedIndex: number | null,
-    receivedAt?: number
-  ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'ROLL_CHALLENGE', processRollChallengeAnswer, selectedIndex, receivedAt),
 
   // ---- Movement ----
 
@@ -416,42 +409,13 @@ export const gameService = {
     return newState;
   },
 
-  // ---- Level Up ----
-
-  startLevelUp: (gameId: string): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'LEVEL_UP_OFFER') return null;
-
-    const newState = startLevelUpChallenge(state);
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
-  submitLevelUpAnswer: (
-    gameId: string,
-    selectedIndex: number | null,
-    receivedAt?: number
-  ): { state: GameState; result: AnswerResult } | null =>
-    submitAnswer(gameId, 'LEVEL_UP_CHALLENGE', processLevelUpAnswer, selectedIndex, receivedAt),
-
-  declineLevelUp: (gameId: string): GameState | null => {
-    const state = activeGames.get(gameId);
-    if (!state || state.turnPhase !== 'LEVEL_UP_OFFER') return null;
-
-    const newState = declineLevelUp(state);
-    activeGames.set(gameId, newState);
-    return newState;
-  },
-
   // ---- End Turn ----
 
   endTurn: (gameId: string): GameState | null => {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'END_TURN') return null;
 
-    // Pass through the _skipLevelUpCheck flag from the state (set by processLevelUpAnswer / declineLevelUp)
-    const skipLevelUp = (state as any)._skipLevelUpCheck === true;
-    const newState = endTurn(state, skipLevelUp);
+    const newState = endTurn(state);
     activeGames.set(gameId, newState);
     return newState;
   },
@@ -502,24 +466,18 @@ export const gameService = {
         return advanced(gameService.startRoll(gameId));
       case 'MOVING':
         return advanced(gameService.executeMove(gameId));
-      case 'ROLL_CHALLENGE':
-        return gameService.submitRollChallengeAnswer(gameId, NO_ANSWER);
       case 'SMART_BUY_CHALLENGE':
         return gameService.submitSmartBuyAnswer(gameId, NO_ANSWER);
       case 'CARD_MATH_CHALLENGE':
         return gameService.submitCardAnswer(gameId, NO_ANSWER);
       case 'JAIL_CHALLENGE':
         return gameService.submitJailAnswer(gameId, NO_ANSWER);
-      case 'LEVEL_UP_CHALLENGE':
-        return gameService.submitLevelUpAnswer(gameId, NO_ANSWER);
       case 'BUY_DECISION':
         return advanced(gameService.skipBuy(gameId));
       case 'MATH_DUEL':
         return advanced(gameService.forceResolveDuel(gameId)?.state ?? null);
       case 'JAIL_DECISION':
         return advanced(gameService.waitInJail(gameId));
-      case 'LEVEL_UP_OFFER':
-        return advanced(gameService.declineLevelUp(gameId));
       case 'CARD_DRAW':
         return advanced(gameService.acknowledgeCard(gameId));
       case 'END_TURN':

@@ -16,8 +16,6 @@ function getPhaseHint(phase: string, isMyTurn: boolean): string | null {
         return 'Choose: offer, buy or skip';
       case 'JAIL_DECISION':
         return 'Choose how to leave jail';
-      case 'LEVEL_UP_OFFER':
-        return 'Choose whether to build';
       case 'CARD_DRAW':
         return 'Open the card';
       case 'MOVING':
@@ -25,11 +23,9 @@ function getPhaseHint(phase: string, isMyTurn: boolean): string | null {
         return 'Moving your token';
       case 'END_TURN':
         return 'Review the board, then end turn';
-      case 'ROLL_CHALLENGE':
       case 'SMART_BUY_CHALLENGE':
       case 'CARD_MATH_CHALLENGE':
       case 'JAIL_CHALLENGE':
-      case 'LEVEL_UP_CHALLENGE':
         return 'Answer the question';
       case 'MATH_DUEL':
         return 'Math duel!';
@@ -39,18 +35,15 @@ function getPhaseHint(phase: string, isMyTurn: boolean): string | null {
   }
 
   switch (phase) {
-    case 'ROLL_CHALLENGE':
     case 'SMART_BUY_CHALLENGE':
     case 'CARD_MATH_CHALLENGE':
     case 'JAIL_CHALLENGE':
-    case 'LEVEL_UP_CHALLENGE':
       return 'Answering';
     // A duel involves the owner too, so it is never just "their" turn.
     case 'MATH_DUEL':
       return 'Math duel';
     case 'BUY_DECISION':
     case 'JAIL_DECISION':
-    case 'LEVEL_UP_OFFER':
     case 'CARD_DRAW':
       return 'Deciding';
     default:

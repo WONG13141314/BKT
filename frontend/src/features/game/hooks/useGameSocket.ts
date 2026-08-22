@@ -91,10 +91,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   const emitMovementComplete = useCallback((diceRollId: number) =>
     emit('game:movement-complete', { diceRollId }), [emit]);
 
-  // Roll Challenge — the turn toll. Correct earns two dice, wrong earns one.
-  const emitRollAnswer = useCallback((selectedIndex: number) =>
-    emit('game:roll-answer', { selectedIndex }), [emit]);
-
   // Buy
   const emitBuyFull = useCallback(() => emit('game:buy-full'), [emit]);
   const emitSmartBuy = useCallback(() => emit('game:smart-buy'), [emit]);
@@ -119,12 +115,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   const emitJailBail = useCallback(() => emit('game:jail-bail'), [emit]);
   const emitJailWait = useCallback(() => emit('game:jail-wait'), [emit]);
 
-  // Level Up
-  const emitLevelUp = useCallback(() => emit('game:level-up'), [emit]);
-  const emitLevelUpAnswer = useCallback((selectedIndex: number) =>
-    emit('game:level-up-answer', { selectedIndex }), [emit]);
-  const emitLevelUpDecline = useCallback(() => emit('game:level-up-decline'), [emit]);
-
   // Request challenge re-sync
   const emitRequestChallenge = useCallback(() => emit('game:request-challenge'), [emit]);
 
@@ -139,7 +129,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   return {
     emitRoll,
     emitMovementComplete,
-    emitRollAnswer,
     emitBuyFull,
     emitSmartBuy,
     emitSmartBuyAnswer,
@@ -151,9 +140,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitJailAnswer,
     emitJailBail,
     emitJailWait,
-    emitLevelUp,
-    emitLevelUpAnswer,
-    emitLevelUpDecline,
     emitEndTurn,
     emitBuildHouse,
     emitRequestChallenge,

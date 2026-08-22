@@ -34,7 +34,6 @@ export const GAME_CONSTANTS = {
   TAX_AMOUNT: 50,
   LUXURY_TAX_AMOUNT: 75,
   BAIL_COST: 50,
-  ROLL_CHALLENGE_BONUS: 0,
   SMART_BUY_DISCOUNT: 0.20,
   LANDLORD_BONUS: 0,
   MAX_JAIL_TURNS: 2,
@@ -115,7 +114,6 @@ export interface Player {
 
 export type TurnPhase =
   | 'ROLL_PHASE'
-  | 'ROLL_CHALLENGE'
   | 'MOVING'
   | 'RESOLVE_TILE'
   | 'BUY_DECISION'
@@ -125,17 +123,13 @@ export type TurnPhase =
   | 'CARD_MATH_CHALLENGE'
   | 'JAIL_DECISION'
   | 'JAIL_CHALLENGE'
-  | 'LEVEL_UP_OFFER'
-  | 'LEVEL_UP_CHALLENGE'
   | 'END_TURN';
 
 export type ChallengeContext =
-  | 'ROLL_CHALLENGE'
   | 'MATH_DUEL'
   | 'SMART_BUY'
   | 'CHALLENGE_CARD'
-  | 'JAIL_ESCAPE'
-  | 'LEVEL_UP';
+  | 'JAIL_ESCAPE';
 
 // ---- Question Data Models ----
 //

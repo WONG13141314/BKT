@@ -65,7 +65,7 @@ describe('Skill selection', () => {
       () =>
         selectChallenge({
           masteryStates: weakAtSubtraction,
-          context: 'ROLL_CHALLENGE',
+          context: 'CHALLENGE_CARD',
           consecutiveFailures: NO_FAILURES,
         }).skillName
     ));
@@ -92,7 +92,7 @@ describe('Skill selection', () => {
             Multiplication: 0.99,
             Division: 0.99,
           },
-          context: 'ROLL_CHALLENGE',
+          context: 'CHALLENGE_CARD',
           consecutiveFailures: NO_FAILURES,
         }).skillName
     ));
@@ -112,7 +112,7 @@ describe('Skill selection', () => {
             Multiplication: 0.5,
             Division: 0.5,
           },
-          context: 'LEVEL_UP',
+          context: 'SMART_BUY',
           consecutiveFailures: NO_FAILURES,
           propertySkillTheme: 'Addition',
         }).skillName
@@ -167,7 +167,7 @@ describe('Difficulty pacing', () => {
   const ask = (pMastery: number, attempts: number) =>
     selectChallenge({
       masteryStates: { Addition: pMastery },
-      context: 'ROLL_CHALLENGE',
+      context: 'CHALLENGE_CARD',
       consecutiveFailures: NO_FAILURES,
       skillAttempts: { Addition: attempts },
       forceSkill: 'Addition',
@@ -196,7 +196,7 @@ describe('Difficulty pacing', () => {
   it('drops to easy after repeated failures, to rebuild confidence', () => {
     const challenge = selectChallenge({
       masteryStates: { Addition: 0.9 },
-      context: 'ROLL_CHALLENGE',
+      context: 'CHALLENGE_CARD',
       consecutiveFailures: { Addition: 2 },
       skillAttempts: { Addition: 20 },
       forceSkill: 'Addition',
@@ -218,7 +218,7 @@ describe('Question rebalance', () => {
 
     const challenge = selectChallenge({
       masteryStates: { Addition: 0.1 },
-      context: 'ROLL_CHALLENGE',
+      context: 'CHALLENGE_CARD',
       consecutiveFailures: NO_FAILURES,
       forceSkill: 'Addition',
       recentQuestionFingerprints: [questionFingerprint(additionQuestion(5, 7))],

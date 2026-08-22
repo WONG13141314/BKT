@@ -8,17 +8,17 @@ describe('game socket account identity', () => {
 
   it('does not let a matching seat id submit an answer against another account learning record', async () => {
     const state = makeGameState({
-      turnPhase: 'ROLL_CHALLENGE',
-      currentChallenge: makePrivateChallenge({ context: 'ROLL_CHALLENGE' }),
+      turnPhase: 'CARD_MATH_CHALLENGE',
+      currentChallenge: makePrivateChallenge({ context: 'CHALLENGE_CARD' }),
     });
     state.players[0] = { ...state.players[0], id: 'alice', playerId: 'bob' };
     gameService.replaceState(state.id, state);
-    const submitAnswer = jest.spyOn(gameService, 'submitRollChallengeAnswer');
+    const submitAnswer = jest.spyOn(gameService, 'submitCardAnswer');
     const socket = makeSocket({ player: { id: 'alice' } });
     const io = makeServer([socket], state.id);
     registerGameHandlers(io, socket);
 
-    await socket.trigger('game:roll-answer', { gameId: state.id, selectedIndex: 0, timeMs: 10 });
+    await socket.trigger('game:card-answer', { gameId: state.id, selectedIndex: 0, timeMs: 10 });
 
     expect(submitAnswer).not.toHaveBeenCalled();
     expect(socket.emit).toHaveBeenCalledWith('game:error', { message: 'Not your turn' });

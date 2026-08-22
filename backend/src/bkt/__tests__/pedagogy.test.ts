@@ -163,7 +163,7 @@ describe('Hints', () => {
     for (let i = 0; i < 60; i++) {
       const challenge = selectChallenge({
         masteryStates: { Division: 0.3, Addition: 0.3, Subtraction: 0.3, Multiplication: 0.3 },
-        context: 'ROLL_CHALLENGE',
+        context: 'CHALLENGE_CARD',
         consecutiveFailures: { Addition: 2, Subtraction: 2, Multiplication: 2, Division: 2 },
         skillAttempts: { Addition: 9, Subtraction: 9, Multiplication: 9, Division: 9 },
       });
@@ -184,7 +184,7 @@ describe('Division readiness', () => {
   it('applies prerequisite readiness only after Division is selected', () => {
     const challenge = selectChallenge({
       masteryStates: { Division: 0.9, Multiplication: 0.9, Subtraction: 0.2, Addition: 0.9 },
-      context: 'ROLL_CHALLENGE',
+      context: 'CHALLENGE_CARD',
       consecutiveFailures: { Addition: 0, Subtraction: 0, Multiplication: 0, Division: 0 },
       skillAttempts: { Addition: 10, Subtraction: 1, Multiplication: 10, Division: 10 },
       forceSkill: 'Division',

@@ -34,10 +34,10 @@ describe('BKT Question Selector', () => {
       }
     );
 
-    it('should return a valid MathChallenge for ROLL_CHALLENGE context', () => {
+    it('should return a valid MathChallenge for CHALLENGE_CARD context', () => {
       const challenge = selectChallenge({
         masteryStates: defaultMastery,
-        context: 'ROLL_CHALLENGE',
+        context: 'CHALLENGE_CARD',
         consecutiveFailures: noFailures,
       });
 
@@ -46,7 +46,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.options.length).toBe(4);
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
-      expect(challenge.context).toBe('ROLL_CHALLENGE');
+      expect(challenge.context).toBe('CHALLENGE_CARD');
       expect(challenge.timeLimit).toBe(25);
     });
 

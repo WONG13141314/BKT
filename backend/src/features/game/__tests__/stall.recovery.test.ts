@@ -64,13 +64,13 @@ describe('resolveStalledTurn', () => {
     const state = gameService.getGameSync(gameId)!;
     const challenge = selectChallenge({
       masteryStates: state.players[0].masteryStates,
-      context: 'ROLL_CHALLENGE',
+      context: 'CHALLENGE_CARD',
       consecutiveFailures: {},
     });
 
     gameService.replaceState(gameId, {
       ...state,
-      turnPhase: 'ROLL_CHALLENGE',
+      turnPhase: 'CARD_MATH_CHALLENGE',
       currentPlayerIndex: 0,
       currentChallenge: challenge,
     });
@@ -89,7 +89,7 @@ describe('resolveStalledTurn', () => {
     expect(after.totalCorrect).toBe(before.totalCorrect);
 
     // And the turn is no longer blocked.
-    expect(outcome!.state.turnPhase).not.toBe('ROLL_CHALLENGE');
+    expect(outcome!.state.turnPhase).not.toBe('CARD_MATH_CHALLENGE');
   });
 
   it('records a timeout without changing BKT mastery or the failure hint counter', () => {

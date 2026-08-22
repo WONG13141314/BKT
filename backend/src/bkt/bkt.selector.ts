@@ -23,12 +23,10 @@ import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 // ---- Context-to-Skill Mapping ----
 
 const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
-  ROLL_CHALLENGE: ACTIVE_SKILL_NAMES,                     // The turn toll — fully BKT-driven
   MATH_DUEL: ACTIVE_SKILL_NAMES,                          // Themed by the disputed property
   SMART_BUY: ACTIVE_SKILL_NAMES,                          // Price calculations
   CHALLENGE_CARD: ACTIVE_SKILL_NAMES,                     // All skills eligible
   JAIL_ESCAPE: ACTIVE_SKILL_NAMES,                        // All, reduced difficulty
-  LEVEL_UP: ACTIVE_SKILL_NAMES,                           // Matched to property skill theme
 };
 
 // ---- Difficulty from Mastery ----
@@ -275,10 +273,6 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     case 'JAIL_ESCAPE':
       // Reduce difficulty by 1 — jail is already a penalty
       difficulty = Math.max(1, difficulty - 1) as 1 | 2 | 3;
-      break;
-    case 'LEVEL_UP':
-      // Increase difficulty by 1 — boss challenge
-      difficulty = Math.min(3, difficulty + 1) as 1 | 2 | 3;
       break;
   }
 

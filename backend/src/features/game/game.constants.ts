@@ -22,7 +22,6 @@ export const MONOPOLY_RENT_MULTIPLIER = 2; // 2× base rent when owning full set
 
 // ---- Math Rewards ----
 
-export const ROLL_CHALLENGE_BONUS = 0;         // Legacy export; rolling is no longer quiz-gated
 export const SMART_BUY_DISCOUNT = 0.20;        // Banker Offer: 20% off property price
 
 // ---- Math Duel ----
@@ -104,7 +103,6 @@ export const GAME_CONSTANTS = {
   BAIL_COST,
   LEVEL_UP_COST_RATIO,
   MONOPOLY_RENT_MULTIPLIER,
-  ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
   LANDLORD_BONUS,
   MAX_ROUNDS,

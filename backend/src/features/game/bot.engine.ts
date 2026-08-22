@@ -7,7 +7,6 @@
 import { GameState, MathChallenge, PlayerState } from './game.types';
 import {
   startRollPhase,
-  processRollChallengeAnswer,
   movePlayer,
   resolveTileEvent,
   buyPropertyFullPrice,
@@ -23,9 +22,6 @@ import {
   processJailEscapeAnswer,
   payBail,
   waitInJail,
-  startLevelUpChallenge,
-  processLevelUpAnswer,
-  declineLevelUp,
   endTurn,
   getCurrentPlayer,
 } from './game.engine';
@@ -91,12 +87,6 @@ function shouldBuyProperty(player: PlayerState, price: number): boolean {
   return price <= player.money * 0.5;
 }
 
-/** Should bot attempt Level Up? */
-function shouldLevelUp(player: PlayerState, cost: number): boolean {
-  // Level up if cost ≤ 30% of cash, or has a free token
-  return player.hasLevelUpToken || cost <= player.money * 0.3;
-}
-
 /** How should bot escape jail? */
 function botJailDecision(player: PlayerState): 'math' | 'bail' | 'wait' {
   // Try math first
@@ -141,14 +131,6 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
       case 'ROLL_PHASE': {
         currentState = startRollPhase(currentState);
         steps.push({ state: currentState, action: 'roll', delay: 800 });
-        break;
-      }
-
-      case 'ROLL_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processRollChallengeAnswer(currentState, answer);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'roll_answer', delay: 1500 });
         break;
       }
 
@@ -249,32 +231,8 @@ export function executeBotTurn(state: GameState): BotTurnStep[] {
         break;
       }
 
-      case 'LEVEL_UP_OFFER': {
-        const event = currentState.pendingTileEvent!;
-        const cost = event.propertyPrice!;
-
-        if (shouldLevelUp(player, cost)) {
-          currentState = startLevelUpChallenge(currentState);
-          steps.push({ state: currentState, action: 'level_up_start', delay: 500 });
-        } else {
-          currentState = declineLevelUp(currentState);
-          steps.push({ state: currentState, action: 'level_up_decline', delay: 300 });
-        }
-        break;
-      }
-
-      case 'LEVEL_UP_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processLevelUpAnswer(currentState, answer);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'level_up_answer', delay: 1500 });
-        break;
-      }
-
       case 'END_TURN': {
-        // Pass through _skipLevelUpCheck if set (after Level Up answer/decline)
-        const skipLevelUp = (currentState as any)._skipLevelUpCheck === true;
-        currentState = endTurn(currentState, skipLevelUp);
+        currentState = endTurn(currentState);
         steps.push({ state: currentState, action: 'end_turn', delay: 300 });
         // Break out — next player's turn
         return steps;

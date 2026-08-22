@@ -91,7 +91,6 @@ export interface PlayerState {
 
 export type TurnPhase =
   | 'ROLL_PHASE'            // Waiting for player to start their turn
-  | 'ROLL_CHALLENGE'        // The turn toll — answer to earn your dice
   | 'MOVING'                // Token animation in progress
   | 'RESOLVE_TILE'          // Processing tile landing
   | 'BUY_DECISION'          // Player choosing to buy / smart-buy / skip
@@ -101,17 +100,13 @@ export type TurnPhase =
   | 'CARD_MATH_CHALLENGE'   // Math challenge card question
   | 'JAIL_DECISION'         // Player choosing escape method
   | 'JAIL_CHALLENGE'        // Answering jail escape question
-  | 'LEVEL_UP_OFFER'        // Offering Level Up at end of turn
-  | 'LEVEL_UP_CHALLENGE'    // Answering Level Up question
   | 'END_TURN';             // Turn wrapping up
 
 export type ChallengeContext =
-  | 'ROLL_CHALLENGE'
   | 'MATH_DUEL'
   | 'SMART_BUY'
   | 'CHALLENGE_CARD'
-  | 'JAIL_ESCAPE'
-  | 'LEVEL_UP';
+  | 'JAIL_ESCAPE';
 
 // ---- Question Data Models ----
 

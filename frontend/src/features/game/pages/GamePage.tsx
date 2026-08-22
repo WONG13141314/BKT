@@ -142,7 +142,6 @@ export function GamePage() {
   const {
     emitRoll,
     emitMovementComplete,
-    emitRollAnswer,
     emitBuyFull,
     emitSmartBuy,
     emitSmartBuyAnswer,
@@ -154,7 +153,6 @@ export function GamePage() {
     emitJailAnswer,
     emitJailBail,
     emitJailWait,
-    emitLevelUpAnswer,
     emitEndTurn,
     emitBuildHouse,
     emitRequestChallenge,
@@ -356,9 +354,6 @@ export function GamePage() {
     if (!gameState) return;
 
     switch (gameState.turnPhase) {
-      case 'ROLL_CHALLENGE':
-        emitRollAnswer(selectedIndex);
-        break;
       case 'SMART_BUY_CHALLENGE':
         emitSmartBuyAnswer(selectedIndex);
         break;
@@ -368,11 +363,8 @@ export function GamePage() {
       case 'JAIL_CHALLENGE':
         emitJailAnswer(selectedIndex);
         break;
-      case 'LEVEL_UP_CHALLENGE':
-        emitLevelUpAnswer(selectedIndex);
-        break;
     }
-  }, [gameState?.turnPhase, emitRollAnswer, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer, emitLevelUpAnswer]);
+  }, [gameState?.turnPhase, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer]);
 
   /**
    * Duel answers go on their own channel: the property owner answers during
@@ -387,7 +379,7 @@ export function GamePage() {
 
   // ---- Render helpers ----
   function isChallengePhase(phase: string): boolean {
-    return ['ROLL_CHALLENGE', 'SMART_BUY_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE', 'LEVEL_UP_CHALLENGE'].includes(phase);
+    return ['SMART_BUY_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE'].includes(phase);
   }
 
   /** Render a question body. Shared by solo challenges and duels. */
@@ -752,12 +744,10 @@ export function GamePage() {
 
 function formatContext(context: string): string {
   const labels: Record<string, string> = {
-    ROLL_CHALLENGE: 'Roll Challenge',
     MATH_DUEL: 'Rent Defence',
     SMART_BUY: 'Bank Offer',
     CHALLENGE_CARD: 'Challenge Card',
     JAIL_ESCAPE: 'Jail Escape',
-    LEVEL_UP: 'Level Up',
   };
   return labels[context] || context;
 }

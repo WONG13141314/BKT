@@ -697,14 +697,6 @@ export const registerGameHandlers = (
     return validateSelectedIndex(selectedIndex, challenge?.options.length ?? 0);
   };
 
-  // The Roll Challenge only unlocks the dice — the player still gets to see the
-  // tile they land on and end the turn themselves.
-  socket.on('game:roll-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitRollChallengeAnswer(id, answerIndex(id, d.selectedIndex)), {
-      autoEnd: false,
-      errorMessage: 'No active Roll Challenge',
-    }));
-
   /**
    * A duel answer, from either side. Unlike every other answer this is NOT
    * gated on `validateTurn` — the property owner answers on someone else's
@@ -755,9 +747,6 @@ export const registerGameHandlers = (
   socket.on('game:jail-answer', (d: AnswerPayload) =>
     runAnswer(d.gameId, (id) => gameService.submitJailAnswer(id, answerIndex(id, d.selectedIndex))));
 
-  socket.on('game:level-up-answer', (d: AnswerPayload) =>
-    runAnswer(d.gameId, (id) => gameService.submitLevelUpAnswer(id, answerIndex(id, d.selectedIndex))));
-
   // ---- Challenge starts (no turn advance — they open a question) ----
 
   function runChallengeStart(gameId: string, action: (id: string) => GameState | null, errorMessage?: string) {
@@ -776,9 +765,6 @@ export const registerGameHandlers = (
 
   socket.on('game:jail-math', (d: { gameId: string }) =>
     runChallengeStart(d.gameId, gameService.jailMathEscape));
-
-  socket.on('game:level-up', (d: { gameId: string }) =>
-    runChallengeStart(d.gameId, gameService.startLevelUp));
 
   // ---- Decisions ----
 
@@ -824,9 +810,6 @@ export const registerGameHandlers = (
     const socketRoom = getSocketRoom(d.gameId);
     publishTransition(io, d.gameId, socketRoom, state);
   });
-
-  socket.on('game:level-up-decline', (d: { gameId: string }) =>
-    runAction(d.gameId, gameService.declineLevelUp));
 
   socket.on('game:end-turn', (d: { gameId: string }) => {
     if (!validateTurn(d.gameId)) return;

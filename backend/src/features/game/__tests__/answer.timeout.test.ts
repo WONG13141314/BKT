@@ -1,7 +1,7 @@
 import { selectChallenge } from '../../../bkt/bkt.selector';
 import { initializeGameState } from '../game.engine';
 import { gameService } from '../game.service';
-import type { GameState, TurnPhase } from '../game.types';
+import type { AnswerResult, GameState, TurnPhase } from '../game.types';
 
 const PLAYERS = [
   { id: 'p1', playerId: 'db-alice', name: 'Alice', color: '#6366f1', order: 0 },
@@ -11,8 +11,8 @@ const PLAYERS = [
 type SoloCase = {
   name: string;
   phase: TurnPhase;
-  context: 'ROLL_CHALLENGE' | 'SMART_BUY' | 'CHALLENGE_CARD' | 'JAIL_ESCAPE' | 'LEVEL_UP';
-  submit: (gameId: string, selectedIndex: number | null, receivedAt: number) => ReturnType<typeof gameService.submitRollChallengeAnswer>;
+  context: 'SMART_BUY' | 'CHALLENGE_CARD' | 'JAIL_ESCAPE';
+  submit: (gameId: string, selectedIndex: number | null, receivedAt: number) => { state: GameState; result: AnswerResult } | null;
 };
 
 function openChallenge(phase: SoloCase['phase'], context: SoloCase['context']): GameState {
@@ -38,7 +38,7 @@ function openChallenge(phase: SoloCase['phase'], context: SoloCase['context']): 
     ...state,
     turnPhase: phase,
     currentChallenge: challenge,
-    pendingTileEvent: phase === 'SMART_BUY_CHALLENGE' || phase === 'LEVEL_UP_CHALLENGE'
+    pendingTileEvent: phase === 'SMART_BUY_CHALLENGE'
       ? propertyEvent
       : null,
     players: phase === 'JAIL_CHALLENGE'
@@ -48,11 +48,9 @@ function openChallenge(phase: SoloCase['phase'], context: SoloCase['context']): 
 }
 
 const CASES: SoloCase[] = [
-  { name: 'Roll', phase: 'ROLL_CHALLENGE', context: 'ROLL_CHALLENGE', submit: gameService.submitRollChallengeAnswer },
   { name: 'Smart Buy', phase: 'SMART_BUY_CHALLENGE', context: 'SMART_BUY', submit: gameService.submitSmartBuyAnswer },
   { name: 'Challenge Card', phase: 'CARD_MATH_CHALLENGE', context: 'CHALLENGE_CARD', submit: gameService.submitCardAnswer },
   { name: 'Jail', phase: 'JAIL_CHALLENGE', context: 'JAIL_ESCAPE', submit: gameService.submitJailAnswer },
-  { name: 'Level Up', phase: 'LEVEL_UP_CHALLENGE', context: 'LEVEL_UP', submit: gameService.submitLevelUpAnswer },
 ];
 
 describe('server-authoritative solo challenge deadlines', () => {
@@ -76,11 +74,11 @@ describe('server-authoritative solo challenge deadlines', () => {
   });
 
   it('accepts an answer received one millisecond before the exclusive deadline', () => {
-    const state = openChallenge('ROLL_CHALLENGE', 'ROLL_CHALLENGE');
+    const state = openChallenge('CARD_MATH_CHALLENGE', 'CHALLENGE_CARD');
     const challenge = state.currentChallenge!;
     gameService.replaceState(state.id, state);
 
-    const outcome = gameService.submitRollChallengeAnswer(
+    const outcome = gameService.submitCardAnswer(
       state.id,
       challenge.correctIndex,
       challenge.startedAt + challenge.timeLimit * 1_000 - 1
@@ -91,11 +89,11 @@ describe('server-authoritative solo challenge deadlines', () => {
   });
 
   it('does not grade a forced timeout twice after the challenge was cleared', () => {
-    const state = openChallenge('ROLL_CHALLENGE', 'ROLL_CHALLENGE');
+    const state = openChallenge('CARD_MATH_CHALLENGE', 'CHALLENGE_CARD');
     gameService.replaceState(state.id, state);
 
-    const first = gameService.submitRollChallengeAnswer(state.id, null, 21_000);
-    const second = gameService.submitRollChallengeAnswer(state.id, null, 21_001);
+    const first = gameService.submitCardAnswer(state.id, null, 21_000);
+    const second = gameService.submitCardAnswer(state.id, null, 21_001);
 
     expect(first?.state.players[0].totalQuestions).toBe(1);
     expect(second).toBeNull();

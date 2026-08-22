@@ -42,7 +42,6 @@ import {
   CLOCK_CAP_MINUTES,
   MAX_JAIL_TURNS,
   TOTAL_TILES,
-  ROLL_CHALLENGE_BONUS,
   SMART_BUY_DISCOUNT,
   LANDLORD_BONUS,
   DUEL_DRAW_RENT_RATIO,
@@ -204,58 +203,6 @@ export function startRollPhase(state: GameState): GameState {
 /** Roll a fair d6. */
 function rollDie(): number {
   return Math.floor(Math.random() * 6) + 1;
-}
-
-// ---- ROLL CHALLENGE ANSWER ----
-
-/**
- * Grade the turn toll and hand out the dice.
- *
- * Correct → two dice. Wrong → one. The player always moves: a wrong answer costs
- * distance, never the turn itself. Being stuck on the spot would punish exactly
- * the children this game exists to help, and they would stop answering.
- */
-export function processRollChallengeAnswer(
-  state: GameState,
-  selectedIndex: number | null,
-  receivedAt: number = Date.now()
-): { newState: GameState; result: AnswerResult } {
-  const player = getCurrentPlayer(state);
-  const challenge = state.currentChallenge!;
-  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
-
-  const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
-  );
-
-  const diceCount: 1 | 2 = isCorrect ? 2 : 1;
-  const diceValues: [number, number] = isCorrect ? [rollDie(), rollDie()] : [rollDie(), 0];
-
-  const reward: RewardResult = isCorrect
-    ? {
-        type: 'BONUS_CASH',
-        value: ROLL_CHALLENGE_BONUS,
-        description: `Correct! Two dice, and +${formatRM(ROLL_CHALLENGE_BONUS)}.`,
-      }
-    : { type: 'NONE', value: 0, description: 'One die this turn — you still move.' };
-
-  const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
-    ...p,
-    money: isCorrect ? p.money + ROLL_CHALLENGE_BONUS : p.money,
-    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery, timedOut),
-  }));
-
-  return {
-    newState: {
-      ...state,
-      players: updatedPlayers,
-      diceValues,
-      diceCount,
-      turnPhase: 'MOVING',
-      currentChallenge: null,
-    },
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
-  };
 }
 
 // ---- B. MOVING ----
@@ -1233,44 +1180,6 @@ export function waitInJail(state: GameState): GameState {
   };
 }
 
-// ---- D. LEVEL UP ----
-
-/** Check if player is eligible for Level Up at end of turn */
-export function checkLevelUpEligibility(state: GameState): GameState {
-  const player = getCurrentPlayer(state);
-
-  // Find a property the player can level up:
-  // Must own both in the color set, and at least one is not leveled
-  for (const propIdx of player.properties) {
-    const tile = BOARD_TILES[propIdx];
-    if (!tile || !tile.colorGroup) continue;
-
-    const hasMonopoly = ownsFullColorGroup(player.properties, tile.colorGroup);
-    if (!hasMonopoly) continue;
-
-    const prop = state.properties.find((p) => p.tileIndex === propIdx);
-    if (!prop || prop.isLeveledUp) continue;
-
-    const cost = getLevelUpCost(tile);
-    // Player must be able to afford it (or have a free token)
-    if (player.money >= cost || player.hasLevelUpToken) {
-      return {
-        ...state,
-        turnPhase: 'LEVEL_UP_OFFER',
-        pendingTileEvent: {
-          type: 'PROPERTY',
-          tileIndex: propIdx,
-          tileName: tile.name,
-          propertyPrice: cost,
-        },
-      };
-    }
-  }
-
-  // No eligible property → skip
-  return state;
-}
-
 /** Build the game's single house directly as a Monopoly property action. */
 export function buildHouse(state: GameState, tileIndex: number): GameState {
   const player = getCurrentPlayer(state);
@@ -1313,93 +1222,9 @@ export function buildHouse(state: GameState, tileIndex: number): GameState {
   };
 }
 
-/** Player accepts Level Up challenge */
-export function startLevelUpChallenge(state: GameState): GameState {
-  const player = getCurrentPlayer(state);
-  const event = state.pendingTileEvent!;
-  const tile = BOARD_TILES[event.tileIndex];
+// ---- D. END TURN ----
 
-  const challenge = selectChallenge({
-    masteryStates: player.masteryStates,
-    context: 'LEVEL_UP',
-    consecutiveFailures: player.consecutiveFailures,
-    skillAttempts: player.skillAttempts,
-    propertySkillTheme: tile?.skillTheme as SkillName | undefined,
-    recentQuestionFingerprints: player.recentQuestionFingerprints,
-  });
-
-  return {
-    ...state,
-    players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
-    turnPhase: 'LEVEL_UP_CHALLENGE',
-    currentChallenge: challenge,
-  };
-}
-
-/** Process Level Up answer */
-export function processLevelUpAnswer(
-  state: GameState,
-  selectedIndex: number | null,
-  receivedAt: number = Date.now()
-): { newState: GameState; result: AnswerResult } {
-  const player = getCurrentPlayer(state);
-  const challenge = state.currentChallenge!;
-  const event = state.pendingTileEvent!;
-  const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
-
-  const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
-  );
-
-  let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
-  let updatedProperties = state.properties;
-
-  const reward: RewardResult = isCorrect
-    ? { type: 'LEVEL_UP', value: 0, description: `${event.tileName} leveled up — rent increased!` }
-    : { type: 'NONE', value: 0, description: 'Level Up failed. Try again next turn!' };
-
-  if (isCorrect) {
-    const cost = event.propertyPrice!;
-    const useToken = player.hasLevelUpToken;
-
-    updatedPlayers = updatePlayerInList(updatedPlayers, state.currentPlayerIndex, (p) => ({
-      ...p,
-      money: useToken ? p.money : p.money - cost,
-      hasLevelUpToken: useToken ? false : p.hasLevelUpToken,
-    }));
-
-    updatedProperties = state.properties.map((prop) =>
-      prop.tileIndex === event.tileIndex ? { ...prop, isLeveledUp: true } : prop
-    );
-  }
-
-  return {
-    newState: {
-      ...state,
-      players: updatedPlayers,
-      properties: updatedProperties,
-      turnPhase: 'END_TURN',
-      currentChallenge: null,
-      pendingTileEvent: null,
-      // Mark that level up was already handled this turn — prevent re-check loop
-      _skipLevelUpCheck: true,
-    } as GameState,
-    result: buildAnswerResult(isCorrect, challenge, newMastery, previousMastery, reward, player, timedOut),
-  };
-}
-
-/** Player declines Level Up */
-export function declineLevelUp(state: GameState): GameState {
-  // Mark that level up was already handled this turn
-  return { ...state, turnPhase: 'END_TURN', pendingTileEvent: null, _skipLevelUpCheck: true } as GameState;
-}
-
-// ---- E. END TURN ----
-
-export function endTurn(state: GameState, skipLevelUpCheck?: boolean): GameState {
-  // Check Level Up eligibility before truly ending —
-  // BUT skip if we just came from a Level Up answer/decline to prevent infinite loop
-  void skipLevelUpCheck;
+export function endTurn(state: GameState): GameState {
 
   // Check bankruptcy
   let updatedState = checkBankruptcy(state);

@@ -4,7 +4,6 @@ import {
   startRollPhase,
   movePlayer,
   resolveTileEvent,
-  processRollChallengeAnswer,
   endTurn,
   calculateFinalScores,
   payBail,
@@ -15,13 +14,11 @@ import {
   processCardChallengeAnswer,
   startJailMathEscape,
   processJailEscapeAnswer,
-  startLevelUpChallenge,
-  processLevelUpAnswer,
 } from '../game.engine';
 import { GameState } from '../game.types';
 import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS } from '../game.constants';
-import { selectChallenge } from '../../../bkt/bkt.selector';
 import { gameService } from '../game.service';
+import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
 describe('Game Engine — MathOpoly Redesign', () => {
   let gameState: GameState;
@@ -88,41 +85,13 @@ describe('Game Engine — MathOpoly Redesign', () => {
   });
 
   describe('startRollPhase', () => {
-    it('should roll dice and transition to appropriate phase', () => {
-      const newState = startRollPhase(gameState);
+    it('rolls directly into movement', () => {
+      const newState = startRollPhase(readyState());
 
-      // Normal turns now roll directly; questions belong to board events.
       expect(newState.turnPhase).toBe('MOVING');
       expect(newState.currentChallenge).toBeNull();
       expect(newState.diceCount).toBe(2);
       expect(newState.diceValues.every((value) => value >= 1 && value <= 6)).toBe(true);
-    });
-  });
-
-  describe('processRollChallengeAnswer', () => {
-    it('awards two dice and a bonus for a correct answer', () => {
-      const opened = openLegacyRollChallenge(gameState);
-      const correctIdx = opened.currentChallenge!.correctIndex;
-      const { result, newState } = processRollChallengeAnswer(opened, correctIdx, 3000);
-
-      expect(result.isCorrect).toBe(true);
-      expect(result.newMastery).toBeGreaterThanOrEqual(result.previousMastery);
-      expect(newState.diceCount).toBe(2);
-      expect(newState.diceValues[1]).toBeGreaterThanOrEqual(1);
-      expect(newState.turnPhase).toBe('MOVING');
-    });
-
-    it('still moves the player on a wrong answer, but with one die', () => {
-      const opened = openLegacyRollChallenge(gameState);
-      const wrongIdx = (opened.currentChallenge!.correctIndex + 1) % 4;
-      const { result, newState } = processRollChallengeAnswer(opened, wrongIdx, 3000);
-
-      expect(result.isCorrect).toBe(false);
-      expect(newState.diceCount).toBe(1);
-      expect(newState.diceValues[0]).toBeGreaterThanOrEqual(1);
-      expect(newState.diceValues[1]).toBe(0);
-      // Never stuck on the spot — a wrong answer costs distance, not the turn.
-      expect(newState.turnPhase).toBe('MOVING');
     });
   });
 
@@ -367,25 +336,6 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
     });
 
-    it('records a Level Up fingerprint once at issue time, not answer time', () => {
-      const challenge = startLevelUpChallenge({
-        ...gameState,
-        turnPhase: 'LEVEL_UP_OFFER',
-        pendingTileEvent: {
-          type: 'PROPERTY',
-          tileIndex: 1,
-          tileName: 'Tambah Alley',
-          propertyPrice: 40,
-          propertyOwner: 'p1',
-        },
-      });
-      const history = challenge.players[0].recentQuestionFingerprints;
-
-      expect(history).toEqual([challenge.currentChallenge!.fingerprint]);
-      const answered = processLevelUpAnswer(challenge, challenge.currentChallenge!.correctIndex, 1_000).newState;
-      expect(answered.players[0].recentQuestionFingerprints).toEqual(history);
-    });
-
     it('leaves a declined property unowned and ends the landing decision', () => {
       const offered: GameState = {
         ...gameState,
@@ -430,19 +380,40 @@ describe('Game Engine — MathOpoly Redesign', () => {
         : player) };
       expect(buildHouse(incomplete, 1)).toBe(incomplete);
     });
+
+    it('keeps direct house building and free level-up tokens', () => {
+      const propertyIndex = 1;
+      const next = buildHouse(buildableState({ hasLevelUpToken: true }), propertyIndex);
+
+      expect(next.properties.find((property) => property.tileIndex === propertyIndex)?.isLeveledUp).toBe(true);
+      expect(currentPlayer(next).hasLevelUpToken).toBe(false);
+    });
+
+    it.each(['ROLL_CHALLENGE', 'LEVEL_UP_OFFER', 'LEVEL_UP_CHALLENGE'] as const)(
+      'restores legacy %s games into an end-turn state',
+      (turnPhase) => {
+        const gameId = `legacy-${turnPhase}`;
+        const legacyState = {
+          ...readyState(),
+          turnPhase,
+          currentChallenge: { id: 'obsolete' },
+          pendingTileEvent: { type: 'PROPERTY', tileIndex: 1, tileName: 'Tambah Alley' },
+          phaseDeadline: 100,
+          phaseDeadlineFor: turnPhase,
+        } as unknown as GameState;
+
+        try {
+          const restored = gameService.replaceState(gameId, legacyState);
+
+          expect(restored.turnPhase).toBe('END_TURN');
+          expect(restored.currentChallenge).toBeNull();
+          expect(restored.pendingTileEvent).toBeNull();
+          expect(restored.phaseDeadline).toBeNull();
+          expect(restored.phaseDeadlineFor).toBeNull();
+        } finally {
+          gameService.removeGame(gameId);
+        }
+      }
+    );
   });
 });
-
-function openLegacyRollChallenge(state: GameState): GameState {
-  const player = state.players[state.currentPlayerIndex];
-  return {
-    ...state,
-    turnPhase: 'ROLL_CHALLENGE',
-    currentChallenge: selectChallenge({
-      masteryStates: player.masteryStates,
-      context: 'ROLL_CHALLENGE',
-      consecutiveFailures: player.consecutiveFailures,
-      skillAttempts: player.skillAttempts,
-    }),
-  };
-}

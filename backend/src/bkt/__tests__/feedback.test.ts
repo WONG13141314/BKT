@@ -20,7 +20,7 @@ function challenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     text: '47 + 25 = ?',
     options: ['71', '72', '73', '74'],
     correctIndex: 1,
-    context: 'ROLL_CHALLENGE',
+    context: 'CHALLENGE_CARD',
     timeLimit: 25,
     startedAt: 1_000,
     hintLevel: 0,
