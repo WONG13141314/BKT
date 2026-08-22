@@ -29,6 +29,7 @@ export interface TileConfig {
   price: number;                // Purchase price in RM (0 for non-properties)
   baseRent: number;             // Base rent in RM (0 for non-properties)
   leveledRent: number;          // Rent after Level Up (0 for non-properties)
+  buildCost: number;            // Single house cost, server-authoritative
 }
 
 export interface PropertyState {

@@ -198,13 +198,20 @@ export function GameLobby() {
           <h1 className="heading-display lobby-title">Waiting Room</h1>
           <div className="room-code-display">
             <span className="room-code-label">Room Code</span>
-            <div className="room-code-box" onClick={copyCode} title="Click to copy">
+            <button
+              type="button"
+              className="room-code-box"
+              onClick={copyCode}
+              aria-label={`Copy room code ${room!.code}`}
+            >
               <span className="room-code-value">{room!.code}</span>
               <span className="copy-icon-btn">
                 {copied ? <Check size={16} /> : <Copy size={16} />}
               </span>
-            </div>
-            <span className="room-code-hint">Share this code with your friends</span>
+            </button>
+            <span className="room-code-hint" role="status">
+              {copied ? 'Copied to clipboard' : 'Share this code with your friends'}
+            </span>
           </div>
         </div>
 
@@ -248,9 +255,10 @@ export function GameLobby() {
               {/* Host can remove bots */}
               {isHost && player.isBot && (
                 <button
+                  type="button"
                   className="remove-bot-btn"
                   onClick={() => removeBot(player.id)}
-                  title="Remove bot"
+                  aria-label={`Remove ${player.name}`}
                 >
                   <Trash2 size={14} />
                 </button>

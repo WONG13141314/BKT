@@ -2,7 +2,6 @@ import {
   initializeGameState,
   getCurrentPlayer,
   startRollPhase,
-  movePlayer,
   resolveTileEvent,
   endTurn,
   calculateFinalScores,

@@ -223,6 +223,34 @@
   color: #000;
 }
 
+@media (max-width: 900px) {
+  .player-panel {
+    width: min(100%, 600px);
+    gap: 0.35rem;
+  }
+
+  .panel-round {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.65rem;
+  }
+
+  .panel-round__value { font-size: 1rem; }
+  .panel-round__bar { min-width: 80px; }
+  .panel-players { flex-direction: row; overflow-x: auto; padding: 0 0 0.3rem; }
+  .panel-player { min-width: 180px; padding: 0.4rem 0.55rem; box-shadow: 2px 3px 0 rgba(0,0,0,.3); }
+  .panel-player__header { margin: 0; padding: 0; border: 0; }
+  .panel-player__badges, .panel-player__stats { display: none; }
+}
+
+@media (max-width: 600px) {
+  .panel-player:not(.panel-player--active):not(.panel-player--me) { display: none; }
+  .panel-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .panel-player { min-width: 0; transform: none; }
+}
+
 /* ---- Mastery Bars ---- */
 
 .panel-player__mastery {

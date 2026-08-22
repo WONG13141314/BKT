@@ -12,13 +12,23 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces"
+    "lint": "npm run lint --workspaces",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "concurrently": "^10.0.3",
-    "kill-port": "^2.0.1"
+    "esbuild": "^0.28.1",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
+    "kill-port": "^2.0.1",
+    "typescript-eslint": "^8.67.0"
   }
 }

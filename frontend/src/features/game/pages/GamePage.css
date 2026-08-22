@@ -13,6 +13,19 @@
   gap: 0.5rem;
 }
 
+.skip-to-actions {
+  position: fixed;
+  z-index: calc(var(--z-modal) + 1);
+  left: 0.75rem;
+  top: -5rem;
+  padding: 0.65rem 0.9rem;
+  color: #fff;
+  background: #111;
+  border: 2px solid #fff;
+}
+
+.skip-to-actions:focus { top: 0.75rem; }
+
 .game-page--center {
   display: flex;
   align-items: center;
@@ -56,11 +69,18 @@
 }
 
 @media (max-width: 900px) {
+  .game-page { padding-bottom: 8rem; }
   .game-layout {
     flex-direction: column;
     align-items: center;
-    padding-top: 4.75rem;
+    gap: 0.65rem;
+    padding-top: 4.25rem;
   }
+
+  .player-panel { order: 1; }
+  .board-grid { order: 2; }
+  .game-sidebar { order: 3; width: min(100%, 600px); }
+  .space-details__description { min-height: 0; }
 }
 
 @media (min-width: 901px) and (max-width: 1180px) {
@@ -200,6 +220,23 @@
   gap: 0.75rem;
   width: 260px;
   flex-shrink: 0;
+}
+
+@media (max-height: 420px) and (orientation: landscape) and (max-width: 900px) {
+  .game-page { padding-bottom: 0.25rem; }
+  .game-layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(220px, 0.8fr);
+    align-items: start;
+    padding-top: 3.3rem;
+    gap: 0.45rem;
+  }
+  .player-panel { display: none; }
+  .board-grid { grid-column: 1; width: min(58vw, 330px); }
+  .game-sidebar { grid-column: 2; width: 100%; max-height: calc(100dvh - 3.8rem); overflow-y: auto; padding-right: 0.3rem; }
+  .space-details__facts, .space-details__house { display: none; }
+  .space-details__header { margin: 0.25rem; padding: 0.3rem; }
+  .space-details__body { padding: 0 0.4rem 0.4rem; }
 }
 
 /* ---- Decision Panel ---- */

@@ -6,6 +6,17 @@
   width: 100%;
 }
 
+.challenge-timer__seconds {
+  min-width: 5.7rem;
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+.challenge-timer--critical .challenge-timer__seconds {
+  color: #b91c1c;
+}
+
 .challenge-timer__track {
   flex: 1;
   height: 6px;

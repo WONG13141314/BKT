@@ -67,24 +67,24 @@ interface Props {
 }
 
 export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
+  const [firstValue, secondValue] = values;
   const activeValues = useMemo(
-    () => values.filter((value) => value >= 1 && value <= 6),
-    [values[0], values[1]],
+    () => [firstValue, secondValue].filter((value) => value >= 1 && value <= 6),
+    [firstValue, secondValue],
   );
   const [plan, setPlan] = useState<ThrowPlan | null>(null);
   const settled = useRef(new Set<number>());
   const seed = useMemo(
-    () => Math.floor(Math.random() * 0x7fffffff),
-    // Each server roll remounts the physical world and receives a fresh throw.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rollId, values[0], values[1]],
+    () => ((rollId * 1_103_515_245) ^ (firstValue * 12_345) ^ (secondValue * 2_654_435_761)) >>> 0,
+    // A server roll always produces the same visual plan after a React re-render.
+    [rollId, firstValue, secondValue],
   );
 
   useEffect(() => {
     settled.current.clear();
     setPlan(null);
     onRollingChange?.(rollId > 0);
-  }, [rollId, values[0], values[1], onRollingChange]);
+  }, [rollId, firstValue, secondValue, onRollingChange]);
 
   const markSettled = useCallback((index: number) => {
     settled.current.add(index);

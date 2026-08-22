@@ -282,7 +282,7 @@ function savePhaseDeadline(
 function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   clearPhaseTimer(gameId);
 
-  let state = gameService.getGameSync(gameId);
+  const state = gameService.getGameSync(gameId);
   if (!state || state.phase !== 'PLAYING') return;
 
   // RESOLVE_TILE is driven by the server in the same transition loop.
@@ -298,7 +298,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   if (state.turnPhase === 'MATH_DUEL' && state.duelState) {
     const deadline = nextDuelDeadline(state.duelState);
     if (deadline !== null) {
-      state = savePhaseDeadline(gameId, state, deadline);
+      savePhaseDeadline(gameId, state, deadline);
       phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     }
     return;
@@ -310,7 +310,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
     : now + overrideMs;
 
   if (phaseDeadline !== null) {
-    state = savePhaseDeadline(gameId, state, phaseDeadline);
+    savePhaseDeadline(gameId, state, phaseDeadline);
     phaseTimers.arm(io, gameId, phaseDeadline, () => void resolveStall(io, gameId));
     return;
   }
@@ -320,7 +320,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   // can push the turn forward if `triggerBotTurnIfNeeded` fails.
   if (state.players[state.currentPlayerIndex].isBot) {
     const deadline = now + 15_000;
-    state = savePhaseDeadline(gameId, state, deadline);
+    savePhaseDeadline(gameId, state, deadline);
     phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
     return;
   }
@@ -328,7 +328,7 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
   const deadline = state.currentChallenge && state.currentChallenge.timeLimit > 0
     ? state.currentChallenge.startedAt + state.currentChallenge.timeLimit * 1000 + CHALLENGE_GRACE_MS
     : now + DECISION_TIMEOUT_MS;
-  state = savePhaseDeadline(gameId, state, deadline);
+  savePhaseDeadline(gameId, state, deadline);
   phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
 }
 

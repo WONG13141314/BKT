@@ -17,12 +17,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/games', gameRoutes);
 
 // Basic health check route
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok', environment: env.NODE_ENV });
 });
 
 // Global error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled Error:', err);
   res.status(500).json({
     message: 'Internal server error',

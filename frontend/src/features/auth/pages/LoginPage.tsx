@@ -141,8 +141,8 @@ export function LoginPage() {
           <div className="login-logo">
             <Dices size={32} strokeWidth={1.5} />
           </div>
-          <h1 className="heading-display login-title">Math Monopoly</h1>
-          <p className="login-subtitle">Learn math through an exciting board game</p>
+          <h1 className="heading-display login-title">Mathopoly</h1>
+          <p className="login-subtitle">Primary Math, played like a property game</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}
@@ -167,19 +167,21 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="input-group">
-              <label>
+            <fieldset className="input-group token-fieldset">
+              <legend>
                 <Dices size={14} />
                 Pick Your Token
-              </label>
-              <div className="token-grid">
+              </legend>
+              <div className="token-grid" role="radiogroup" aria-label="Pick your token">
                 {AVATARS.map((option) => (
                   <button
                     key={option}
                     type="button"
                     className={`token-pick ${avatar === option ? 'token-pick--active' : ''}`}
                     onClick={() => setAvatar(option)}
-                    aria-pressed={avatar === option}
+                    role="radio"
+                    aria-checked={avatar === option}
+                    aria-label={avatarLabel(option)}
                     title={avatarLabel(option)}
                   >
                     <span aria-hidden="true">{avatarToken(option)}</span>
@@ -187,7 +189,7 @@ export function LoginPage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
             <button type="submit" className="btn-primary btn-full" disabled={isBusy}>
               Continue

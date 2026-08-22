@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
-import { FinalScore, MasteryReport, Player, SKILL_NAMES, formatRM } from '../types/game.types';
-import { Trophy, Medal, Award, LogOut, RotateCcw, BarChart3 } from 'lucide-react';
+import { FinalScore, MasteryReport, formatRM } from '../types/game.types';
+import { Trophy, Medal, Award, LogOut, RotateCcw } from 'lucide-react';
+import { LearningReport } from './LearningReport';
 import './GameOverScreen.css';
 
 interface GameOverScreenProps {
   scores: FinalScore[];
-  players: Player[];
   masteryReport?: MasteryReport | null;
   onPlayAgain?: () => void;
   onExit?: () => void;
@@ -17,36 +16,20 @@ const RANK_CONFIG: Record<number, { icon: React.ReactNode; className: string }> 
   3: { icon: <Award size={18} />, className: 'rank--bronze' },
 };
 
-export function GameOverScreen({ scores, players, masteryReport, onPlayAgain, onExit }: GameOverScreenProps) {
-  const [revealStage, setRevealStage] = useState(0);
-  const [showMastery, setShowMastery] = useState(false);
-
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setRevealStage(1), 300),
-      setTimeout(() => setRevealStage(2), 800),
-      setTimeout(() => setRevealStage(3), 2000),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
+export function GameOverScreen({ scores, masteryReport, onPlayAgain, onExit }: GameOverScreenProps) {
   const winner = scores[0];
   const sortedScores = [...scores].sort((a, b) => a.rank - b.rank);
 
   return (
     <div className="gameover-overlay">
       <div className="gameover-container">
-        {/* Stage 1: Header */}
-        {revealStage >= 1 && (
-          <div className="gameover-header gameover-reveal">
+          <div className="gameover-header">
             <h1 className="heading-display gameover-title">Game Over</h1>
-            <p className="gameover-subtitle">Final scores are in...</p>
+            <p className="gameover-subtitle">Final scores</p>
           </div>
-        )}
 
         {/* Stage 2: Score Table */}
-        {revealStage >= 2 && (
-          <div className="gameover-scores gameover-reveal">
+          <div className="gameover-scores">
             <table className="score-table">
               <thead>
                 <tr>
@@ -98,11 +81,10 @@ export function GameOverScreen({ scores, players, masteryReport, onPlayAgain, on
               </tbody>
             </table>
           </div>
-        )}
 
         {/* Stage 3: Winner Announcement */}
-        {revealStage >= 3 && winner && (
-          <div className="gameover-winner gameover-reveal">
+        {winner && (
+          <div className="gameover-winner">
             <div className="winner-card">
               <span className="winner-trophy"><Trophy size={32} /></span>
               <h2 className="heading-display winner-name">{winner.playerName} Wins!</h2>
@@ -115,57 +97,10 @@ export function GameOverScreen({ scores, players, masteryReport, onPlayAgain, on
           </div>
         )}
 
-        {/* Mastery Report Toggle */}
-        {revealStage >= 3 && masteryReport && (
-          <div className="gameover-mastery gameover-reveal">
-            <button
-              className="mastery-toggle"
-              onClick={() => setShowMastery(!showMastery)}
-            >
-              <BarChart3 size={16} />
-              {showMastery ? 'Hide' : 'Show'} My Learning Report
-            </button>
-
-            {showMastery && (
-              <div className="mastery-reports">
-                <div className="mastery-card">
-                  <h4 className="mastery-player">{masteryReport.playerName}</h4>
-                  <div className="mastery-skills">
-                    {masteryReport.skills.map((skill) => (
-                      <div key={skill.skillName} className="mastery-bar">
-                        <span className="mastery-label">
-                          {skill.skillName}
-                          {skill.isMastered && (
-                            <span className="mastery-badge" title="Mastered">★</span>
-                          )}
-                        </span>
-                        <div className="mastery-track">
-                          <div
-                            className={`mastery-fill ${skill.isMastered ? 'mastery-fill--mastered' : ''}`}
-                            style={{ width: `${Math.round(skill.mastery * 100)}%` }}
-                          />
-                        </div>
-                        {/* Questions asked, not a percentage: the mastery figure
-                            is a confidence estimate and reads as a test score. */}
-                        <span className="mastery-count">
-                          {skill.totalAttempts > 0 ? `${skill.totalAttempts} asked` : '—'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mastery-summary">
-                    Best: {masteryReport.bestSkill} · Needs work: {masteryReport.weakestSkill} ·
-                    Accuracy: {Math.round(masteryReport.overallAccuracy * 100)}%
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {masteryReport && <LearningReport report={masteryReport} />}
 
         {/* Action Buttons */}
-        {revealStage >= 3 && (
-          <div className="gameover-actions gameover-reveal">
+          <div className="gameover-actions">
             {onPlayAgain && (
               <button className="gameover-btn gameover-btn--primary" onClick={onPlayAgain}>
                 <RotateCcw size={16} />
@@ -179,7 +114,6 @@ export function GameOverScreen({ scores, players, masteryReport, onPlayAgain, on
               </button>
             )}
           </div>
-        )}
       </div>
     </div>
   );

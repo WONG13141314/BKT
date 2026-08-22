@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Dices } from 'lucide-react';
 import { GameState, PRIMARY_MATH_LABEL, formatRM } from '../types/game.types';
-import { BOARD_TILES, COLOR_GROUPS, getGridPosition } from '../config/board.config';
+import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
 import { BoardPiecesScene } from './BoardPiecesScene';
 import { PhysicsDice } from './PhysicsDice';
 import './Board.css';
@@ -10,9 +9,6 @@ interface Props {
   gameState: GameState;
   selectedTile: number;
   onTileSelect: (tileIndex: number) => void;
-  isMyTurn: boolean;
-  rollRequested: boolean;
-  onRollClick: () => void;
   onDiceRollingChange?: (rolling: boolean) => void;
   onMovementChange?: (isMoving: boolean) => void;
   onMovementComplete?: () => void;
@@ -32,9 +28,6 @@ export function Board({
   gameState,
   selectedTile,
   onTileSelect,
-  isMyTurn,
-  rollRequested,
-  onRollClick,
   onDiceRollingChange,
   onMovementChange,
   onMovementComplete,
@@ -80,8 +73,8 @@ export function Board({
       for (const [id, target] of Object.entries(targetPositions.current)) {
         const position = next[id];
         if (position === undefined || position === target) continue;
-        const forward = (target - position + BOARD_TILES.length) % BOARD_TILES.length;
-        next[id] = forward > 12 ? target : (position + 1) % BOARD_TILES.length;
+        const forward = (target - position + gameState.tiles.length) % gameState.tiles.length;
+        next[id] = forward > 12 ? target : (position + 1) % gameState.tiles.length;
         changed = true;
         if (next[id] !== target) moving = true;
       }
@@ -104,34 +97,19 @@ export function Board({
     }, 280);
 
     return () => clearInterval(interval);
-  }, [onMovementChange, onMovementComplete]);
+  }, [gameState.tiles.length, onMovementChange, onMovementComplete]);
 
   const visualPlayers = players.map((player) => ({
     ...player,
     position: visualPositions[player.id] ?? player.position,
   }));
-  const canRoll = isMyTurn && gameState.turnPhase === 'ROLL_PHASE' && !rollRequested;
-  const centerActionLabel = rollRequested
-    ? 'Rolling…'
-    : canRoll
-      ? 'Roll Dice'
-      : gameState.turnPhase === 'MOVING'
-        ? 'Rolling…'
-        : !isMyTurn
-          ? 'Wait'
-          : gameState.turnPhase === 'BUY_DECISION'
-            ? 'Choose on Deed'
-            : gameState.turnPhase === 'JAIL_DECISION'
-              ? 'Choose Jail Action'
-              : gameState.turnPhase === 'END_TURN'
-                ? 'Review & End Turn'
-                : 'Action in Progress';
+  const centerStatus = gameState.turnPhase === 'MOVING' ? 'Moving…' : 'Primary Math';
 
   return (
     <div className="board-grid">
-      {BOARD_TILES.map((tile) => {
+      {gameState.tiles.map((tile) => {
         const position = getGridPosition(tile.index);
-        const group = tile.colorGroup ? COLOR_GROUPS[tile.colorGroup] : null;
+        const groupColor = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] : null;
         const property = properties.find((item) => item.tileIndex === tile.index);
         const owner = property?.ownerId ? players.find((player) => player.id === property.ownerId) : null;
         const side = tile.index <= 5 ? 'bottom' : tile.index <= 9 ? 'left' : tile.index <= 15 ? 'top' : 'right';
@@ -144,12 +122,12 @@ export function Board({
             style={{
               gridRow: position.gridRow,
               gridColumn: position.gridColumn,
-              '--color-group': group?.color ?? 'transparent',
+              '--color-group': groupColor ?? 'transparent',
             } as React.CSSProperties}
             onClick={() => onTileSelect(tile.index)}
             aria-label={`View ${tile.name}`}
           >
-            {group && <div className="tile-color-strip" style={{ background: group.color }} />}
+            {groupColor && <div className="tile-color-strip" style={{ background: groupColor }} />}
             <div className="tile-content">
               <span className="tile-icon">{tile.type === 'PROPERTY' ? '' : TILE_ICONS[tile.type]}</span>
               <span className="tile-name">{tile.name}</span>
@@ -176,10 +154,7 @@ export function Board({
           rollId={gameState.diceRollId}
           onRollingChange={onDiceRollingChange}
         />
-        <button className={`dice-roll-btn ${canRoll ? 'dice-roll-btn--active' : ''}`} onClick={onRollClick} disabled={!canRoll}>
-          <Dices size={18} />
-          {centerActionLabel}
-        </button>
+        <div className="dice-roll-btn" aria-live="polite">{centerStatus}</div>
       </div>
 
       <BoardPiecesScene players={visualPlayers} />

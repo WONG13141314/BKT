@@ -1,5 +1,5 @@
 import { selectChallenge, getAdjustedParams, determineHint } from '../bkt.selector';
-import { ChallengeContext, SKILL_NAMES } from '../../features/game/game.types';
+import { SKILL_NAMES } from '../../features/game/game.types';
 import { ACTIVE_SKILL_NAMES } from '../../features/game/game.constants';
 import { BKT_PARAMS_BY_DIFFICULTY } from '../bkt.defaults';
 import { baseInput, masteryFor } from '../../test/bkt.fixtures';

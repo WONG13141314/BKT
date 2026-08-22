@@ -1,12 +1,9 @@
-# Math Monopoly — Adaptive Learning Serious Game
+# Mathopoly — Adaptive Primary Math Property Game
 
 A public multiplayer web game for primary-school mathematics. One player hosts, up
 to three join with a room code. Underneath the Monopoly shell is a Bayesian
 Knowledge Tracing (BKT) engine that models each player's mastery of four
 arithmetic skills and targets questions at their weakest one.
-
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for architecture decisions
-and the phased roadmap.
 
 ## Tech Stack
 
@@ -192,8 +189,12 @@ above 0 means the schema is half-migrated — inspect before touching it.
 ## Tests
 
 ```bash
-cd backend && npx jest
+npm run verify
 ```
+
+The verification command checks formatting rules, unused code, TypeScript,
+backend game/learning tests, frontend component tests, and production builds.
+For the responsive browser check, run `npm run test:e2e --workspace=frontend`.
 
 ## License
 

@@ -6,7 +6,6 @@
 
 import { TileConfig, ColorGroup, PropertyState } from './game.types';
 import {
-  TOTAL_TILES,
   MONOPOLY_RENT_MULTIPLIER,
   LEVEL_UP_COST_RATIO,
 } from './game.constants';
@@ -43,7 +42,7 @@ export const COLOR_GROUPS: Record<string, ColorGroup> = {
 
 // ---- 20-Tile Board Layout ----
 
-export const BOARD_TILES: TileConfig[] = [
+const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
   // === Bottom row: Right to Left (indices 0–5) ===
   {
     index: 0,
@@ -259,6 +258,11 @@ export const BOARD_TILES: TileConfig[] = [
   },
 ];
 
+export const BOARD_TILES: TileConfig[] = BOARD_TILE_DATA.map((tile) => ({
+  ...tile,
+  buildCost: tile.type === 'PROPERTY' ? Math.floor(tile.price * LEVEL_UP_COST_RATIO) : 0,
+}));
+
 // ---- Utility Functions ----
 
 /** Get all tile indices belonging to a color group */
@@ -298,7 +302,7 @@ export function getTileByIndex(index: number): TileConfig {
 
 /** Get the level-up cost for a property (50% of purchase price) */
 export function getLevelUpCost(tile: TileConfig): number {
-  return Math.floor(tile.price * LEVEL_UP_COST_RATIO);
+  return tile.buildCost;
 }
 
 /** Calculate total property value for a player (sum of purchase prices) */

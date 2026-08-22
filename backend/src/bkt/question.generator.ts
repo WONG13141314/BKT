@@ -129,14 +129,6 @@ function makeOptionsFrom(
   };
 }
 
-function makeOptions(
-  correct: number,
-  formatter: (n: number) => string = String,
-  spread?: number
-): { options: string[]; correctIndex: number } {
-  return makeOptionsFrom(correct, [], formatter, spread);
-}
-
 /**
  * Four 1-digit options for a fill-in-the-digit question.
  *
@@ -231,7 +223,7 @@ function buildColumnData(
   else if (operation === '-') answer = a - b;
   else answer = a * b;
 
-  let hasRegrouping = false;
+  let hasRegrouping: boolean;
   if (operation === '+') {
     hasRegrouping = (a % 10) + (b % 10) >= 10;
   } else if (operation === '-') {
@@ -281,7 +273,7 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
-  let text = '';
+  let text: string;
   let isDigitTarget = false;
 
   switch (difficulty) {
@@ -396,7 +388,7 @@ function generateSubtraction(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
-  let text = '';
+  let text: string;
   let isDigitTarget = false;
 
   switch (difficulty) {
@@ -511,7 +503,7 @@ function generateMultiplication(difficulty: 1 | 2 | 3): GeneratedQuestion {
   let missingDigitPlace: 'hundreds' | 'tens' | 'ones' | undefined;
   let missingDigitRow: 'top' | 'bottom' | undefined;
   let targetAnswer: number;
-  let text = '';
+  let text: string;
   let isDigitTarget = false;
 
   switch (difficulty) {

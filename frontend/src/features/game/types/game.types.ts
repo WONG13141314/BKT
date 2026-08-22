@@ -64,6 +64,7 @@ export interface TileConfig {
   price: number;
   baseRent: number;
   leveledRent: number;
+  buildCost: number;
 }
 
 export interface PropertyState {

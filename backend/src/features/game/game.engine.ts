@@ -878,7 +878,7 @@ function applyCardEffect(state: GameState, effect: CardEffect, player: PlayerSta
     case 'COLLECT_FROM_EACH': {
       const otherPlayers = state.players.filter((p, i) => i !== playerIdx && !p.isBankrupt);
       const totalCollected = otherPlayers.length * effect.amount;
-      let players = state.players.map((p, i) => {
+      const players = state.players.map((p, i) => {
         if (i === playerIdx) return { ...p, money: p.money + totalCollected };
         if (!p.isBankrupt) return { ...p, money: p.money - effect.amount };
         return p;
@@ -941,7 +941,7 @@ function applyCardEffect(state: GameState, effect: CardEffect, player: PlayerSta
       if (!richest) return state;
       const richestIdx = state.players.findIndex((p) => p.id === richest.id);
       const stealAmount = Math.min(effect.amount, richest.money);
-      let players = state.players.map((p, i) => {
+      const players = state.players.map((p, i) => {
         if (i === playerIdx) return { ...p, money: p.money + stealAmount };
         if (i === richestIdx) return { ...p, money: p.money - stealAmount };
         return p;

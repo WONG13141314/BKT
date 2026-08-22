@@ -295,7 +295,7 @@ export const gameService = {
     if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
 
     // A bot landlord answers the moment the challenge reaches it.
-    let next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, receivedAt));
+    const next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, receivedAt));
 
     if (!bothDuellistsAnswered(next)) {
       activeGames.set(gameId, next);

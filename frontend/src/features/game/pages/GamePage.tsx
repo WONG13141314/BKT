@@ -11,7 +11,8 @@ import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
 import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { MathDuel } from '../components/MathDuel';
-import { BOARD_TILES, COLOR_GROUPS } from '../config/board.config';
+import { GameActionDock } from '../components/GameActionDock';
+import { ChallengeDialog } from '../components/ChallengeDialog';
 import { usePlayer } from '../../auth/PlayerContext';
 import { authService } from '../../auth/services/auth.service';
 import { StoredProfile } from '../../auth/types/auth.types';
@@ -22,18 +23,11 @@ import {
   MathChallenge,
   MasteryReport,
   PublicDuelState,
-  formatRM,
 } from '../types/game.types';
 import {
-  ArrowRight,
-  Banknote,
   Loader2,
   AlertCircle,
   Hourglass,
-  Zap,
-  Lock,
-  DollarSign,
-  House,
 } from 'lucide-react';
 import './GamePage.css';
 
@@ -342,18 +336,17 @@ export function GamePage() {
   }, [isDiceRolling, isPawnMoving, gameState?.diceRollId]);
 
   // Auto-request missing active challenge if in challenge phase
+  const turnPhase = gameState?.turnPhase;
   useEffect(() => {
-    if (gameState && isChallengePhase(gameState.turnPhase) && isMyTurn && !activeChallenge) {
+    if (turnPhase && isChallengePhase(turnPhase) && isMyTurn && !activeChallenge) {
       emitRequestChallenge();
     }
-  }, [gameState?.turnPhase, isMyTurn, activeChallenge, emitRequestChallenge]);
+  }, [turnPhase, isMyTurn, activeChallenge, emitRequestChallenge]);
 
 
   // ---- Answer Handler ----
   const handleAnswer = useCallback((selectedIndex: number) => {
-    if (!gameState) return;
-
-    switch (gameState.turnPhase) {
+    switch (turnPhase) {
       case 'SMART_BUY_CHALLENGE':
         emitSmartBuyAnswer(selectedIndex);
         break;
@@ -364,7 +357,7 @@ export function GamePage() {
         emitJailAnswer(selectedIndex);
         break;
     }
-  }, [gameState?.turnPhase, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer]);
+  }, [turnPhase, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer]);
 
   /**
    * Duel answers go on their own channel: the property owner answers during
@@ -498,7 +491,6 @@ export function GamePage() {
     return (
       <GameOverScreen
         scores={finalScores}
-        players={gameState.players}
         masteryReport={masteryReport}
         onExit={() => navigate('/')}
       />
@@ -532,21 +524,6 @@ export function GamePage() {
   const showChallengeLoading = isChallenge && !activeChallenge;
   const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isBoardAnimating;
 
-  const selectedBoardTile = BOARD_TILES[selectedTile] ?? BOARD_TILES[0];
-  const selectedProperty = gameState.properties.find((property) => property.tileIndex === selectedTile);
-  const selectedGroup = selectedBoardTile.colorGroup ? COLOR_GROUPS[selectedBoardTile.colorGroup] : null;
-  const ownsSelectedGroup = !!currentPlayer && !!selectedGroup && selectedGroup.tileIndices.every((tileIndex) =>
-    gameState.properties.find((property) => property.tileIndex === tileIndex)?.ownerId === currentPlayer.id
-  );
-  const houseCost = Math.floor(selectedBoardTile.price * .5);
-  const canBuildHouse = isMyTurn
-    && renderPhase === 'END_TURN'
-    && selectedBoardTile.type === 'PROPERTY'
-    && selectedProperty?.ownerId === currentPlayer?.id
-    && selectedProperty?.isLeveledUp === false
-    && ownsSelectedGroup
-    && !!currentPlayer
-    && (currentPlayer.hasLevelUpToken || currentPlayer.money >= houseCost);
   const forcePendingDetails = !!gameState.pendingTileEvent && [
     'BUY_DECISION',
     'SMART_BUY_CHALLENGE',
@@ -560,12 +537,6 @@ export function GamePage() {
       ? currentPlayer?.position ?? selectedTile
       : selectedTile;
   const showingLandedTile = detailTileIndex === currentPlayer?.position;
-  const listedDecisionPrice = gameState.pendingTileEvent?.propertyPrice ?? 0;
-  const effectiveDecisionPrice = currentPlayer?.hasDiscountToken
-    ? Math.floor(listedDecisionPrice * .7)
-    : listedDecisionPrice;
-
-
   return (
     <div className={`game-page ${showChallenge || showChallengeLoading ? 'game-page--quiz-active' : ''}`}>
       <TurnIndicator
@@ -573,6 +544,8 @@ export function GamePage() {
         isMyTurn={isMyTurn}
         turnPhase={gameState.turnPhase}
       />
+
+      <a className="skip-to-actions" href="#game-actions">Skip to game actions</a>
 
       {/* Main Layout */}
       <div className="game-layout">
@@ -590,9 +563,6 @@ export function GamePage() {
           gameState={presentationGameState}
           selectedTile={detailTileIndex}
           onTileSelect={setSelectedTile}
-          isMyTurn={isMyTurn}
-          onRollClick={handleRollClick}
-          rollRequested={rollRequested}
           onDiceRollingChange={handleDiceRollingChange}
           onMovementChange={handleMovementChange}
           onMovementComplete={handleMovementComplete}
@@ -600,64 +570,24 @@ export function GamePage() {
 
         {/* Right Panel: selected Monopoly space + its available actions. */}
         <div className="game-sidebar">
-          <SpaceDetailsPanel gameState={gameState} tileIndex={detailTileIndex} landed={showingLandedTile}>
-
-          {/* === DECISION UIs (only for active human player when movement animation completes) === */}
-
-          {/* BUY_DECISION: Buy / Smart Buy / Skip */}
-          {renderPhase === 'BUY_DECISION' && isMyTurn && gameState.pendingTileEvent && (
-            <div className="game-actions decision-panel">
-              {!gameState.pendingTileEvent.bankOfferAttempted && (
-                <button className="action-btn action-btn--primary" onClick={emitSmartBuy}>
-                  <Zap size={16} /> Answer for Bank Offer
-                </button>
-              )}
-              <button
-                className="action-btn action-btn--secondary"
-                onClick={emitBuyFull}
-                disabled={(currentPlayer?.money ?? 0) < effectiveDecisionPrice}
-              >
-                <DollarSign size={16} /> {gameState.pendingTileEvent.bankOfferApproved ? 'Accept Offer' : 'Buy Property'} · {formatRM(effectiveDecisionPrice)}
-              </button>
-              <button className="action-btn action-btn--ghost" onClick={emitSkipBuy}>
-                Skip Purchase
-              </button>
-            </div>
-          )}
-
-          {/* JAIL_DECISION: Math / Bail / Wait */}
-          {renderPhase === 'JAIL_DECISION' && isMyTurn && (
-            <div className="game-actions decision-panel">
-              <h3 className="decision-title">
-                <Lock size={16} /> You're in Jail!
-              </h3>
-              <button className="action-btn action-btn--primary" onClick={emitJailMath}>
-                Math Escape
-              </button>
-              <button className="action-btn action-btn--secondary" onClick={emitJailBail}>
-                <Banknote size={16} /> Pay Bail ({formatRM(50)})
-              </button>
-              <button className="action-btn action-btn--ghost" onClick={emitJailWait}>
-                <Hourglass size={16} /> Wait
-              </button>
-            </div>
-          )}
-
-          {/* END_TURN */}
-          {renderPhase === 'END_TURN' && isMyTurn && (
-            <div className="game-actions">
-              {canBuildHouse && (
-                <button className="action-btn action-btn--secondary" onClick={() => emitBuildHouse(selectedTile)}>
-                  <House size={16} /> Build House ({currentPlayer?.hasLevelUpToken ? 'Free token' : formatRM(houseCost)})
-                </button>
-              )}
-              <button className="action-btn action-btn--end" onClick={emitEndTurn} disabled={isBoardAnimating || isHoldingDuelResult}>
-                {isBoardAnimating ? 'Piece Moving…' : isHoldingDuelResult ? 'Showing Result…' : 'End Turn'} <ArrowRight size={16} />
-              </button>
-            </div>
-          )}
-
-          </SpaceDetailsPanel>
+          <SpaceDetailsPanel gameState={gameState} tileIndex={detailTileIndex} landed={showingLandedTile} />
+          <GameActionDock
+            state={gameState}
+            currentPlayer={currentPlayer}
+            isMyTurn={isMyTurn}
+            selectedTile={selectedTile}
+            isBoardAnimating={isBoardAnimating}
+            isHoldingDuelResult={isHoldingDuelResult}
+            onRoll={handleRollClick}
+            onBuyFull={emitBuyFull}
+            onSmartBuy={emitSmartBuy}
+            onSkipBuy={emitSkipBuy}
+            onJailMath={emitJailMath}
+            onJailBail={emitJailBail}
+            onJailWait={emitJailWait}
+            onBuild={emitBuildHouse}
+            onEndTurn={emitEndTurn}
+          />
         </div>
       </div>
 
@@ -674,23 +604,17 @@ export function GamePage() {
 
       {/* Math Challenge Panel */}
       {showChallenge && (
-        <div className="challenge-overlay">
-          <div className="challenge-panel">
-            <div className="challenge-header">
-              <span className="challenge-context">{formatContext(activeChallenge!.context)}</span>
-            </div>
-            {renderQuestion()}
-          </div>
-        </div>
+        <ChallengeDialog
+          title={formatContext(activeChallenge!.context)}
+          feedback={answerResult?.feedback}
+        >
+          {renderQuestion()}
+        </ChallengeDialog>
       )}
 
       {/* Challenge Loading / Recovery Overlay */}
       {showChallengeLoading && (
-        <div className="challenge-overlay">
-          <div className="challenge-panel challenge-panel--loading">
-            <div className="challenge-header">
-              <span className="challenge-context">Card Challenge</span>
-            </div>
+        <ChallengeDialog title="Loading challenge">
             <div style={{ padding: '24px', textAlign: 'center' }}>
               <Loader2 size={32} className="icon-spin" style={{ margin: '0 auto 16px' }} />
               <h3 style={{ margin: '8px 0', fontSize: '1.25rem' }}>Loading Question...</h3>
@@ -705,8 +629,7 @@ export function GamePage() {
                 Fetch Question
               </button>
             </div>
-          </div>
-        </div>
+        </ChallengeDialog>
       )}
 
       {/* Challenge Card Modal */}

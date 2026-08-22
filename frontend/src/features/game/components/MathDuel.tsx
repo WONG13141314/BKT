@@ -1,6 +1,8 @@
 import { Player, PublicDuelState, formatRM } from '../types/game.types';
 import './MathDuel.css';
 import { Swords } from 'lucide-react';
+import { useId, useRef } from 'react';
+import { useDialogFocus } from '../../../shared/hooks/useDialogFocus';
 
 interface MathDuelProps {
   duel: PublicDuelState;
@@ -29,6 +31,10 @@ export function MathDuel({
   };
 
   const amDuellist = isMe(duel.challenger.playerId) || isMe(duel.owner.playerId);
+  const titleId = useId();
+  const duelRef = useRef<HTMLDivElement>(null);
+  const isAnswerDialog = amDuellist && isMyTurnToAnswer && !resolved;
+  useDialogFocus(isAnswerDialog, duelRef);
 
   const stamp = resolved
     ? {
@@ -41,10 +47,18 @@ export function MathDuel({
 
   return (
     <div className="card-modal-overlay" style={{ zIndex: 1000 }}>
-      <div className="card-modal duel-card-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={duelRef}
+        className="card-modal duel-card-modal"
+        onClick={(e) => e.stopPropagation()}
+        role={isAnswerDialog ? 'dialog' : 'status'}
+        aria-modal={isAnswerDialog ? 'true' : undefined}
+        aria-labelledby={titleId}
+        tabIndex={isAnswerDialog ? -1 : undefined}
+      >
         <div className="card-modal-header math-card duel-header">
           <Swords size={28} className="duel-header-icon" />
-          <h3 className="card-modal-title">Property Dispute</h3>
+          <h3 id={titleId} className="card-modal-title">Property Dispute</h3>
         </div>
 
         <div className="card-modal-body duel-body">

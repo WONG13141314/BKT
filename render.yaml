@@ -31,7 +31,8 @@ services:
     # that lock can be orphaned on a reused backend, at which point the service
     # crash-loops and every retry makes it worse.
     # Apply migrations deliberately instead: `npm run db:deploy` in backend/.
-    startCommand: cd backend && npx tsx src/server.ts
+    # Production starts the compiled artifact; TypeScript tooling is build-only.
+    startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: clamp(0.4rem, 2vh, 1rem);
   overflow-y: auto;
 }
 
@@ -19,8 +19,11 @@
   max-width: 800px;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
   margin: auto;
+  max-height: 96dvh;
+  overflow-y: auto;
+  padding: 0.25rem 0.75rem 0.75rem 0.25rem;
 }
 
 /* ---- Reveal Animations ---- */
@@ -44,12 +47,12 @@
 
 .gameover-header {
   text-align: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .gameover-title {
   font-family: 'Impact', 'Arial Black', sans-serif;
-  font-size: 3.5rem;
+  font-size: clamp(2rem, 8vh, 3.25rem);
   color: #ffb703;
   text-shadow: 3px 3px 0px #000;
   margin: 0;
@@ -86,7 +89,7 @@
   font-size: 1.1rem;
   font-weight: 800;
   text-transform: uppercase;
-  padding: 1rem;
+  padding: 0.65rem;
   text-align: left;
   border-bottom: 4px solid #000;
   border-right: 2px solid #000;
@@ -173,12 +176,12 @@
 
 .winner-card {
   text-align: center;
-  padding: 2rem;
+  padding: 0.8rem 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  max-width: 400px;
+  gap: 0.35rem;
+  max-width: 560px;
   width: 100%;
   background: #fff;
   border: 4px solid #000;
@@ -193,7 +196,7 @@
 
 .winner-name {
   font-family: 'Impact', 'Arial Black', sans-serif;
-  font-size: 2.5rem;
+  font-size: 1.65rem;
   color: #000;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -321,7 +324,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: 1rem 2rem;
+  min-height: 46px;
+  padding: 0.65rem 1.5rem;
   border-radius: 8px;
   font-weight: 800;
   font-size: 1.1rem;
@@ -331,6 +335,22 @@
   transition: all 0.2s ease;
   border: 4px solid #000;
   box-shadow: 6px 6px 0px rgba(0,0,0,0.4);
+}
+
+@media (max-width: 640px) {
+  .gameover-container { padding-right: 0.35rem; }
+  .gameover-scores { overflow-x: auto; }
+  .score-table { min-width: 590px; }
+  .gameover-subtitle { font-size: 0.95rem; }
+  .winner-breakdown { gap: 0.7rem; font-size: 0.85rem; }
+}
+
+@media (max-height: 420px) and (orientation: landscape) {
+  .gameover-container { max-width: 980px; display: grid; grid-template-columns: 1.15fr 0.85fr; align-items: start; }
+  .gameover-header, .gameover-actions { grid-column: 1 / -1; }
+  .gameover-winner { display: none; }
+  .gameover-title { font-size: 1.8rem; }
+  .gameover-header { display: flex; align-items: baseline; justify-content: center; gap: 0.75rem; }
 }
 
 .gameover-btn--primary {

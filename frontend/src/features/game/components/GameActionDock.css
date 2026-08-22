@@ -1,0 +1,44 @@
+.game-action-dock {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.game-action-dock__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: var(--ink);
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .game-action-dock {
+    position: fixed;
+    z-index: var(--z-sticky);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    padding: 0.65rem 0.75rem var(--safe-bottom);
+    background: rgba(244, 247, 245, 0.97);
+    border-top: 3px solid var(--ink);
+    box-shadow: 0 -5px 0 rgba(0, 0, 0, 0.2);
+  }
+
+  .game-action-dock__label { grid-column: 1 / -1; }
+  .game-action-dock .action-btn { min-height: 48px; padding: 0.55rem 0.7rem; }
+}
+
+@media (max-width: 620px) {
+  .game-action-dock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .game-action-dock > :only-child { grid-column: 1 / -1; }
+  .game-action-dock .action-btn { font-size: 0.78rem; }
+}
+
+@media (max-height: 420px) and (orientation: landscape) {
+  .game-action-dock { left: auto; width: min(48vw, 420px); padding: 0.4rem; }
+}

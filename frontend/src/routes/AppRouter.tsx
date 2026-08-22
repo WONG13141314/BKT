@@ -1,21 +1,29 @@
-import { ReactNode } from 'react';
+import { lazy, ReactNode, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { usePlayer } from '../features/auth/PlayerContext';
 import { LoginPage } from '../features/auth/pages/LoginPage';
-import { GameLobby } from '../features/game/components/GameLobby';
-import { GamePage } from '../features/game/pages/GamePage';
+
+const GameLobby = lazy(() => import('../features/game/components/GameLobby')
+  .then((module) => ({ default: module.GameLobby })));
+const GamePage = lazy(() => import('../features/game/pages/GamePage')
+  .then((module) => ({ default: module.GamePage })));
+
+function RouteLoading() {
+  return (
+    <div className="route-loading" role="status" aria-live="polite">
+      <Loader2 size={28} className="icon-spin" aria-hidden="true" />
+      <span className="sr-only">Loading game…</span>
+    </div>
+  );
+}
 
 /** Holds a route until the boot-time profile restore settles. */
 function RequirePlayer({ children }: { children: ReactNode }) {
   const { player, isRestoring } = usePlayer();
 
   if (isRestoring) {
-    return (
-      <div className="route-loading">
-        <Loader2 size={28} className="icon-spin" />
-      </div>
-    );
+    return <RouteLoading />;
   }
 
   if (!player) return <Navigate to="/" replace />;
@@ -31,17 +39,21 @@ export function AppRouter() {
         <Route
           path="/lobby"
           element={
-            <RequirePlayer>
-              <GameLobby />
-            </RequirePlayer>
+            <Suspense fallback={<RouteLoading />}>
+              <RequirePlayer>
+                <GameLobby />
+              </RequirePlayer>
+            </Suspense>
           }
         />
         <Route
           path="/game"
           element={
-            <RequirePlayer>
-              <GamePage />
-            </RequirePlayer>
+            <Suspense fallback={<RouteLoading />}>
+              <RequirePlayer>
+                <GamePage />
+              </RequirePlayer>
+            </Suspense>
           }
         />
         {/* Legacy entry point */}

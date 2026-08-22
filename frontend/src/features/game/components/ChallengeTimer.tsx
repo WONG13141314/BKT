@@ -34,7 +34,8 @@ export function ChallengeTimer({ expiresAt, totalSeconds, paused }: Props) {
   const urgency = fraction <= 0.25 ? 'critical' : fraction <= 0.5 ? 'low' : 'normal';
 
   return (
-    <div className="challenge-timer" role="timer" aria-live="off">
+    <div className={`challenge-timer ${seconds <= 5 ? 'challenge-timer--critical' : ''}`} role="timer" aria-live="off">
+      <strong className="challenge-timer__seconds">{seconds} seconds</strong>
       <div className="challenge-timer__track">
         <div
           className={`challenge-timer__fill challenge-timer__fill--${urgency}`}
