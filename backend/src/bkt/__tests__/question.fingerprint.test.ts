@@ -30,17 +30,6 @@ function generatedColumn(
   };
 }
 
-function generatedMcq(text: string): GeneratedQuestion {
-  return {
-    questionData: { type: 'mcq', text },
-    text,
-    options: [],
-    correctIndex: 0,
-    difficulty: 1,
-    skillName: 'Addition',
-  };
-}
-
 function generatedDivision(missingTarget: 'quotient_digit' | 'product', missingStepIndex: number): GeneratedQuestion {
   return {
     questionData: {
@@ -107,10 +96,6 @@ describe('question fingerprints', () => {
 
     expect(questionFingerprint(bottomOnes)).not.toBe(questionFingerprint(topOnes));
     expect(questionFingerprint(topTens)).not.toBe(questionFingerprint(topOnes));
-  });
-
-  it('normalizes incidental whitespace in equivalent MCQ prompts', () => {
-    expect(questionFingerprint(generatedMcq('  What   is  7 + 5? '))).toBe(questionFingerprint(generatedMcq('What is 7 + 5?')));
   });
 
   it('retries a recent question but returns the final generated question after the bound', () => {

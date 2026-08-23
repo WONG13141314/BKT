@@ -27,15 +27,6 @@
   gap: 0.35rem;
 }
 
-.mcq-text {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: #000;
-  text-align: center;
-  padding: 0.5rem 0 0.75rem;
-  font-family: 'Courier New', Courier, monospace;
-}
-
 .operation-space {
   width: 28px;
 }
@@ -114,7 +105,7 @@
   box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
 }
 
-/* ---- MCQ Options ---- */
+/* ---- Four answer options ---- */
 
 .column-options {
   display: grid;

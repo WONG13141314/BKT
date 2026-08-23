@@ -160,14 +160,8 @@ export interface LongDivisionQuestion {
   missingStepIndex: number;
 }
 
-/** Standard multiple-choice fallback */
-export interface McqQuestion {
-  type: 'mcq';
-  text: string;
-}
-
-/** Union type — frontend uses this to decide rendering */
-export type QuestionData = ColumnQuestion | LongDivisionQuestion | McqQuestion;
+/** Every issued question is a vertical fill-in calculation. */
+export type QuestionData = ColumnQuestion | LongDivisionQuestion;
 
 // ---- Math Challenge ----
 
@@ -177,7 +171,7 @@ export interface MathChallenge {
   difficulty: 1 | 2 | 3;
   questionData: QuestionData;   // Structured data for rendering
   text: string;                 // Server-side debug/logging text — never sent to clients
-  options: string[];            // 4 MCQ answer options
+  options: string[];            // Four choices for the missing calculation value
   correctIndex: number;
   context: ChallengeContext;
   timeLimit: number;            // Seconds
@@ -235,15 +229,9 @@ export interface PublicLongDivisionQuestion {
   remainderCell: DigitCell | null;
 }
 
-export interface PublicMcqQuestion {
-  type: 'mcq';
-  text: string;
-}
-
 export type PublicQuestionData =
   | PublicColumnQuestion
-  | PublicLongDivisionQuestion
-  | PublicMcqQuestion;
+  | PublicLongDivisionQuestion;
 
 export interface PublicMathChallenge {
   id: string;

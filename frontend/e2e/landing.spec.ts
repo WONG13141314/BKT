@@ -12,6 +12,8 @@ for (const viewport of viewports) {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: 'Mathopoly' })).toBeVisible();
+    await expect(page.getByText('Roll, solve, and build your empire')).toBeVisible();
+    await expect(page.getByText(/primary math/i)).toHaveCount(0);
     await expect(page.getByLabel('Your Nickname')).toBeFocused();
     await expect(page.getByRole('radiogroup', { name: 'Pick your token' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();

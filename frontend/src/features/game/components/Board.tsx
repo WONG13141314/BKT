@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GameState, PRIMARY_MATH_LABEL, formatRM } from '../types/game.types';
+import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
 import { BoardPiecesScene } from './BoardPiecesScene';
 import { PhysicsDice } from './PhysicsDice';
@@ -103,7 +103,7 @@ export function Board({
     ...player,
     position: visualPositions[player.id] ?? player.position,
   }));
-  const centerStatus = gameState.turnPhase === 'MOVING' ? 'Moving…' : 'Primary Math';
+  const centerStatus = gameState.turnPhase === 'MOVING' ? 'Moving…' : 'Game in progress';
 
   return (
     <div className="board-grid">
@@ -148,7 +148,7 @@ export function Board({
       })}
 
       <div className="board-center">
-        <div className="board-brand"><strong>MATHOPOLY</strong><span>{PRIMARY_MATH_LABEL}</span></div>
+        <div className="board-brand"><strong>MATHOPOLY</strong><span>ROLL • SOLVE • OWN</span></div>
         <PhysicsDice
           values={gameState.diceValues}
           rollId={gameState.diceRollId}

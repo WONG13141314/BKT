@@ -25,7 +25,6 @@ export function ChallengeDialog({ title, children, feedback, onSafeClose }: Chal
         tabIndex={-1}
       >
         <header className="challenge-dialog__header">
-          <span className="challenge-dialog__eyebrow">Primary Math</span>
           <h2 id={titleId}>{title}</h2>
         </header>
         <div className="challenge-dialog__body">{children}</div>

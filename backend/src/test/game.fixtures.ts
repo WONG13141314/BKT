@@ -15,7 +15,12 @@ export function makePrivateChallenge(overrides: Partial<MathChallenge> = {}): Ma
     id: 'challenge-1',
     skillName: 'Addition',
     difficulty: 1,
-    questionData: { type: 'mcq', text: '1 + 1 = ?' },
+    questionData: {
+      type: 'column', operation: '+', topNumber: 1, bottomNumber: 1,
+      placeValues: { tens: { top: 0, bottom: 0 }, ones: { top: 1, bottom: 1 } },
+      answer: 2, hasRegrouping: false, answerDigits: { tens: 0, ones: 2 },
+      missingPosition: 'answer',
+    },
     text: '1 + 1 = ?',
     options: ['1', '2', '3', '4'],
     correctIndex: 1,
@@ -24,7 +29,7 @@ export function makePrivateChallenge(overrides: Partial<MathChallenge> = {}): Ma
     startedAt: 1_000,
     hintLevel: 0,
     hintContent: null,
-    fingerprint: 'mcq:1 + 1 = ?',
+    fingerprint: 'column:+:1:1:answer:-:-',
     ...overrides,
   };
 }

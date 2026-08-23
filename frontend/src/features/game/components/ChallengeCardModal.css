@@ -111,14 +111,3 @@
   transform: translate(3px, 3px);
   box-shadow: 0px 0px 0px #000;
 }
-
-/* MCQ text styling (used by McqQuestion inside column-question) */
-.mcq-text {
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: #000;
-  text-align: center;
-  line-height: 1.6;
-  max-width: 320px;
-  padding: 0.5rem;
-}

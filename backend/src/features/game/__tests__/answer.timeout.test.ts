@@ -22,7 +22,6 @@ function openChallenge(phase: SoloCase['phase'], context: SoloCase['context']): 
       masteryStates: state.players[0].masteryStates,
       consecutiveFailures: state.players[0].consecutiveFailures,
       context,
-      propertyPrice: 100,
     }),
     startedAt: 1_000,
     timeLimit: 20,

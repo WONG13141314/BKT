@@ -12,11 +12,7 @@ import {
   QuestionData,
 } from '../features/game/game.types';
 import { ACTIVE_SKILL_NAMES, QUESTION_TIME_LIMITS, SkillName } from '../features/game/game.constants';
-import {
-  generateQuestion,
-  generateSmartBuyQuestion,
-  type GeneratedQuestion,
-} from './question.generator';
+import { generateQuestion, type GeneratedQuestion } from './question.generator';
 import { generateDistinctQuestion } from './question.fingerprint';
 import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 
@@ -24,7 +20,7 @@ import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from './bkt.defaults';
 
 const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
   MATH_DUEL: ACTIVE_SKILL_NAMES,                          // Themed by the disputed property
-  SMART_BUY: ACTIVE_SKILL_NAMES,                          // Price calculations
+  SMART_BUY: ACTIVE_SKILL_NAMES,                          // Same adaptive calculation bank
   CHALLENGE_CARD: ACTIVE_SKILL_NAMES,                     // All skills eligible
   JAIL_ESCAPE: ACTIVE_SKILL_NAMES,                        // All, reduced difficulty
 };
@@ -127,7 +123,7 @@ function hintFor(level: 1 | 2 | 3, skillName: string, question?: QuestionData): 
   if (question?.type === 'column') return columnHint(level, question);
   if (question?.type === 'long_division') return divisionHint(level, question);
 
-  // MCQ or no question data — fall back to something skill-specific.
+  // No question data (for a defensive caller) — use a skill-specific fallback.
   return level >= 3
     ? `Work it out step by step. ${skillName} is about doing one part at a time.`
     : `Take your time and check each part of the ${skillName.toLowerCase()}.`;
@@ -210,8 +206,6 @@ export interface SelectionInput {
   consecutiveFailures: Record<string, number>;
   /** Observations per skill. Gates difficulty until the estimate has evidence. */
   skillAttempts?: Record<string, number>;
-  // Smart Buy specific
-  propertyPrice?: number;
   /** Skill theme of the property in play. A preference, not a constraint. */
   propertySkillTheme?: SkillName;
   /** Force a skill. Used by the Math Duel so both players face the same one. */
@@ -244,7 +238,6 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     context,
     consecutiveFailures,
     skillAttempts,
-    propertyPrice,
     propertySkillTheme,
     forceSkill,
     recentQuestionFingerprints,
@@ -287,12 +280,12 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   }
 
   // 3. Generate the question using the selected skill and difficulty
-  const generated = generateDistinctQuestion((): GeneratedQuestion => {
-    if (context === 'SMART_BUY' && propertyPrice != null) {
-      return generateSmartBuyQuestion(propertyPrice, difficulty, selectedSkill);
-    }
-    return generateQuestion(selectedSkill, difficulty);
-  }, recentQuestionFingerprints ?? []);
+  // Every game context uses the same vertical fill-in calculation bank.
+  // Context changes the reward and difficulty, never the question format.
+  const generated = generateDistinctQuestion(
+    (): GeneratedQuestion => generateQuestion(selectedSkill, difficulty),
+    recentQuestionFingerprints ?? []
+  );
 
   // 4. Determine the hint — after generation, so it can point at the actual
   //    column, row or division step the player has to fill in.

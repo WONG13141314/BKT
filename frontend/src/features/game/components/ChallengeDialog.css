@@ -27,7 +27,6 @@
 }
 
 .challenge-dialog__header h2 { margin: 0; font-size: clamp(1.25rem, 5vw, 1.75rem); }
-.challenge-dialog__eyebrow { display: block; font-size: 0.72rem; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
 .challenge-dialog__body { padding: clamp(0.75rem, 3vw, 1.25rem); }
 .challenge-dialog__feedback { margin: 0 1rem 1rem; padding: 0.75rem; background: #e8f5e9; border: 2px solid var(--ink); font-weight: 800; }
 

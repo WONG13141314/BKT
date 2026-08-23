@@ -1,6 +1,6 @@
 // ============================================
 // Board Configuration — 20 Tiles
-// Primary Math themed properties, RM currency
+// Arithmetic-themed properties, RM currency
 // 5 color sets × 2 properties = 10 properties + 10 specials
 // ============================================
 

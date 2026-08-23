@@ -8,6 +8,7 @@ describe('ChallengeDialog', () => {
     render(<ChallengeDialog title="Math challenge"><button>Answer one</button></ChallengeDialog>);
     expect(screen.getByRole('dialog', { name: /math challenge/i })).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByRole('button', { name: /answer one/i })).toHaveFocus();
+    expect(screen.queryByText(/primary math/i)).not.toBeInTheDocument();
   });
 
   it('shows numeric time and the final-five warning', () => {

@@ -8,7 +8,6 @@ import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
 import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
-import { McqQuestion } from '../components/McqQuestion';
 import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
@@ -19,6 +18,7 @@ import { StoredProfile } from '../../auth/types/auth.types';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
+import { useAnswerResultHold } from '../hooks/useAnswerResultHold';
 import {
   MathChallenge,
   MasteryReport,
@@ -77,7 +77,7 @@ export function GamePage() {
   // arrives on its own channel rather than inside the shared state broadcast.
   const [duel, setDuel] = useState<PublicDuelState | null>(null);
   const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
-  const visibleChallengeIdRef = useRef<string | null>(null);
+  const { markChallengeVisible, holdThenClear } = useAnswerResultHold();
 
   // Visual motion may delay a modal briefly, but it must never become the
   // authority for the turn. The server phase always controls legal actions.
@@ -170,10 +170,9 @@ export function GamePage() {
         setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
       }
       if (state.currentChallenge) {
-        visibleChallengeIdRef.current = state.currentChallenge.id;
+        markChallengeVisible(state.currentChallenge.id);
         setActiveChallenge(state.currentChallenge);
       } else if (!isChallengePhase(state.turnPhase)) {
-        visibleChallengeIdRef.current = null;
         setChallengePlayerId(null);
       }
       // The server has moved past the duel — clear it if it's still unresolved,
@@ -185,7 +184,7 @@ export function GamePage() {
     },
     onChallenge: (data) => {
       setChallengePlayerId(data.playerId);
-      visibleChallengeIdRef.current = data.challenge.id;
+      markChallengeVisible(data.challenge.id);
       setActiveChallenge(data.challenge);
       setAnswerResult(null);
       // The duel reveal lingers deliberately so the table can read it, but the
@@ -229,15 +228,11 @@ export function GamePage() {
       // challenge arrives before the hold expires (e.g. the player lands on a
       // Challenge Card right after the Roll Challenge), the timeout must not
       // wipe the newer challenge from the screen.
-      const answeredId = activeChallenge?.id;
-
-      setTimeout(() => {
-        if (visibleChallengeIdRef.current !== answeredId) return;
-        visibleChallengeIdRef.current = null;
-        setActiveChallenge(curr => curr?.id === answeredId ? null : curr);
+      holdThenClear(activeChallenge?.id ?? null, holdMs, (answeredId) => {
+        setActiveChallenge(curr => !answeredId || curr?.id === answeredId ? null : curr);
         setAnswerResult(null);
         setChallengePlayerId(null);
-      }, holdMs);
+      });
     },
     onDuel: (data) => {
       // Ignore re-sent resolved duels — they've already been handled by
@@ -395,12 +390,9 @@ export function GamePage() {
     if (questionData.type === 'column') {
       return <ColumnQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
     }
-    if (questionData.type === 'long_division') {
-      return (
-        <LongDivisionQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />
-      );
-    }
-    return <McqQuestion {...shared} question={questionData} />;
+    return (
+      <LongDivisionQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />
+    );
   }
 
   function renderQuestion() {

@@ -1,4 +1,4 @@
-# Mathopoly — Adaptive Primary Math Property Game
+# Mathopoly — Adaptive Arithmetic Property Game
 
 A public multiplayer web game for primary-school mathematics. One player hosts, up
 to three join with a room code. Underneath the Monopoly shell is a Bayesian

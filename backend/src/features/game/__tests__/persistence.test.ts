@@ -30,7 +30,14 @@ function makeChallenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     id: 'challenge_1',
     skillName: 'Division',
     difficulty: 2,
-    questionData: { type: 'mcq', text: '84 ÷ 4 = ?' },
+    questionData: {
+      type: 'long_division', divisor: 4, dividend: 84, quotient: 21, remainder: 0,
+      steps: [
+        { quotientDigit: 2, product: 8, subtractionResult: 0, broughtDownDigit: 4 },
+        { quotientDigit: 1, product: 4, subtractionResult: 0, broughtDownDigit: null },
+      ],
+      missingTarget: 'quotient_digit', missingStepIndex: 1,
+    },
     text: '84 ÷ 4 = ?',
     options: ['19', '21', '24', '26'],
     correctIndex: 1,
@@ -39,7 +46,7 @@ function makeChallenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     startedAt: Date.now(),
     hintLevel: 1,
     hintContent: 'Take it one column at a time.',
-    fingerprint: 'mcq:84 ÷ 4 = ?',
+    fingerprint: 'division:84:4:quotient_digit:1',
     ...overrides,
   };
 }

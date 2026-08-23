@@ -14,10 +14,6 @@ export const SKILL_NAMES = [
 
 export type SkillName = typeof SKILL_NAMES[number];
 
-// ---- Constants ----
-
-export const PRIMARY_MATH_LABEL = 'Primary Math';
-
 export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
   1: 25,
   2: 20,
@@ -40,7 +36,6 @@ export const GAME_CONSTANTS = {
   QUESTION_TIME_LIMIT_EASY: QUESTION_TIME_LIMITS[1],
   QUESTION_TIME_LIMIT_MEDIUM: QUESTION_TIME_LIMITS[2],
   QUESTION_TIME_LIMIT_HARD: QUESTION_TIME_LIMITS[3],
-  PRIMARY_MATH_LABEL,
 } as const;
 
 // ---- Board & Tiles ----
@@ -173,12 +168,7 @@ export interface LongDivisionQuestion {
   remainderCell: DigitCell | null;
 }
 
-export interface McqQuestion {
-  type: 'mcq';
-  text: string;
-}
-
-export type QuestionData = ColumnQuestion | LongDivisionQuestion | McqQuestion;
+export type QuestionData = ColumnQuestion | LongDivisionQuestion;
 
 // ---- Math Challenge ----
 

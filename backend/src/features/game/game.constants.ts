@@ -1,7 +1,7 @@
 // ============================================
 // Game Constants — All tunable values in one place
 // Currency: RM (Malaysian Ringgit)
-// Scope: Primary Math
+// Scope: four arithmetic skills
 // ============================================
 
 // ---- Board ----
@@ -69,9 +69,7 @@ export const LUCKY_BREAK_TOKEN_CHANCE = 0.33; // 1 in 3 chance of free Level Up 
 // Winner = highest net worth (cash + property values + level-up bonuses)
 // No mastery multiplier in game score
 
-// ---- Skill Nodes (Primary Math) ----
-
-export const PRIMARY_MATH_LABEL = 'Primary Math';
+// ---- Skill Nodes ----
 
 export const SKILL_NAMES = [
   'Addition',
@@ -115,5 +113,4 @@ export const GAME_CONSTANTS = {
   TIME_LIMIT_MEDIUM,
   TIME_LIMIT_HARD,
   QUESTION_TIME_LIMITS,
-  PRIMARY_MATH_LABEL,
 } as const;

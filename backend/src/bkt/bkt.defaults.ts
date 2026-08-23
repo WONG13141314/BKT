@@ -4,7 +4,7 @@ import { BktParams } from './bkt.types';
 // with 4-option multiple choice questions
 export const DEFAULT_BKT_PARAMS: BktParams = {
   pT: 0.15,  // ~15% chance to learn from a single exposure
-  pG: 0.25,  // 25% chance to guess correctly (4-option MCQ baseline)
+  pG: 0.25,  // 25% chance to guess correctly (four answer choices)
   pS: 0.1,   // 10% chance to slip (careless mistake)
 };
 

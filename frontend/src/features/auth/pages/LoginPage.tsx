@@ -142,7 +142,7 @@ export function LoginPage() {
             <Dices size={32} strokeWidth={1.5} />
           </div>
           <h1 className="heading-display login-title">Mathopoly</h1>
-          <p className="login-subtitle">Primary Math, played like a property game</p>
+          <p className="login-subtitle">Roll, solve, and build your empire</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}

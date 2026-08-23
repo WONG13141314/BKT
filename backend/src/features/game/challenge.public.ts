@@ -201,8 +201,6 @@ export function redactQuestionData(data: QuestionData): PublicQuestionData {
       return redactColumn(data);
     case 'long_division':
       return redactLongDivision(data);
-    case 'mcq':
-      return { type: 'mcq', text: data.text };
   }
 }
 

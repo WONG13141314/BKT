@@ -30,17 +30,13 @@ export function questionFingerprint(question: GeneratedQuestion): string {
     ].join(':');
   }
 
-  if (data.type === 'long_division') {
-    return [
-      'division',
-      data.dividend,
-      data.divisor,
-      data.missingTarget,
-      data.missingStepIndex,
-    ].join(':');
-  }
-
-  return ['mcq', data.text.trim().replace(/\s+/g, ' ')].join(':');
+  return [
+    'division',
+    data.dividend,
+    data.divisor,
+    data.missingTarget,
+    data.missingStepIndex,
+  ].join(':');
 }
 
 /** Generate a fresh task where possible, without risking an unbounded loop. */

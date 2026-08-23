@@ -648,7 +648,6 @@ export function startSmartBuyChallenge(state: GameState): GameState {
     context: 'SMART_BUY',
     consecutiveFailures: player.consecutiveFailures,
     skillAttempts: player.skillAttempts,
-    propertyPrice: event.propertyPrice,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
     recentQuestionFingerprints: player.recentQuestionFingerprints,
   });

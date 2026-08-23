@@ -1,4 +1,4 @@
-import { generateQuestion, generateQuestionBank, generateSmartBuyQuestion } from '../question.generator';
+import { generateQuestion, generateQuestionBank } from '../question.generator';
 
 function withSeededRandom<T>(seed: number, action: () => T): T {
   const originalRandom = Math.random;
@@ -101,18 +101,6 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
       expect(targets).toContain('remainder');
     });
 
-    it.each([
-      ['Addition', 240],
-      ['Subtraction', 192],
-      ['Multiplication', 48],
-      ['Division', 48],
-    ] as const)('uses the property price for %s Smart Buy calculations', (skill, expectedAnswer) => {
-      const question = generateSmartBuyQuestion(240, 2, skill);
-
-      expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
-      expect(question.text).toContain('240');
-      expect(question.options[question.correctIndex]).toBe(String(expectedAnswer));
-    });
   });
 
   describe('generateQuestionBank', () => {
@@ -142,7 +130,10 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
         const skill = skills[Math.floor(Math.random() * skills.length)];
         const q = generateQuestion(skill, diff);
 
+        expect(q.options).toHaveLength(4);
+        expect(new Set(q.options).size).toBe(4);
         const chosenOption = Number(q.options[q.correctIndex]);
+        expect(Number.isFinite(chosenOption)).toBe(true);
 
         if (q.questionData.type === 'column') {
           const cd = q.questionData;
@@ -185,32 +176,4 @@ describe('Question Generator — Redesigned Math Monopoly', () => {
     });
   });
 
-  describe('Smart Buy question bank', () => {
-    it('keeps 24,000 price-context options valid, unique, and balanced', () => {
-      const correctIndexCounts = [0, 0, 0, 0];
-      const prices = [40, 80, 120, 160, 200, 240];
-      const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'] as const;
-
-      withSeededRandom(0x5B00, () => {
-        for (const skill of skills) {
-          for (const difficulty of [1, 2, 3] as const) {
-            for (let i = 0; i < 2_000; i += 1) {
-              const price = prices[i % prices.length];
-              const question = generateSmartBuyQuestion(price, difficulty, skill);
-
-              expect(question.questionData).toEqual({ type: 'mcq', text: question.text });
-              expect(question.text).toContain(String(price));
-              expect(question.options).toHaveLength(4);
-              expect(new Set(question.options).size).toBe(4);
-              expect(question.options[question.correctIndex]).toBeDefined();
-              expect(question.options.every((option) => Number.isFinite(Number(option)) && Number(option) >= 0)).toBe(true);
-              correctIndexCounts[question.correctIndex] += 1;
-            }
-          }
-        }
-      });
-
-      for (const count of correctIndexCounts) expect(count).toBeGreaterThan(5_000);
-    });
-  });
 });

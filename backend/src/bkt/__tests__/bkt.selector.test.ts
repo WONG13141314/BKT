@@ -50,17 +50,22 @@ describe('BKT Question Selector', () => {
       expect(challenge.timeLimit).toBe(25);
     });
 
-    it('should use contextual skills for SMART_BUY', () => {
-      const challenge = selectChallenge({
-        masteryStates: defaultMastery,
-        context: 'SMART_BUY',
-        consecutiveFailures: noFailures,
-        propertyPrice: 200,
-      });
+    it.each(['SMART_BUY', 'CHALLENGE_CARD', 'JAIL_ESCAPE', 'MATH_DUEL'] as const)(
+      'uses a vertical four-option fill-in question for %s',
+      (context) => {
+        const challenge = selectChallenge({
+          masteryStates: defaultMastery,
+          context,
+          consecutiveFailures: noFailures,
+        });
 
-      expect(['Addition', 'Subtraction', 'Multiplication', 'Division']).toContain(challenge.skillName);
-      expect(challenge.timeLimit).toBe(25);
-    });
+        expect(['Addition', 'Subtraction', 'Multiplication', 'Division']).toContain(challenge.skillName);
+        expect(['column', 'long_division']).toContain(challenge.questionData.type);
+        expect(challenge.questionData.type).not.toBe('mcq');
+        expect(challenge.options).toHaveLength(4);
+        expect(new Set(challenge.options).size).toBe(4);
+      }
+    );
 
     it('should reduce difficulty for JAIL_ESCAPE', () => {
       const highMastery: Record<string, number> = {};

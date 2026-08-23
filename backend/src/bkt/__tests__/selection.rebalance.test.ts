@@ -140,7 +140,6 @@ describe('Skill selection', () => {
         context: 'SMART_BUY',
         consecutiveFailures: NO_FAILURES,
         skillAttempts: { Addition: 10, Subtraction: 10, Multiplication: 10, Division: 10 },
-        propertyPrice: 200,
         propertySkillTheme: 'Addition',
       }).skillName
     ));
