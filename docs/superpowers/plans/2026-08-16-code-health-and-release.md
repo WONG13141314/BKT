@@ -376,7 +376,7 @@ git commit -m "chore: align production builds and lazy game loading"
 
 - [ ] **Step 1: Update README with real commands and architecture**
 
-Document Primary Math scope, all four active skills, no-auction decline behavior, timeout/BKT semantics, development origins, test/lint/typecheck/build/e2e commands, backend production artifact, reconnect behavior, and the public/private socket boundary.
+Document arithmetic scope, all four active skills, no-auction decline behavior, timeout/BKT semantics, development origins, test/lint/typecheck/build/e2e commands, backend production artifact, reconnect behavior, and the public/private socket boundary.
 
 ```markdown
 ## Learning model

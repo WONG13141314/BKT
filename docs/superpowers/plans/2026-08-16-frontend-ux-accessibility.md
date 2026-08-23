@@ -67,9 +67,9 @@ Expected: `frontend/package.json` and root `package-lock.json` contain the depen
 ```tsx
 import variables from '../variables.css?raw';
 
-it('defines the accessible game tokens and Primary Math product label', () => {
+it('defines the accessible game tokens and concise product copy', () => {
   renderLoginPageWithProviders();
-  expect(screen.getByText(/primary math/i)).toBeInTheDocument();
+  expect(screen.getByText(/roll, solve/i)).toBeInTheDocument();
   expect(variables).toContain('--action-min-height: 44px');
   expect(variables).toContain('--focus-ring:');
 });
@@ -104,7 +104,7 @@ Expected: FAIL because the UI still uses the old subtitle and the test harness/t
 }
 ```
 
-Remove the remote `@import`, add `:focus-visible`, `prefers-reduced-motion`, and `color-scheme: light`. Point `index.html` to `/favicon.svg` and use `Primary Math` in the product subtitle/description.
+Remove the remote `@import`, add `:focus-visible`, `prefers-reduced-motion`, and `color-scheme: light`. Point `index.html` to `/favicon.svg` and use concise game-focused product copy.
 
 - [ ] **Step 5: Run the component test and commit foundations**
 

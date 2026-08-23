@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Addition, Subtraction, Multiplication, and Division are active.
-- Product wording is `Primary Math`, not `Standard 1 KSSR`.
+- Product wording describes arithmetic play without attaching a curriculum label.
 - Easy/medium Division is exact; hard Division may use remainders.
 - Division mastery is independent; Multiplication and Subtraction only affect readiness/difficulty.
 - Easy, medium, and hard questions receive 25, 20, and 15 seconds respectively.
@@ -29,7 +29,7 @@
 - Create `backend/src/bkt/feedback.ts`: concise worked feedback.
 - Create tests beside existing BKT/game tests.
 - Create `backend/src/test/bkt.fixtures.ts`: deterministic selector/generator test inputs.
-- Modify `backend/src/features/game/game.constants.ts`: four skills, timing, Primary Math copy constant.
+- Modify `backend/src/features/game/game.constants.ts`: four skills and timing.
 - Modify `backend/src/bkt/bkt.selector.ts`: exposure-aware selection, readiness cap, difficulty time.
 - Modify `backend/src/bkt/question.generator.ts`: Division progression and price-context Smart Buy.
 - Modify `backend/src/features/game/game.types.ts`: private recent history and nullable answer submission types.
@@ -51,7 +51,7 @@
 **Interfaces:**
 - Produces: `ACTIVE_SKILL_NAMES` equal to `SKILL_NAMES`.
 - Produces: `QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number>`.
-- Produces: `PRIMARY_MATH_LABEL = 'Primary Math'`.
+- Produces: the four arithmetic skill labels used by the adaptive selector.
 - Produces shared test helpers `baseInput(overrides?)`, `masteryFor(difficulty)`, `generatedAddition(a, b)`, `targetAnswer(data)`, `onUnownedProperty()`, `readyState()`, `buildableState(overrides?)`, and `currentPlayer(state)` in `backend/src/test/bkt.fixtures.ts`.
 
 - [ ] **Step 1: Write failing four-skill and time-limit tests**
@@ -81,7 +81,7 @@ Expected: FAIL because only Addition/Subtraction are active and context-specific
 
 ```ts
 export const ACTIVE_SKILL_NAMES = SKILL_NAMES;
-export const PRIMARY_MATH_LABEL = 'Primary Math';
+// No curriculum label is exposed in product copy.
 export const QUESTION_TIME_LIMITS = { 1: 25, 2: 20, 3: 15 } as const;
 ```
 
@@ -97,7 +97,7 @@ Expected: PASS with all four skills observed across a seeded/high-volume selecto
 
 ```bash
 git add backend/src/features/game/game.constants.ts backend/src/bkt/bkt.selector.ts backend/src/bkt/__tests__/bkt.selector.test.ts backend/src/bkt/__tests__/selection.rebalance.test.ts backend/src/test/bkt.fixtures.ts frontend/src/features/game/types/game.types.ts
-git commit -m "feat: activate the primary math curriculum"
+git commit -m "feat: activate the arithmetic curriculum"
 ```
 
 ### Task 2: Semantic Question Deduplication and Exposure Balance

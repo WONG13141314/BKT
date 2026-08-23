@@ -18,7 +18,7 @@ The plans share the constraints in the approved [full-game design](../specs/2026
 | First-turn timer, duplicate start, multi-tab, lobby recovery | Runtime Tasks 2–4 |
 | Duel and finished-game refresh | Runtime Task 4 |
 | Ordered bot playback | Runtime Task 5 |
-| Four active skills and Primary Math wording | Learning Task 1 |
+| Four active skills and concise arithmetic wording | Learning Task 1 |
 | Anti-repeat selection and balanced exposure | Learning Task 2 |
 | Division prerequisites, exact division, hard remainders | Learning Task 3 |
 | Property-price context and worked feedback | Learning Tasks 3–4 |

@@ -13,7 +13,7 @@ The implementation must make the game dependable for real children and multiplay
 ## 2. Approved Product Decisions
 
 - Addition, Subtraction, Multiplication, and Division are all active learning skills.
-- Product copy, comments, and live selection must describe the scope as primary mathematics rather than limiting the game to `Standard 1 KSSR`.
+- Product copy and comments describe arithmetic play without limiting the game to `Standard 1 KSSR`.
 - Division remains an independent BKT skill. Multiplication and Subtraction act as readiness signals for division difficulty but are not updated when a learner answers a division question.
 - Easy and medium division use exact whole-number results. Remainders appear only at hard difficulty.
 - A timed-out question is logged as a timeout, gives no reward, and counts as unanswered for game accuracy, but does not change mastery.
@@ -81,7 +81,7 @@ Bot actions are published as ordered server transitions. Delayed presentation ev
 
 The live curriculum list is the single four-skill list: Addition, Subtraction, Multiplication, and Division. Context mappings may weight a skill but must not silently deactivate a curriculum area.
 
-The UI, constants, and comments must no longer claim that live play is restricted to Standard 1 KSSR. The game uses the broader label `Primary Math`; any future mapping to a specific national curriculum requires an explicit, separately verified curriculum configuration.
+The UI, constants, and comments must no longer claim that live play is restricted to Standard 1 KSSR. Product copy stays curriculum-neutral; any future mapping to a specific national curriculum requires an explicit, separately verified curriculum configuration.
 
 ### 5.2 Selection inputs
 
@@ -177,7 +177,7 @@ Redesign weak elements rather than preserving them by default:
 
 The result is a modern editorial/neo-brutalist educational game, not an antique board, casino, generic dashboard, or copy of official Monopoly artwork.
 
-The board subtitle and related landing/lobby copy use `Primary Math` instead of the outdated `Standard 1 KSSR` restriction.
+The board subtitle and related landing/lobby copy use concise game-focused wording instead of the outdated `Standard 1 KSSR` restriction.
 
 ### 9.2 Page layouts
 
