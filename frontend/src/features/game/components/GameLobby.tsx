@@ -4,6 +4,7 @@ import { avatarToken } from '../../auth/avatars';
 import { usePlayer } from '../../auth/PlayerContext';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
+import { useAudio, useAudioScene } from '../../../shared/audio/AudioContext';
 import './GameLobby.css';
 
 interface LobbyPlayer {
@@ -38,6 +39,9 @@ export function GameLobby() {
   const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const bootstrapRef = useRef<string | null>(null);
   const terminalRecoveryRef = useRef(false);
+  const previousRoomRef = useRef<RoomState | null>(null);
+  const { play } = useAudio();
+  useAudioScene('lobby');
 
   const action = searchParams.get('action');
   const codeParam = searchParams.get('code');
@@ -76,6 +80,15 @@ export function GameLobby() {
     if (!socket) return;
 
     const onRoomUpdate = (data: RoomState) => {
+      const previous = previousRoomRef.current;
+      if (previous) {
+        if (data.players.length > previous.players.length) play('playerJoin');
+        else if (data.players.some((seat) => seat.isReady
+          && !previous.players.find((oldSeat) => oldSeat.id === seat.id)?.isReady)) {
+          play('ready');
+        }
+      }
+      previousRoomRef.current = data;
       setRoom(data);
       setError(null);
       if (myId && data.players.some((seat) => seat.id === myId)) {
@@ -86,6 +99,7 @@ export function GameLobby() {
     const onRoomError = (data: { message: string }) => setError(data.message);
     const onGameStart = (data: { roomCode: string }) => {
       if (myId) sessionStorage.removeItem(lobbySeatStorageKey(myId));
+      play('gameStart');
       navigate(`/game?code=${data.roomCode}`);
     };
     const onRoomDeleted = () => {
@@ -127,7 +141,7 @@ export function GameLobby() {
       socket.off('room:removed', onRoomRemoved);
       socket.off('connect', resumeRoom);
     };
-  }, [socket, navigate, myId]);
+  }, [socket, navigate, myId, play]);
 
   const toggleReady = () => { if (socket) socket.emit('room:ready'); };
   const startGame = () => { if (socket) socket.emit('room:start'); };

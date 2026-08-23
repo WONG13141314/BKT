@@ -11,6 +11,7 @@ interface Props {
   onTileSelect: (tileIndex: number) => void;
   onDiceRollingChange?: (rolling: boolean) => void;
   onMovementChange?: (isMoving: boolean) => void;
+  onMovementStep?: (tileIndex: number, playerId: string) => void;
   onMovementComplete?: () => void;
 }
 
@@ -30,6 +31,7 @@ export function Board({
   onTileSelect,
   onDiceRollingChange,
   onMovementChange,
+  onMovementStep,
   onMovementComplete,
 }: Props) {
   const { players, properties } = gameState;
@@ -74,7 +76,9 @@ export function Board({
         const position = next[id];
         if (position === undefined || position === target) continue;
         const forward = (target - position + gameState.tiles.length) % gameState.tiles.length;
-        next[id] = forward > 12 ? target : (position + 1) % gameState.tiles.length;
+        const isWalkingMove = forward <= 12;
+        next[id] = isWalkingMove ? (position + 1) % gameState.tiles.length : target;
+        if (isWalkingMove) onMovementStep?.(next[id], id);
         changed = true;
         if (next[id] !== target) moving = true;
       }
@@ -97,7 +101,7 @@ export function Board({
     }, 280);
 
     return () => clearInterval(interval);
-  }, [gameState.tiles.length, onMovementChange, onMovementComplete]);
+  }, [gameState.tiles.length, onMovementChange, onMovementComplete, onMovementStep]);
 
   const visualPlayers = players.map((player) => ({
     ...player,

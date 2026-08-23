@@ -19,6 +19,7 @@ import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useAnswerResultHold } from '../hooks/useAnswerResultHold';
+import { useGameAudio } from '../hooks/useGameAudio';
 import {
   MathChallenge,
   MasteryReport,
@@ -61,6 +62,7 @@ export function GamePage() {
     addNotification,
     dismissNotification,
   } = useGameState(myPlayerId);
+  const { play: playSound, playMovementStep } = useGameAudio(gameState);
 
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export function GamePage() {
   // authority for the turn. The server phase always controls legal actions.
   const [isDiceRolling, setIsDiceRolling] = useState(false);
   const [isPawnMoving, setIsPawnMoving] = useState(false);
+  const diceWasRollingRef = useRef(false);
 
   const switchToGameSeat = useCallback(async (profile: StoredProfile) => {
     if (seatRecoveryRef.current) return;
@@ -206,6 +209,7 @@ export function GamePage() {
       if (!isMyAnswer) return;
 
       setAnswerResult(data.result);
+      playSound(data.result.isCorrect ? 'correct' : 'incorrect');
 
       const { isCorrect, timedOut, correctAnswer, feedback } = data.result;
       // Onlookers receive the outcome only — no reward or answer details.
@@ -244,6 +248,7 @@ export function GamePage() {
     onDuelResult: (data) => {
       setDuel(data.duel);
       setDuelChallenge(null);
+      playSound(data.resolution.outcome === 'DRAW_NEITHER' ? 'incorrect' : 'correct');
       addNotification(
         data.resolution.outcome === 'DRAW_NEITHER' ? 'info' : 'reward',
         data.resolution.headline
@@ -252,6 +257,7 @@ export function GamePage() {
       setTimeout(() => setDuel(null), 5000);
     },
     onGameFinished: (data) => {
+      playSound('gameOver');
       setFinalScores(data.scores);
       setMasteryReport(data.masteryReport ?? null);
     },
@@ -288,8 +294,10 @@ export function GamePage() {
   }, [emitMovementComplete, gameState, isMyTurn]);
 
   const handleDiceRollingChange = useCallback((rolling: boolean) => {
+    if (!rolling && diceWasRollingRef.current) playSound('diceLand');
+    diceWasRollingRef.current = rolling;
     setIsDiceRolling(rolling);
-  }, []);
+  }, [playSound]);
 
   const handleRollClick = useCallback(() => {
     if (!gameState || !isMyTurn || gameState.turnPhase !== 'ROLL_PHASE' || rollRequested) return;
@@ -557,6 +565,7 @@ export function GamePage() {
           onTileSelect={setSelectedTile}
           onDiceRollingChange={handleDiceRollingChange}
           onMovementChange={handleMovementChange}
+          onMovementStep={playMovementStep}
           onMovementComplete={handleMovementComplete}
         />
 

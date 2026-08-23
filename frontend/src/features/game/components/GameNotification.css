@@ -13,6 +13,14 @@
   max-width: 360px;
 }
 
+@media (max-width: 640px) {
+  .game-notifications {
+    bottom: 4rem;
+    left: .75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+}
+
 .notification-toast {
   display: flex;
   align-items: center;

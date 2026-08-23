@@ -501,6 +501,12 @@
   z-index: 80;
 }
 
+@media (max-width: 640px) {
+  .challenge-waiting-overlay {
+    bottom: 3.75rem;
+  }
+}
+
 .challenge-waiting {
   padding: 1rem 1.5rem;
   border-radius: 4px;

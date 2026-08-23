@@ -39,3 +39,21 @@ test('landing controls have visible keyboard focus', async ({ page }) => {
   expect(await focusedToken.evaluate((element) => getComputedStyle(element).outlineStyle))
     .not.toBe('none');
 });
+
+test('sound settings are accessible and persist', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open sound settings' }).click();
+
+  const panel = page.getByRole('dialog', { name: 'Sound settings' });
+  await expect(panel).toBeVisible();
+  const musicToggle = panel.getByRole('button', { name: 'Toggle background music' });
+  await expect(musicToggle).toHaveAttribute('aria-pressed', 'true');
+  await musicToggle.click();
+  await panel.getByRole('slider', { name: 'Game volume' }).fill('0.4');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Open sound settings' }).click();
+  await expect(page.getByRole('button', { name: 'Toggle background music' }))
+    .toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByText('40%')).toBeVisible();
+});
