@@ -54,12 +54,14 @@ function boardPoint(tileIndex: number, playerIndex: number, z: number) {
 function ResponsiveBoardCamera() {
   const camera = useThree((state) => state.camera);
   const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
 
   useLayoutEffect(() => {
     const orthographicCamera = camera as OrthographicCamera;
     orthographicCamera.zoom = Math.min(size.width, size.height) / BOARD_WORLD_SIZE;
     orthographicCamera.updateProjectionMatrix();
-  }, [camera, size.height, size.width]);
+    invalidate();
+  }, [camera, invalidate, size.height, size.width]);
 
   return null;
 }
@@ -70,10 +72,11 @@ export function BoardPiecesScene({ players }: { players: Player[] }) {
       <Canvas
         orthographic
         shadows
+        frameloop="demand"
         dpr={[1, 2]}
         style={{ pointerEvents: 'none' }}
         camera={{ position: [0, 0, 12], zoom: 1, near: .1, far: 40 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
       >
         <ResponsiveBoardCamera />
         <ambientLight intensity={.82} />
@@ -103,6 +106,7 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
   const progress = useRef(1);
   const lastPosition = useRef(player.position);
   const current = useMemo(() => new Vector3(), []);
+  const invalidate = useThree((state) => state.invalidate);
   const shadowTexture = useMemo(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 96;
@@ -128,11 +132,13 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
     to.current.copy(boardPoint(player.position, playerIndex, ground));
     progress.current = 0;
     lastPosition.current = player.position;
-  }, [ground, player.position, playerIndex]);
+    invalidate();
+  }, [ground, invalidate, player.position, playerIndex]);
 
   useFrame((_, delta) => {
     if (!group.current || !shadow.current) return;
     progress.current = Math.min(1, progress.current + delta / .22);
+    if (progress.current < 1) invalidate();
     const eased = MathUtils.smoothstep(progress.current, 0, 1);
     current.lerpVectors(from.current, to.current, eased);
     const hop = Math.sin(progress.current * Math.PI);

@@ -43,8 +43,19 @@
 
 .board-tile.selected-tile {
   z-index: 4;
-  outline: 3px solid #e63946;
-  outline-offset: -3px;
+}
+
+/* Keep the landed-space frame above every part of a tile. An inset outline is
+   painted below positioned children in some browsers, so a property's colour
+   strip could hide one side of the frame. */
+.board-tile.selected-tile::after {
+  content: '';
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  box-sizing: border-box;
+  border: 3px solid #e63946;
+  pointer-events: none;
 }
 
 /* Rotations for authentic layout (color strips face inward) */
@@ -255,7 +266,9 @@
   position: absolute;
   z-index: 22;
   inset: 0;
-  overflow: visible;
+  overflow: hidden;
+  contain: layout paint;
+  isolation: isolate;
   pointer-events: none;
 }
 
