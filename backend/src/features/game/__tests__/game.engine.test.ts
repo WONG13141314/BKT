@@ -15,7 +15,7 @@ import {
   processJailEscapeAnswer,
 } from '../game.engine';
 import { GameState } from '../game.types';
-import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS } from '../game.constants';
+import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, SKILL_NAMES, type SkillName } from '../game.constants';
 import { gameService } from '../game.service';
 import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
@@ -62,6 +62,8 @@ describe('Game Engine — MathOpoly Redesign', () => {
 
     it('starts each learner with an empty private recent-question window', () => {
       expect(gameState.players.map((player) => player.recentQuestionFingerprints)).toEqual([[], [], [], []]);
+      expect(gameState.players.map((player) => player.recentIssuedSkills)).toEqual([[], [], [], []]);
+      expect(gameState.players.map((player) => player.lastQuestionDifficulty)).toEqual([{}, {}, {}, {}]);
     });
 
     it('should create property states for all property tiles', () => {
@@ -228,6 +230,11 @@ describe('Game Engine — MathOpoly Redesign', () => {
       expect(challenged.players[0].recentQuestionFingerprints).toEqual([
         challenged.currentChallenge!.fingerprint,
       ]);
+      expect(challenged.players[0].recentIssuedSkills).toEqual([challenged.currentChallenge!.skillName]);
+      expect(challenged.players[0].lastQuestionDifficulty[challenged.currentChallenge!.skillName]).toBe(
+        challenged.currentChallenge!.difficulty
+      );
+      expect(challenged.players.slice(1).map((player) => player.recentIssuedSkills)).toEqual([[], [], []]);
 
       const answered = processSmartBuyAnswer(
         challenged,
@@ -257,9 +264,46 @@ describe('Game Engine — MathOpoly Redesign', () => {
       );
 
       expect(afterNineIssues.players[0].recentQuestionFingerprints).toHaveLength(8);
+      expect(afterNineIssues.players[0].recentIssuedSkills).toHaveLength(8);
       expect(afterNineIssues.players[0].recentQuestionFingerprints.at(-1)).toBe(
         afterNineIssues.currentChallenge!.fingerprint
       );
+    });
+
+    it('uses each player\'s own skill history and difficulty without changing other learners', () => {
+      const firstHistory: SkillName[] = [
+        'Addition', 'Multiplication', 'Division', 'Addition',
+        'Multiplication', 'Division', 'Addition', 'Multiplication',
+      ];
+      const secondHistory: SkillName[] = [
+        'Subtraction', 'Multiplication', 'Division', 'Subtraction',
+        'Multiplication', 'Division', 'Subtraction', 'Multiplication',
+      ];
+      const offered: GameState = {
+        ...gameState,
+        turnPhase: 'BUY_DECISION',
+        pendingTileEvent: {
+          type: 'PROPERTY', tileIndex: 1, tileName: 'Tambah Alley', propertyPrice: 80,
+        },
+        players: gameState.players.map((player, index) => ({
+          ...player,
+          masteryStates: Object.fromEntries(SKILL_NAMES.map((skill) => [skill, 0.9])),
+          skillAttempts: Object.fromEntries(SKILL_NAMES.map((skill) => [skill, 10])),
+          recentIssuedSkills: index === 0 ? firstHistory : index === 1 ? secondHistory : [],
+          lastQuestionDifficulty: index === 0 ? { Subtraction: 1 } : { Addition: 3 },
+        })),
+      };
+
+      const first = startSmartBuyChallenge(offered);
+      expect(first.currentChallenge?.skillName).toBe('Subtraction');
+      expect(first.currentChallenge?.difficulty).toBe(2);
+      expect(first.players[1]).toEqual(offered.players[1]);
+      expect(offered.players[0].recentIssuedSkills).toEqual(firstHistory);
+
+      const second = startSmartBuyChallenge({ ...offered, currentPlayerIndex: 1 });
+      expect(second.currentChallenge?.skillName).toBe('Addition');
+      expect(second.currentChallenge?.difficulty).toBe(3);
+      expect(second.players[0]).toEqual(offered.players[0]);
     });
 
     it('normalizes legacy restored histories before issuing a Smart Buy question', () => {
@@ -273,13 +317,24 @@ describe('Game Engine — MathOpoly Redesign', () => {
           tileName: 'Tambah Alley',
           propertyPrice: 80,
         },
-        players: gameState.players.map(({ recentQuestionFingerprints: _history, ...player }) => player),
+        players: gameState.players.map(({
+          recentQuestionFingerprints: _history,
+          recentIssuedSkills: _skills,
+          lastQuestionDifficulty: _tiers,
+          ...player
+        }) => player),
       } as unknown as GameState;
 
       try {
         gameService.replaceState(gameId, legacyState);
         expect(gameService.getGameSync(gameId)!.players.map((player) => player.recentQuestionFingerprints)).toEqual([
           [], [], [], [],
+        ]);
+        expect(gameService.getGameSync(gameId)!.players.map((player) => player.recentIssuedSkills)).toEqual([
+          [], [], [], [],
+        ]);
+        expect(gameService.getGameSync(gameId)!.players.map((player) => player.lastQuestionDifficulty)).toEqual([
+          {}, {}, {}, {},
         ]);
 
         const issued = gameService.startSmartBuy(gameId)!;
@@ -299,7 +354,12 @@ describe('Game Engine — MathOpoly Redesign', () => {
           tileName: 'Tambah Alley',
           propertyPrice: 80,
         },
-        players: gameState.players.map(({ recentQuestionFingerprints: _history, ...player }) => player),
+        players: gameState.players.map(({
+          recentQuestionFingerprints: _history,
+          recentIssuedSkills: _skills,
+          lastQuestionDifficulty: _tiers,
+          ...player
+        }) => player),
       } as unknown as GameState;
 
       const issued = startSmartBuyChallenge(legacyState);

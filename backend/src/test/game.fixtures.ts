@@ -27,8 +27,6 @@ export function makePrivateChallenge(overrides: Partial<MathChallenge> = {}): Ma
     context: 'CHALLENGE_CARD',
     timeLimit: 20,
     startedAt: 1_000,
-    hintLevel: 0,
-    hintContent: null,
     fingerprint: 'column:+:1:1:answer:-:-',
     ...overrides,
   };

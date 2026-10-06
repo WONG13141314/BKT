@@ -2,13 +2,32 @@ import { BktParams } from './bkt.types';
 import { clampProbability } from './bkt.utils';
 import { FORGETTING_HALF_LIFE_DAYS, INITIAL_MASTERY } from './bkt.defaults';
 
+function assertProbability(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RangeError(`${label} must be a finite probability between 0 and 1.`);
+  }
+}
+
+function validateInputs(currentP: number, params: BktParams): void {
+  assertProbability(currentP, 'currentP');
+  assertProbability(params.pT, 'pT');
+  assertProbability(params.pG, 'pG');
+  assertProbability(params.pS, 'pS');
+}
+
+/** Pre-answer prediction using the same observation model as the Bayes update. */
+export const predictCorrectProbability = (currentP: number, params: BktParams): number => {
+  validateInputs(currentP, params);
+  return currentP * (1 - params.pS) + (1 - currentP) * params.pG;
+};
+
 /**
  * Decay a stored mastery estimate toward the prior, based on how long it has
  * been since the skill was last practised.
  *
- * Textbook BKT has no forgetting term — it assumes knowledge only ever goes up.
- * That is a reasonable simplification for a system used in one sitting, which is
- * how BKT is usually deployed. This game deliberately remembers a learner across
+ * Textbook BKT has no forgetting transition in the latent learned state; the
+ * estimated mastery can still decrease after an incorrect observation. This
+ * game deliberately remembers a learner across
  * weeks, which is exactly the case the assumption breaks: a child who mastered
  * Addition in March would return in June still rated 0.9, be handed the hardest
  * questions immediately, and fail them.
@@ -46,7 +65,7 @@ export const applyForgetting = (
  * 
  * @param currentP - The student's current probability of knowing the skill (P(L))
  * @param isCorrect - Whether the student answered the current question correctly
- * @param params - The BKT parameters (pL0, pT, pG, pS) for this skill
+ * @param params - The BKT transition, guess and slip parameters (pT, pG, pS)
  * @returns The updated probability of knowing the skill (posterior P(L))
  */
 export const updateMastery = (
@@ -54,6 +73,7 @@ export const updateMastery = (
   isCorrect: boolean,
   params: BktParams
 ): number => {
+  validateInputs(currentP, params);
   const { pT, pG, pS } = params;
   let pObserved: number;
 
@@ -66,6 +86,7 @@ export const updateMastery = (
     const numerator = currentP * probCorrectGivenKnown;
     const denominator = numerator + ((1 - currentP) * probCorrectGivenUnknown);
     
+    if (denominator === 0) throw new RangeError('A correct answer has zero probability under these BKT inputs.');
     pObserved = numerator / denominator;
   } else {
     // P(L | Incorrect) = [P(L) * P(S)] / [P(L) * P(S) + (1 - P(L)) * (1 - P(G))]
@@ -75,6 +96,7 @@ export const updateMastery = (
     const numerator = currentP * probIncorrectGivenKnown;
     const denominator = numerator + ((1 - currentP) * probIncorrectGivenUnknown);
     
+    if (denominator === 0) throw new RangeError('An incorrect answer has zero probability under these BKT inputs.');
     pObserved = numerator / denominator;
   }
 

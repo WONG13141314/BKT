@@ -21,9 +21,9 @@
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db';
-import { SKILL_NAMES, type SkillName } from './game.constants';
+import { QUESTION_TIMING_POLICY_VERSION, SKILL_NAMES, type SkillName } from './game.constants';
 import { getAdjustedParams } from '../../bkt/bkt.selector';
-import { applyForgetting } from '../../bkt/bkt.engine';
+import { applyForgetting, predictCorrectProbability } from '../../bkt/bkt.engine';
 import type { FinalScore, GameState, MathChallenge, PlayerState } from './game.types';
 
 // `backend/.env` points at the real Neon database, and dotenv loads it in any
@@ -133,14 +133,14 @@ export async function awaitPlayerWrites(playerId: string): Promise<void> {
 export interface PlayerPriors {
   /** skillName → stored P(L). */
   mastery: Record<string, number>;
-  /** skillName → lifetime observations. Difficulty gating reads this. */
+  /** skillName → lifetime independent answers, excluding hints and timeouts. */
   attempts: Record<string, number>;
 }
 
 /**
- * Fetch stored mastery *and* attempt counts for the given players. A player with
- * no history yields no entry, and the engine falls back to `INITIAL_MASTERY`
- * with zero attempts.
+ * Fetch stored mastery and independent-answer counts for the given players.
+ * A player with no history yields no entry, and the engine falls back to
+ * `INITIAL_MASTERY` with zero attempts.
  *
  * Attempts matter as much as mastery here: difficulty selection refuses to
  * escalate on a thin estimate, so a returning player who is loaded without their
@@ -158,16 +158,28 @@ export async function loadMasteryPriors(
   try {
     if (!(await getSkillCache())) return result;
 
-    const rows = await prisma.masteryState.findMany({
-      where: { playerId: { in: playerIds } },
-      select: {
-        playerId: true,
-        skillId: true,
-        pMastery: true,
-        attempts: true,
-        lastPracticedAt: true,
-      },
-    });
+    const [rows, answeredCounts] = await Promise.all([
+      prisma.masteryState.findMany({
+        where: { playerId: { in: playerIds } },
+        select: {
+          playerId: true,
+          skillId: true,
+          pMastery: true,
+          lastPracticedAt: true,
+        },
+      }),
+      prisma.questionAttempt.groupBy({
+        by: ['playerId', 'skillId'],
+        where: { playerId: { in: playerIds }, timedOut: false, hintLevel: 0 },
+        _count: { _all: true },
+      }),
+    ]);
+    // MasteryState.attempts remains the lifetime opportunity index, including
+    // timeouts. Count answer evidence from all historical rows instead, so old
+    // timeouts and assisted answers cannot unlock a harder tier on return.
+    const evidenceCounts = new Map(answeredCounts.map((row) => [
+      `${row.playerId}:${row.skillId}`, row._count._all,
+    ]));
 
     const now = new Date();
 
@@ -179,7 +191,7 @@ export async function loadMasteryPriors(
       // Decay toward the prior for time away. A child who has not touched
       // Division since March should not be handed March's hardest questions.
       priors.mastery[skillName] = applyForgetting(row.pMastery, row.lastPracticedAt, now);
-      priors.attempts[skillName] = row.attempts;
+      priors.attempts[skillName] = evidenceCounts.get(`${row.playerId}:${row.skillId}`) ?? 0;
       result.set(row.playerId, priors);
     }
   } catch (err) {
@@ -230,8 +242,7 @@ export interface AttemptRecord {
  * derived later.
  */
 function predictPCorrect(pMastery: number, difficulty: 1 | 2 | 3): number {
-  const { pG, pS } = getAdjustedParams(difficulty);
-  return pMastery * (1 - pS) + (1 - pMastery) * pG;
+  return predictCorrectProbability(pMastery, getAdjustedParams(difficulty));
 }
 
 /**
@@ -273,7 +284,21 @@ export function buildAttemptData(
     context: challenge.context,
     // The *unredacted* question. Phase 1 keeps answers out of browsers; this is
     // a server-side research table and needs the exact item that was shown.
-    questionData: challenge.questionData as unknown as Prisma.InputJsonValue,
+    questionData: {
+      ...challenge.questionData,
+      timingPolicy: {
+        version: QUESTION_TIMING_POLICY_VERSION,
+        timeLimitSeconds: challenge.timeLimit,
+        startedAt: challenge.startedAt,
+        expiresAt: challenge.startedAt + challenge.timeLimit * 1_000,
+      },
+      hintUsage: {
+        version: 'strategy-cue-v1',
+        requestedAt: challenge.hintRequestedAt ?? null,
+        timeFromStartMs: challenge.hintRequestedAt === undefined
+          ? null : Math.max(0, challenge.hintRequestedAt - challenge.startedAt),
+      },
+    } as unknown as Prisma.InputJsonValue,
     correctAnswer: challenge.options[challenge.correctIndex] ?? '',
     // Null is explicit no-answer evidence. Flag it rather than dropping it: a
     // timeout is often "didn't know", but can also be a closed laptop.
@@ -281,7 +306,8 @@ export function buildAttemptData(
     isCorrect,
     timedOut: selectedIndex === null,
     timeMs: Number.isFinite(timeMs) ? Math.max(0, Math.round(timeMs)) : null,
-    hintLevel: challenge.hintLevel,
+    // One voluntary cue. Zero means no help was requested for this attempt.
+    hintLevel: challenge.hintRequestedAt === undefined ? 0 : 1,
     pMasteryBefore: previousMastery,
     pMasteryAfter: newMastery,
     predictedPCorrect: predictPCorrect(previousMastery, challenge.difficulty),
@@ -292,6 +318,7 @@ export function buildAttemptData(
 
 async function writeAttempt(record: AttemptRecord): Promise<void> {
   const { player, challenge, newMastery, isCorrect } = record;
+  const hasEvidence = record.selectedIndex !== null && challenge.hintRequestedAt === undefined;
 
   const skills = await getSkillCache();
   const skillId = skills?.get(challenge.skillName);
@@ -309,16 +336,18 @@ async function writeAttempt(record: AttemptRecord): Promise<void> {
       create: {
         playerId: player.playerId,
         skillId,
-        pMastery: newMastery,
+        pMastery: hasEvidence ? newMastery : record.previousMastery,
         attempts: 1,
-        correct: isCorrect ? 1 : 0,
-        lastPracticedAt: answeredAt,
+        correct: hasEvidence && isCorrect ? 1 : 0,
+        lastPracticedAt: hasEvidence ? answeredAt : null,
       },
       update: {
-        pMastery: newMastery,
+        // Timeouts and assisted answers supply no independent evidence. Preserve
+        // and practice clock, including its baseline for future forgetting.
+        pMastery: hasEvidence ? newMastery : undefined,
         attempts: { increment: 1 },
-        correct: isCorrect ? { increment: 1 } : undefined,
-        lastPracticedAt: answeredAt,
+        correct: hasEvidence && isCorrect ? { increment: 1 } : undefined,
+        lastPracticedAt: hasEvidence ? answeredAt : undefined,
       },
       select: { attempts: true },
     });

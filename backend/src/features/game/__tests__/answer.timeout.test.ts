@@ -70,6 +70,10 @@ describe('server-authoritative solo challenge deadlines', () => {
       before.consecutiveFailures[challenge.skillName]
     );
     expect(outcome?.result.reward.type).toBe('NONE');
+    expect(outcome?.state.players[0].skillAttempts[challenge.skillName]).toBe(
+      before.skillAttempts[challenge.skillName]
+    );
+    expect(outcome?.state.players[0].totalQuestions).toBe(before.totalQuestions + 1);
   });
 
   it('accepts an answer received one millisecond before the exclusive deadline', () => {
@@ -85,6 +89,9 @@ describe('server-authoritative solo challenge deadlines', () => {
 
     expect(outcome?.result.timedOut).toBe(false);
     expect(outcome?.result.isCorrect).toBe(true);
+    expect(outcome?.state.players[0].skillAttempts[challenge.skillName]).toBe(
+      state.players[0].skillAttempts[challenge.skillName] + 1
+    );
   });
 
   it('does not grade a forced timeout twice after the challenge was cleared', () => {

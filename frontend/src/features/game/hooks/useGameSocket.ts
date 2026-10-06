@@ -118,6 +118,22 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   // Request challenge re-sync
   const emitRequestChallenge = useCallback(() => emit('game:request-challenge'), [emit]);
 
+  const emitRequestHint = useCallback((challengeId: string): Promise<void> => {
+    if (!socket?.connected || !gameId) {
+      return Promise.reject(new Error('Reconnect to get help. Your answer choices are still here.'));
+    }
+    return new Promise((resolve, reject) => {
+      socket.timeout(5000).emit('game:request-hint', { gameId, challengeId }, (
+        error: Error | null,
+        response?: { success: boolean; error?: string },
+      ) => {
+        if (error) reject(new Error('Could not load help. Try again.'));
+        else if (!response?.success) reject(new Error(response?.error ?? 'Could not load help. Try again.'));
+        else resolve();
+      });
+    });
+  }, [socket, gameId]);
+
   // End Turn
   const emitEndTurn = useCallback(() => emit('game:end-turn'), [emit]);
 
@@ -143,5 +159,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitEndTurn,
     emitBuildHouse,
     emitRequestChallenge,
+    emitRequestHint,
   };
 }

@@ -23,6 +23,7 @@ import {
   PublicQuestionData,
   QuestionData,
 } from './game.types';
+import { buildQuestionHint } from '../../bkt/hints';
 
 const HIDDEN: DigitCell = '?';
 const BLANK: DigitCell = '';
@@ -111,9 +112,6 @@ function redactColumn(q: ColumnQuestion): PublicColumnQuestion {
     bottomCells,
     answerCells,
     hiddenRow,
-    // Knowing a carry exists narrows a missing *digit*, so only scaffold the
-    // pure-computation case where the player is asked for the final answer.
-    hasRegrouping: q.missingPosition === 'answer' && q.hasRegrouping,
   };
 }
 
@@ -205,13 +203,16 @@ export function redactQuestionData(data: QuestionData): PublicQuestionData {
 }
 
 export function toPublicChallenge(challenge: MathChallenge): PublicMathChallenge {
+  const questionData = redactQuestionData(challenge.questionData);
   return {
     id: challenge.id,
-    questionData: redactQuestionData(challenge.questionData),
+    questionData,
     options: challenge.options,
     context: challenge.context,
     timeLimit: challenge.timeLimit,
     expiresAt: challenge.startedAt + challenge.timeLimit * 1000,
-    hintContent: challenge.hintContent,
+    ...(challenge.hintRequestedAt === undefined ? {} : {
+      hint: buildQuestionHint(challenge.questionData, questionData),
+    }),
   };
 }

@@ -28,6 +28,7 @@ import {
   endTurn,
   calculateFinalScores,
   generateMasteryReport,
+  requestChallengeHint,
 } from './game.engine';
 import type { GamePlayerSeed } from './game.engine';
 import {
@@ -41,6 +42,8 @@ import {
 } from './game.types';
 import { executeBotTurn, submitBotDuelAnswers, BotTurnStep } from './bot.engine';
 import { loadMasteryPriorsAfterWrites, newGameId, recordAttempt } from './game.persistence';
+import { RECENT_SKILL_HISTORY_LIMIT } from '../../bkt/bkt.selector';
+import { SKILL_NAMES, type SkillName } from './game.constants';
 
 // In-memory game state store (per active game session)
 const activeGames = new Map<string, GameState>();
@@ -72,6 +75,14 @@ function normalizeRestoredState(state: GameState): GameState {
       recentQuestionFingerprints: Array.isArray(player.recentQuestionFingerprints)
         ? player.recentQuestionFingerprints.slice(-8)
         : [],
+      recentIssuedSkills: Array.isArray(player.recentIssuedSkills)
+        ? player.recentIssuedSkills.filter((skill): skill is SkillName => SKILL_NAMES.includes(skill)).slice(-RECENT_SKILL_HISTORY_LIMIT)
+        : [],
+      lastQuestionDifficulty: Object.fromEntries(
+        Object.entries(player.lastQuestionDifficulty ?? {}).filter(
+          ([skill, difficulty]) => SKILL_NAMES.includes(skill as SkillName) && [1, 2, 3].includes(difficulty)
+        )
+      ),
     })),
   };
 }
@@ -175,6 +186,15 @@ export const gameService = {
 
   getGameSync: (gameId: string): GameState | null => {
     return activeGames.get(gameId) ?? null;
+  },
+
+  requestHint: (gameId: string, seatId: string, challengeId: string, requestedAt: number = Date.now()) => {
+    const state = activeGames.get(gameId);
+    if (!state) return null;
+    const outcome = requestChallengeHint(state, seatId, challengeId, requestedAt);
+    if (!outcome) return null;
+    activeGames.set(gameId, outcome.newState);
+    return { state: outcome.newState, challenge: outcome.challenge };
   },
 
   removeGame: (gameId: string): void => {

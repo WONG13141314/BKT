@@ -1,44 +1,34 @@
 import { BktParams } from './bkt.types';
 
-// Default parameters calibrated for Standard 1 primary school students
-// with 4-option multiple choice questions
+// Hand-set prototype parameters for four-option questions. These are provisional
+// assumptions, not estimates calibrated against the proposed 10–12-year-old cohort.
 export const DEFAULT_BKT_PARAMS: BktParams = {
   pT: 0.15,  // ~15% chance to learn from a single exposure
   pG: 0.25,  // 25% chance to guess correctly (four answer choices)
   pS: 0.1,   // 10% chance to slip (careless mistake)
 };
 
-// Per-difficulty BKT parameters (Std 1 calibrated).
-//
-// pT was lowered in Phase 4. Phase 3's logging showed three correct answers
-// taking P(L) from 0.10 to 0.94, because a high learn rate compounds on top of
-// an already generous guess rate. A single exposure teaching a child the skill
-// 15–20% of the time is optimistic for Standard 1; these values make mastery
-// something the evidence has to earn.
+// Provisional per-difficulty assumptions. Preserve them until collected gameplay
+// data supports a parameter fit assessed on separate evaluation data.
 export const BKT_PARAMS_BY_DIFFICULTY: Record<1 | 2 | 3, BktParams> = {
-  1: { pT: 0.12, pG: 0.30, pS: 0.05 },  // Easy: high guess (young kids use elimination), low slip
+  1: { pT: 0.12, pG: 0.30, pS: 0.05 },  // Easy: higher assumed guess rate, lower slip
   2: { pT: 0.10, pG: 0.25, pS: 0.10 },  // Medium: standard
   3: { pT: 0.08, pG: 0.20, pS: 0.15 },  // Hard: lower guess, higher slip
 };
 
-// Threshold to consider a skill officially mastered.
-// Corbett & Anderson's standard value. 0.95 was unreachable in practice: with a
-// 10% slip rate the posterior cannot stay that high through a normal run of
-// answers, so no skill was ever recorded as mastered.
+// Prototype reporting threshold; this is a model estimate, not independently
+// validated evidence of mastery. It is separate from difficulty selection.
 export const MASTERY_THRESHOLD = 0.85;
 
-// Initial mastery for all skills (Standard 1 students start with low prior
-// knowledge). This is the single prior — `BktParams.pL0` used to duplicate it
-// and was read by nothing, so it has been removed.
+// Provisional cold-start prior shared by all skills. The target age alone does
+// not establish prior knowledge; future calibration should estimate this value.
 export const INITIAL_MASTERY = 0.10;
 
 /**
  * Days without practising a skill before half the progress above the starting
  * prior is assumed lost.
  *
- * Hand-set, like the other parameters, and declared as a limitation. Three weeks
- * is a deliberately conservative choice for primary arithmetic: long enough that
- * a child returning the next week is barely affected, short enough that a term
- * break is visible in the model.
+ * Hand-set, like the other parameters. This forgetting extension has not been
+ * empirically validated for the proposed cohort and is a prototype limitation.
  */
 export const FORGETTING_HALF_LIFE_DAYS = 21;

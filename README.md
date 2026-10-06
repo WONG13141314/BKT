@@ -3,7 +3,25 @@
 A public multiplayer web game for primary-school mathematics. One player hosts, up
 to three join with a room code. Underneath the Monopoly shell is a Bayesian
 Knowledge Tracing (BKT) engine that models each player's mastery of four
-arithmetic skills and targets questions at their weakest one.
+arithmetic skills, prioritises weaker skills, and schedules regular review.
+
+During each match, each learner has a private question history. The selector avoids more than three
+questions in a row on the same skill and reviews skills missing from the last
+eight questions. Difficulty rises at most one tier at a time; answered evidence,
+recent errors and division prerequisites still limit which tiers are available.
+Each human question offers one optional **Help me start** strategy cue with
+highlighted cells. Hints remain private, keep all four choices and normal game
+rewards, and preserve the original deadline. Questions allow **30 / 45 / 60
+seconds** for easy / medium / hard in both modes and all challenge contexts.
+These are provisional reasoning windows for pupils aged 10–12, not validated
+age norms. See [the timing and hint policy](docs/question-timing-and-hints.md)
+for the research rationale and pilot calibration plan.
+
+A timeout or assisted answer remains a recorded game opportunity but does not
+update BKT mastery, supply difficulty evidence or refresh the last practice date.
+Independent wrong answers still update BKT. The attempt log stores actual hint
+use and timing metadata inside `questionData`; no database migration is needed.
+BKT parameters remain provisional settings to evaluate with pupil data.
 
 ## Tech Stack
 

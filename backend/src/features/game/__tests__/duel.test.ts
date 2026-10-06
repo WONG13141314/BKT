@@ -192,6 +192,14 @@ describe('Duel mechanics', () => {
 
     expect(duelState.players[0].recentQuestionFingerprints).toEqual([duel.challenger.challenge.fingerprint]);
     expect(duelState.players[1].recentQuestionFingerprints).toEqual([duel.owner.challenge.fingerprint]);
+    expect(duelState.players[0].recentIssuedSkills).toEqual([duel.challenger.challenge.skillName]);
+    expect(duelState.players[1].recentIssuedSkills).toEqual([duel.owner.challenge.skillName]);
+    expect(duelState.players[0].lastQuestionDifficulty[duel.challenger.challenge.skillName]).toBe(
+      duel.challenger.challenge.difficulty
+    );
+    expect(duelState.players[1].lastQuestionDifficulty[duel.owner.challenge.skillName]).toBe(
+      duel.owner.challenge.difficulty
+    );
   });
 
   it('keeps all four skills reachable in live property duels', () => {
@@ -212,10 +220,10 @@ describe('Duel mechanics', () => {
   });
 
   it.each([
-    [0.2, 1, 25],
-    [0.6, 2, 20],
-    [0.9, 3, 15],
-  ] as const)('gives live difficulty %s duellists a %s-second private question', (mastery, difficulty, seconds) => {
+    [0.2, 1, 30],
+    [0.6, 2, 45],
+    [0.9, 3, 60],
+  ] as const)('uses mastery %s to assign duel tier %s and its answer window', (mastery, difficulty, seconds) => {
     const duel = resolveTileEvent(stateLandingOnOwnedProperty(mastery)).duelState!;
 
     for (const side of [duel.challenger, duel.owner]) {

@@ -153,6 +153,7 @@ export function GamePage() {
     emitEndTurn,
     emitBuildHouse,
     emitRequestChallenge,
+    emitRequestHint,
   } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
       const mySeat = state.players.find((seat) =>
@@ -186,10 +187,18 @@ export function GamePage() {
       }
     },
     onChallenge: (data) => {
+      // Help refreshes only the requesting player's existing question. A duel
+      // stays open and the other side never receives this private cue.
+      if (data.challenge.context === 'MATH_DUEL') {
+        setDuelChallenge(data.challenge);
+        return;
+      }
       setChallengePlayerId(data.playerId);
-      markChallengeVisible(data.challenge.id);
+      if (activeChallenge?.id !== data.challenge.id) {
+        markChallengeVisible(data.challenge.id);
+        setAnswerResult(null);
+      }
       setActiveChallenge(data.challenge);
-      setAnswerResult(null);
       // The duel reveal lingers deliberately so the table can read it, but the
       // server has already advanced the turn. Drop it the moment the next
       // question arrives, or it would cover the new player's challenge.
@@ -391,15 +400,16 @@ export function GamePage() {
       disabled,
       expiresAt: challenge.expiresAt,
       timeLimit: challenge.timeLimit,
-      hintContent: challenge.hintContent,
+      hint: challenge.hint,
+      onRequestHint: () => emitRequestHint(challenge.id),
     };
     const questionData = challenge.questionData;
 
     if (questionData.type === 'column') {
-      return <ColumnQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
+      return <ColumnQuestion key={challenge.id} {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
     }
     return (
-      <LongDivisionQuestion {...shared} question={questionData} revealedAnswer={revealedAnswer} />
+      <LongDivisionQuestion key={challenge.id} {...shared} question={questionData} revealedAnswer={revealedAnswer} />
     );
   }
 

@@ -51,7 +51,7 @@ import {
 } from './game.constants';
 import { createShuffledDeck, drawCard, getCardById } from './card.deck';
 import { updateMastery } from '../../bkt/bkt.engine';
-import { selectChallenge, getAdjustedParams } from '../../bkt/bkt.selector';
+import { selectChallenge, getAdjustedParams, RECENT_SKILL_HISTORY_LIMIT } from '../../bkt/bkt.selector';
 import { INITIAL_MASTERY } from '../../bkt/bkt.defaults';
 import { checkMastery } from '../../bkt/bkt.utils';
 import { buildWorkedFeedback } from '../../bkt/feedback';
@@ -114,6 +114,8 @@ export function initializeGameState(
     ),
     consecutiveFailures: Object.fromEntries(SKILL_NAMES.map((s) => [s, 0])),
     recentQuestionFingerprints: [],
+    recentIssuedSkills: [],
+    lastQuestionDifficulty: {},
     isBot: p.isBot ?? false,
     botDifficulty: p.botDifficulty,
   }));
@@ -161,6 +163,48 @@ export function getCurrentPlayer(state: GameState): PlayerState {
 /** Get active (non-bankrupt) players */
 export function getActivePlayers(state: GameState): PlayerState[] {
   return state.players.filter((p) => !p.isBankrupt);
+}
+
+/** Request exactly one private hint for a live, unanswered human challenge. */
+export function requestChallengeHint(
+  state: GameState,
+  seatId: string,
+  challengeId: string,
+  requestedAt: number = Date.now()
+): { newState: GameState; challenge: MathChallenge } | null {
+  const player = state.players.find((candidate) => candidate.id === seatId);
+  if (state.phase !== 'PLAYING' || !player || player.isBot || player.isBankrupt ||
+      !Number.isFinite(requestedAt)) return null;
+
+  const available = (challenge: MathChallenge) => challenge.id === challengeId &&
+    requestedAt >= challenge.startedAt &&
+    requestedAt < challenge.startedAt + challenge.timeLimit * 1_000;
+  const withHint = (challenge: MathChallenge): MathChallenge => challenge.hintRequestedAt === undefined
+    ? { ...challenge, hintRequestedAt: requestedAt }
+    : challenge;
+
+  if (state.turnPhase === 'MATH_DUEL') {
+    const duel = state.duelState;
+    if (!duel || duel.resolution) return null;
+    const sideKey = duel.challenger.playerId === seatId ? 'challenger'
+      : duel.owner.playerId === seatId ? 'owner' : null;
+    if (!sideKey) return null;
+    const side = duel[sideKey];
+    if (isDuelSideComplete(side) || !available(side.challenge)) return null;
+    const challenge = withHint(side.challenge);
+    return {
+      challenge,
+      newState: challenge === side.challenge ? state : {
+        ...state, duelState: { ...duel, [sideKey]: { ...side, challenge } },
+      },
+    };
+  }
+
+  if (!['SMART_BUY_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE'].includes(state.turnPhase) ||
+      getCurrentPlayer(state).id !== seatId || !state.currentChallenge ||
+      !available(state.currentChallenge)) return null;
+  const challenge = withHint(state.currentChallenge);
+  return { challenge, newState: challenge === state.currentChallenge ? state : { ...state, currentChallenge: challenge } };
 }
 
 // ---- A. ROLL PHASE ----
@@ -348,10 +392,8 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
  *
  * A property's skill theme gently weights each selection rather than forcing
  * either learner into it. Each player receives an independently selected
- * question at their own BKT difficulty and answer window. Because each question is calibrated to its
- * player, both sit at a similar probability of answering correctly, so a duel
- * between the strongest and weakest player at the table is close to even while
- * still stretching each of them appropriately.
+ * question at their own BKT difficulty and answer window. The selector adapts
+ * to each player's evidence; equivalent challenge remains an evaluation goal.
  */
 function buildDuel(
   challenger: PlayerState,
@@ -369,6 +411,8 @@ function buildDuel(
       skillAttempts: player.skillAttempts,
       propertySkillTheme: tile.skillTheme ?? undefined,
       recentQuestionFingerprints: player.recentQuestionFingerprints,
+      recentSkillHistory: player.recentIssuedSkills,
+      previousDifficultyBySkill: player.lastQuestionDifficulty,
     }), startedAt });
 
   const side = (player: PlayerState): DuelSide => ({
@@ -534,12 +578,14 @@ export function resolveDuel(state: GameState): {
     const timedOut = side.timedOut === true || side.selectedIndex === null;
     const correct = !timedOut && side.isCorrect === true;
     const { newMastery, previousMastery } = updatePlayerMastery(
-      players[idx], side.challenge.skillName as SkillName, correct, side.challenge.difficulty, timedOut
+      players[idx], side.challenge.skillName as SkillName, correct, side.challenge.difficulty, timedOut,
+      side.challenge.hintRequestedAt !== undefined
     );
 
     players = updatePlayerInList(players, idx, (p) => ({
       ...p,
-      ...applyAnswerToPlayer(p, side.challenge.skillName, correct, newMastery, timedOut),
+      ...applyAnswerToPlayer(p, side.challenge.skillName, correct, newMastery, timedOut,
+        side.challenge.hintRequestedAt !== undefined),
     }));
 
     // An unanswered side is graded wrong, and says so explicitly.
@@ -650,6 +696,8 @@ export function startSmartBuyChallenge(state: GameState): GameState {
     skillAttempts: player.skillAttempts,
     propertySkillTheme: tile?.skillTheme as SkillName | undefined,
     recentQuestionFingerprints: player.recentQuestionFingerprints,
+    recentSkillHistory: player.recentIssuedSkills,
+    previousDifficultyBySkill: player.lastQuestionDifficulty,
   });
 
   return {
@@ -672,7 +720,8 @@ export function processSmartBuyAnswer(
   const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut,
+    challenge.hintRequestedAt !== undefined
   );
 
   const fullPrice = event.propertyPrice!;
@@ -768,6 +817,8 @@ function resolveChallengeCardTile(state: GameState, player: PlayerState): GameSt
       consecutiveFailures: player.consecutiveFailures,
       skillAttempts: player.skillAttempts,
       recentQuestionFingerprints: player.recentQuestionFingerprints,
+      recentSkillHistory: player.recentIssuedSkills,
+      previousDifficultyBySkill: player.lastQuestionDifficulty,
     });
 
     return {
@@ -807,7 +858,8 @@ export function processCardChallengeAnswer(
   const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut,
+    challenge.hintRequestedAt !== undefined
   );
 
   const fallbackEffect: CardEffect = { type: 'GAIN_MONEY', amount: isCorrect ? 80 : 20 };
@@ -1043,6 +1095,8 @@ export function startJailMathEscape(state: GameState): GameState {
     consecutiveFailures: player.consecutiveFailures,
     skillAttempts: player.skillAttempts,
     recentQuestionFingerprints: player.recentQuestionFingerprints,
+    recentSkillHistory: player.recentIssuedSkills,
+    previousDifficultyBySkill: player.lastQuestionDifficulty,
   });
 
   return {
@@ -1064,7 +1118,8 @@ export function processJailEscapeAnswer(
   const { isCorrect, timedOut } = answerEvidence(challenge, selectedIndex, receivedAt);
 
   const { newMastery, previousMastery } = updatePlayerMastery(
-    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut
+    player, challenge.skillName as SkillName, isCorrect, challenge.difficulty, timedOut,
+    challenge.hintRequestedAt !== undefined
   );
 
   let updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
@@ -1427,6 +1482,14 @@ function rememberIssuedQuestion(player: PlayerState, challenge: MathChallenge): 
       ...(player.recentQuestionFingerprints ?? []),
       challenge.fingerprint,
     ].slice(-RECENT_QUESTION_FINGERPRINT_LIMIT),
+    recentIssuedSkills: [
+      ...(player.recentIssuedSkills ?? []),
+      challenge.skillName,
+    ].slice(-RECENT_SKILL_HISTORY_LIMIT),
+    lastQuestionDifficulty: {
+      ...player.lastQuestionDifficulty,
+      [challenge.skillName]: challenge.difficulty,
+    },
   };
 }
 
@@ -1445,11 +1508,12 @@ function updatePlayerMastery(
   skill: SkillName,
   isCorrect: boolean,
   difficulty: 1 | 2 | 3,
-  timedOut: boolean = false
+  timedOut: boolean = false,
+  assisted: boolean = false
 ): { newMastery: number; previousMastery: number } {
   const previousMastery = player.masteryStates[skill] ?? INITIAL_MASTERY;
   const params = getAdjustedParams(difficulty);
-  const newMastery = timedOut ? previousMastery : updateMastery(previousMastery, isCorrect, params);
+  const newMastery = timedOut || assisted ? previousMastery : updateMastery(previousMastery, isCorrect, params);
   return { newMastery, previousMastery };
 }
 
@@ -1457,15 +1521,16 @@ function updatePlayerMastery(
  * The bookkeeping every answer produces, wherever it happened. Returned as a
  * patch so callers can merge it alongside their own changes (money, position).
  *
- * `skillAttempts` is incremented here so difficulty gating sees the observation
- * immediately, in the same tick BKT updates.
+ * Only submitted, unassisted answers supply evidence for difficulty selection.
+ * Assisted correctness still earns the normal game rewards and streaks.
  */
 function applyAnswerToPlayer(
   player: PlayerState,
   skillName: string,
   isCorrect: boolean,
   newMastery: number,
-  timedOut: boolean = false
+  timedOut: boolean = false,
+  assisted: boolean = false
 ): Partial<PlayerState> {
   return {
     totalQuestions: player.totalQuestions + 1,
@@ -1474,11 +1539,11 @@ function applyAnswerToPlayer(
     masteryStates: { ...player.masteryStates, [skillName]: newMastery },
     skillAttempts: {
       ...player.skillAttempts,
-      [skillName]: (player.skillAttempts[skillName] ?? 0) + 1,
+      [skillName]: (player.skillAttempts[skillName] ?? 0) + (timedOut || assisted ? 0 : 1),
     },
     consecutiveFailures: {
       ...player.consecutiveFailures,
-      [skillName]: timedOut
+      [skillName]: timedOut || assisted
         ? (player.consecutiveFailures[skillName] ?? 0)
         : isCorrect ? 0 : (player.consecutiveFailures[skillName] ?? 0) + 1,
     },
@@ -1488,13 +1553,14 @@ function applyAnswerToPlayer(
 function updatePlayerAfterAnswer(
   state: GameState,
   isCorrect: boolean,
-  challenge: { skillName: string },
+  challenge: { skillName: string; hintRequestedAt?: number },
   newMastery: number,
   timedOut: boolean = false
 ): PlayerState[] {
   return updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
     ...p,
-    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery, timedOut),
+    ...applyAnswerToPlayer(p, challenge.skillName, isCorrect, newMastery, timedOut,
+      challenge.hintRequestedAt !== undefined),
   }));
 }
 
@@ -1515,8 +1581,8 @@ function buildAnswerResult(
     reward,
     streakCount: isCorrect ? player.streak + 1 : 0,
     streakBroken: !isCorrect && player.streak > 0,
-    showHintNext: !timedOut && !isCorrect && (player.consecutiveFailures[challenge.skillName] ?? 0) >= 1,
     timedOut,
+    assisted: challenge.hintRequestedAt !== undefined,
     feedback: buildWorkedFeedback(challenge),
   };
 }

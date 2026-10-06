@@ -356,7 +356,7 @@ function generateAddition(difficulty: 1 | 2 | 3): GeneratedQuestion {
   }
 
   const columnData = buildColumnData(a, b, '+', missingPosition, missingDigitPlace, missingDigitRow);
-  // Dropping a carry is the dominant Standard 1 addition error, so it leads.
+  // A dropped carry is a plausible addition error, so it leads the distractors.
   const additionErrors =
     missingPosition === 'answer'
       ? [addWithoutCarrying(a, b), ...placeValueSlips(targetAnswer)]

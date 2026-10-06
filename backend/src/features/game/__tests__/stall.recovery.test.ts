@@ -83,7 +83,7 @@ describe('resolveStalledTurn', () => {
     expect(outcome!.result!.isCorrect).toBe(false);
     expect(outcome!.result!.timedOut).toBe(true);
 
-    // The attempt still counts — a timeout is evidence, not a skipped question.
+    // A timeout counts as a gameplay opportunity, but not an answered BKT observation.
     const after = outcome!.state.players[outcome!.state.currentPlayerIndex];
     expect(after.totalQuestions).toBe(before.totalQuestions + 1);
     expect(after.totalCorrect).toBe(before.totalCorrect);
@@ -92,7 +92,7 @@ describe('resolveStalledTurn', () => {
     expect(outcome!.state.turnPhase).not.toBe('CARD_MATH_CHALLENGE');
   });
 
-  it('records a timeout without changing BKT mastery or the failure hint counter', () => {
+  it('records a timeout without changing BKT mastery, evidence or the failure counter', () => {
     const state = gameService.getGameSync(gameId)!;
     const challenge = {
       ...selectChallenge({
@@ -115,6 +115,9 @@ describe('resolveStalledTurn', () => {
     expect(outcome.result.previousMastery).toBe(before);
     expect(outcome.result.newMastery).toBe(before);
     expect(outcome.newState.players[0].consecutiveFailures[challenge.skillName]).toBe(0);
+    expect(outcome.newState.players[0].skillAttempts[challenge.skillName]).toBe(
+      opened.players[0].skillAttempts[challenge.skillName]
+    );
     expect(outcome.newState.players[0].totalQuestions).toBe(opened.players[0].totalQuestions + 1);
     expect(outcome.newState.players[0].streak).toBe(0);
     expect(outcome.result.reward.type).toBe('NONE');

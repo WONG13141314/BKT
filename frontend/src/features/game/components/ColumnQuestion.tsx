@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { ColumnQuestion as ColumnQuestionData, DigitCell } from '../types/game.types';
+import { ChallengeHint, ColumnQuestion as ColumnQuestionData, DigitCell, HintHighlight } from '../types/game.types';
 import { ChallengeTimer } from './ChallengeTimer';
+import { QuestionHelp, isHintHighlighted } from './QuestionHelp';
+import { useChallengeDeadline } from '../hooks/useChallengeDeadline';
 import './ColumnQuestion.css';
 
 interface Props {
@@ -10,7 +12,8 @@ interface Props {
   disabled?: boolean;
   expiresAt: number;
   timeLimit: number;
-  hintContent?: string | null;
+  hint?: ChallengeHint | null;
+  onRequestHint?: () => Promise<void>;
   /** Once graded, the server tells us what belonged in the '?' box. */
   revealedAnswer?: string | null;
 }
@@ -27,27 +30,29 @@ export function ColumnQuestion({
   disabled,
   expiresAt,
   timeLimit,
-  hintContent,
+  hint,
+  onRequestHint,
   revealedAnswer,
 }: Props) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
+  const expired = useChallengeDeadline(expiresAt, timeLimit);
 
   const handleSelect = (index: number) => {
-    if (disabled || answered) return;
+    if (disabled || answered || (timeLimit > 0 && Date.now() >= expiresAt)) return;
     setSelectedOption(index);
     setAnswered(true);
     onAnswer(index);
   };
 
-  const renderCells = (cells: DigitCell[], rowLabel: string) =>
+  const renderCells = (cells: DigitCell[], rowLabel: HintHighlight['row']) =>
     cells.map((cell, i) => {
       const isTarget = cell === '?';
       const content = isTarget && revealedAnswer ? revealedAnswer : cell;
       return (
         <span
           key={`${rowLabel}-${i}`}
-          className={`digit-cell ${isTarget ? 'digit-target' : ''} ${
+          className={`digit-cell ${cell !== '' && isHintHighlighted(hint, rowLabel, i) ? 'question-hint-highlight' : ''} ${isTarget ? 'digit-target' : ''} ${
             isTarget && cells.length === 1 ? 'operand-box' : ''
           }`}
         >
@@ -77,25 +82,20 @@ export function ColumnQuestion({
           <span className="operation-space" />
           {renderCells(question.answerCells, 'answer')}
         </div>
-
-        {question.hasRegrouping && !answered && question.operation !== '-' && (
-          <div className="regroup-hint">
-            {question.operation === '+' ? 'Remember to carry' : 'Multiply digit by digit'}
-          </div>
-        )}
       </div>
 
-      {hintContent && <div className="column-hint">{hintContent}</div>}
+      <QuestionHelp hint={hint} onRequestHint={onRequestHint}
+        disabled={!!disabled || answered || expired} expiresAt={expiresAt} timeLimit={timeLimit} />
 
       <div className="column-options">
         {options.map((opt, idx) => (
           <button
             key={idx}
             className={`column-option ${selectedOption === idx ? 'selected' : ''} ${
-              answered ? 'disabled' : ''
+              answered || expired ? 'disabled' : ''
             }`}
             onClick={() => handleSelect(idx)}
-            disabled={disabled || answered}
+            disabled={disabled || answered || expired}
           >
             {opt}
           </button>

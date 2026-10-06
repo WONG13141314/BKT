@@ -155,20 +155,6 @@
   font-weight: 900;
 }
 
-/* Hint */
-.division-hint {
-  font-size: 0.85rem;
-  color: #000;
-  background: #fff3cd;
-  border: 2px solid #000;
-  border-radius: 6px;
-  padding: 0.5rem 0.85rem;
-  max-width: 280px;
-  text-align: center;
-  font-weight: 800;
-  font-family: 'Courier New', Courier, monospace;
-}
-
 /* Options */
 .division-options {
   display: grid;
@@ -205,4 +191,35 @@
 .division-option.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Keep the final answer row visible when a hint opens on a narrow phone. */
+@media (max-width: 360px) {
+  .long-division-question {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .ld-container {
+    min-width: 200px;
+    max-width: 100%;
+    padding: 0.75rem 1rem;
+  }
+
+  .ld-row:not(.ld-step-line-row),
+  .ld-cell:not(.ld-line-cell) {
+    height: 28px;
+  }
+
+  .ld-target {
+    height: 28px;
+  }
+
+  .ld-house-bracket {
+    height: 30px;
+  }
+
+  .division-option {
+    padding: 0.5rem;
+    font-size: 1.2rem;
+  }
 }

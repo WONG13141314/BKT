@@ -1,16 +1,10 @@
 // ============================================
 // BKT Question Selector
 // 4 Skills: Addition, Subtraction, Multiplication, Division
-// Picks the skill, the difficulty and the hint level for a game context.
+// Picks a skill and difficulty using each player's own evidence and history.
 // ============================================
 
-import {
-  ChallengeContext,
-  ColumnQuestion,
-  LongDivisionQuestion,
-  MathChallenge,
-  QuestionData,
-} from '../features/game/game.types';
+import { ChallengeContext, MathChallenge } from '../features/game/game.types';
 import { ACTIVE_SKILL_NAMES, QUESTION_TIME_LIMITS, SkillName } from '../features/game/game.constants';
 import { generateQuestion, type GeneratedQuestion } from './question.generator';
 import { generateDistinctQuestion } from './question.fingerprint';
@@ -38,7 +32,7 @@ const CONTEXT_SKILL_MAP: Record<ChallengeContext, readonly SkillName[]> = {
 const BAND_MEDIUM = 0.50;
 const BAND_HARD = 0.80;
 
-/** Below this many observations on a skill, difficulty 2 is the ceiling. */
+/** Below this many answered observations on a skill, only difficulty 1 is used. */
 const MIN_ATTEMPTS_FOR_MEDIUM = 2;
 /** Below this many, difficulty 3 stays locked however high P(L) has climbed. */
 const MIN_ATTEMPTS_FOR_HARD = 5;
@@ -90,115 +84,11 @@ export function getAdjustedParams(difficulty: 1 | 2 | 3): AdjustedBktParams {
   return BKT_PARAMS_BY_DIFFICULTY[difficulty];
 }
 
-// ---- Hint Determination ----
-
-export interface HintInfo {
-  level: 0 | 1 | 2 | 3;
-  content: string | null;
-}
-
-/**
- * Scaffolding for the specific thing the player has to supply.
- *
- * These used to be three fixed sentences that never mentioned the question —
- * "Try breaking this problem into smaller steps" is no help to a child stuck on
- * a carry. Each hint now names the column, row or step in front of them, and
- * escalates from a nudge to a worked instruction as failures accumulate.
- */
-export function determineHint(
-  consecutiveFailures: number,
-  pMastery: number,
-  skillName: string,
-  question?: QuestionData
-): HintInfo {
-  const level: 0 | 1 | 2 | 3 =
-    consecutiveFailures >= 3 || pMastery < 0.15 ? 3 : consecutiveFailures >= 2 ? 2 : consecutiveFailures >= 1 ? 1 : 0;
-
-  if (level === 0) return { level: 0, content: null };
-
-  return { level, content: hintFor(level, skillName, question) };
-}
-
-function hintFor(level: 1 | 2 | 3, skillName: string, question?: QuestionData): string {
-  if (question?.type === 'column') return columnHint(level, question);
-  if (question?.type === 'long_division') return divisionHint(level, question);
-
-  // No question data (for a defensive caller) — use a skill-specific fallback.
-  return level >= 3
-    ? `Work it out step by step. ${skillName} is about doing one part at a time.`
-    : `Take your time and check each part of the ${skillName.toLowerCase()}.`;
-}
-
-const PLACE_LABEL: Record<string, string> = {
-  ones: 'ones',
-  tens: 'tens',
-  hundreds: 'hundreds',
-};
-
-function columnHint(level: 1 | 2 | 3, q: ColumnQuestion): string {
-  const verb = q.operation === '+' ? 'add' : q.operation === '-' ? 'subtract' : 'multiply';
-
-  // A missing digit inside the working: name the exact column.
-  if (q.missingPosition === 'internal_digit' || q.missingDigitPlace) {
-    const place = PLACE_LABEL[q.missingDigitPlace ?? 'ones'] ?? 'ones';
-    if (level === 1) return `Look at the ${place} column only.`;
-    if (level === 2) return `Cover the other columns. What must go in the ${place} place to make it work?`;
-    return `Work backwards: use the answer's ${place} digit to find the missing one.`;
-  }
-
-  // A missing operand: the child has to undo the operation.
-  if (q.missingPosition === 'top_operand' || q.missingPosition === 'bottom_operand') {
-    if (level === 1) return `You know the answer — work backwards to find the missing number.`;
-    if (level === 2) return `Start from the ones column and ask what you would ${verb} to get that digit.`;
-    return `Go column by column from the right, filling in one digit at a time.`;
-  }
-
-  // The final answer.
-  if (level === 1) return `Start with the ones column, on the right.`;
-
-  if (q.operation === '-') {
-    return level === 2
-      ? `Check each column: if the top digit is smaller, you need to borrow.`
-      : `Go right to left. When the top digit is smaller than the bottom one, borrow 10 from the next column first.`;
-  }
-
-  if (q.hasRegrouping) {
-    return level === 2
-      ? `Watch for a column that ${q.operation === '+' ? 'adds' : 'multiplies'} to more than 9 — that one carries.`
-      : `Go right to left. When a column goes past 9, write the ones digit and carry the ten into the next column.`;
-  }
-
-  return level === 2
-    ? `Take one column at a time, right to left.`
-    : `Line the digits up and ${verb} each column separately, starting from the ones.`;
-}
-
-function divisionHint(level: 1 | 2 | 3, q: LongDivisionQuestion): string {
-  const step = q.missingStepIndex + 1;
-
-  switch (q.missingTarget) {
-    case 'quotient_digit':
-      return level === 1
-        ? `How many times does ${q.divisor} fit in, without going over?`
-        : `Count up in ${q.divisor}s until you get as close as you can without passing the number above.`;
-    case 'product':
-      return level === 1
-        ? `Multiply ${q.divisor} by the digit you just wrote on top.`
-        : `Take the quotient digit above this step and multiply it by ${q.divisor}. That is what you subtract.`;
-    case 'subtraction_result':
-      return level === 1
-        ? `Subtract to find what is left over at step ${step}.`
-        : `Take the number underneath away from the one above it, just like a normal subtraction.`;
-    case 'remainder':
-      return level === 1
-        ? `What is left at the very end, after the last subtraction?`
-        : `The remainder is whatever is left over, and it is always smaller than ${q.divisor}.`;
-    default:
-      return `Work down one step at a time.`;
-  }
-}
-
 // ---- Main Selection Logic ----
+
+/** Keep the same bounded, per-player issuance history in the game state. */
+export const RECENT_SKILL_HISTORY_LIMIT = 8;
+const MAX_CONSECUTIVE_SKILL_ISSUANCES = 3;
 
 export interface SelectionInput {
   masteryStates: Record<string, number>;
@@ -212,6 +102,10 @@ export interface SelectionInput {
   forceSkill?: SkillName;
   /** Fingerprints recently issued to this learner; used to avoid repetition. */
   recentQuestionFingerprints?: readonly string[];
+  /** This player's recent issued skills, oldest first. Never shared across players. */
+  recentSkillHistory?: readonly SkillName[];
+  /** The last issued tier per skill; upward changes are limited to one tier. */
+  previousDifficultyBySkill?: Partial<Record<SkillName, 1 | 2 | 3>>;
 }
 
 /**
@@ -227,10 +121,9 @@ const THEME_BOOST = 1.5;
  *
  * Strategy:
  * 1. Get eligible skills from context
- * 2. Select via WEIGHTED RANDOM (lower mastery = higher weight + noise)
+ * 2. Review overdue skills, otherwise weight weak and underexposed skills
  * 3. Determine difficulty from mastery with context adjustments
  * 4. Generate the question
- * 5. Determine hint level
  */
 export function selectChallenge(input: SelectionInput): MathChallenge {
   const {
@@ -241,6 +134,8 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     propertySkillTheme,
     forceSkill,
     recentQuestionFingerprints,
+    recentSkillHistory,
+    previousDifficultyBySkill,
   } = input;
 
   // 1. Eligible skills for this context
@@ -250,9 +145,10 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
   //    without excluding the others.
   const selectedSkill: SkillName =
     forceSkill ??
-    selectSkillWeighted(
+    selectSkillWithHistory(
       masteryStates,
       eligibleSkills,
+      recentSkillHistory ?? [],
       propertySkillTheme ? { skill: propertySkillTheme, factor: THEME_BOOST } : undefined
     );
 
@@ -279,6 +175,11 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     difficulty = capDivisionDifficulty(difficulty, masteryStates, skillAttempts ?? {});
   }
 
+  const previousDifficulty = previousDifficultyBySkill?.[selectedSkill];
+  if (previousDifficulty !== undefined) {
+    difficulty = Math.min(difficulty, previousDifficulty + 1) as 1 | 2 | 3;
+  }
+
   // 3. Generate the question using the selected skill and difficulty
   // Every game context uses the same vertical fill-in calculation bank.
   // Context changes the reward and difficulty, never the question format.
@@ -287,13 +188,7 @@ export function selectChallenge(input: SelectionInput): MathChallenge {
     recentQuestionFingerprints ?? []
   );
 
-  // 4. Determine the hint — after generation, so it can point at the actual
-  //    column, row or division step the player has to fill in.
-  const failures = consecutiveFailures[selectedSkill] ?? 0;
-  const mastery = masteryStates[selectedSkill] ?? INITIAL_MASTERY;
-  const hint = determineHint(failures, mastery, selectedSkill, generated.questionData);
-
-  return buildChallenge(generated, selectedSkill, difficulty, context, hint);
+  return buildChallenge(generated, selectedSkill, difficulty, context);
 }
 
 // ---- Helpers ----
@@ -302,8 +197,7 @@ function buildChallenge(
   generated: GeneratedQuestion & { fingerprint: string },
   skill: SkillName,
   difficulty: 1 | 2 | 3,
-  context: ChallengeContext,
-  hint: HintInfo
+  context: ChallengeContext
 ): MathChallenge {
   const id = `challenge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -318,8 +212,6 @@ function buildChallenge(
     context,
     timeLimit: QUESTION_TIME_LIMITS[difficulty],
     startedAt: Date.now(),
-    hintLevel: hint.level,
-    hintContent: hint.content,
     fingerprint: generated.fingerprint,
   };
 }
@@ -336,14 +228,49 @@ function buildChallenge(
  * eligible skill a real chance. `MIN_WEIGHT` means even a mastered skill
  * resurfaces occasionally, which is what makes retention visible in the data.
  */
-// With only the two proposal skills active, a larger floor prevents the weaker
-// skill from occupying virtually every question while still strongly favouring it.
 const MIN_WEIGHT = 0.08;
+
+/**
+ * Adaptive picks review skills absent from the last eight issuances before a
+ * weighted draw. Ties prefer lower mastery. With four eligible skills and no
+ * forced selections, each skill is consequently issued within eleven picks.
+ * Forced duel selections remain explicit and may bypass these pacing guards.
+ */
+function selectSkillWithHistory(
+  masteryStates: Record<string, number>,
+  eligibleSkills: readonly SkillName[],
+  history: readonly SkillName[],
+  boost?: { skill: SkillName; factor: number }
+): SkillName {
+  const recent = history.slice(-RECENT_SKILL_HISTORY_LIMIT);
+  if (recent.length === RECENT_SKILL_HISTORY_LIMIT) {
+    const overdue = eligibleSkills.filter((skill) => !recent.includes(skill));
+    if (overdue.length > 0) {
+      return overdue.reduce((selected, skill) => {
+        const selectedLast = history.lastIndexOf(selected);
+        const skillLast = history.lastIndexOf(skill);
+        if (skillLast < selectedLast) return skill;
+        if (skillLast > selectedLast) return selected;
+        return (masteryStates[skill] ?? INITIAL_MASTERY) <
+          (masteryStates[selected] ?? INITIAL_MASTERY) ? skill : selected;
+      });
+    }
+  }
+
+  const last = recent[recent.length - 1];
+  const repeated = recent.length >= MAX_CONSECUTIVE_SKILL_ISSUANCES &&
+    recent.slice(-MAX_CONSECUTIVE_SKILL_ISSUANCES).every((skill) => skill === last);
+  const candidates = repeated && eligibleSkills.length > 1
+    ? eligibleSkills.filter((skill) => skill !== last)
+    : eligibleSkills;
+  return selectSkillWeighted(masteryStates, candidates, boost, recent);
+}
 
 function selectSkillWeighted(
   masteryStates: Record<string, number>,
   eligibleSkills: readonly SkillName[],
-  boost?: { skill: SkillName; factor: number }
+  boost?: { skill: SkillName; factor: number },
+  recent: readonly SkillName[] = []
 ): SkillName {
   if (eligibleSkills.length === 1) return eligibleSkills[0];
 
@@ -351,7 +278,9 @@ function selectSkillWeighted(
     const mastery = masteryStates[skill] ?? INITIAL_MASTERY;
     const base = (1 - mastery) ** 2;
     const weighted = boost && skill === boost.skill ? base * boost.factor : base;
-    return Math.max(weighted, MIN_WEIGHT);
+    const recentCount = recent.filter((issued) => issued === skill).length;
+    const exposureBoost = 1 + (recent.length - recentCount) / RECENT_SKILL_HISTORY_LIMIT;
+    return Math.max(weighted, MIN_WEIGHT) * exposureBoost;
   });
 
   const total = weights.reduce((sum, w) => sum + w, 0);

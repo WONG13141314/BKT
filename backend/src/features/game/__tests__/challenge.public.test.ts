@@ -59,6 +59,8 @@ describe('Challenge redaction', () => {
     expect(publicChallenge.expiresAt).toBe(challenge.startedAt + challenge.timeLimit * 1_000);
     expect(publicChallenge.skillName).toBeUndefined();
     expect(publicChallenge.difficulty).toBeUndefined();
+    expect(publicChallenge).not.toHaveProperty('hintContent');
+    expect(publicChallenge).not.toHaveProperty('hintLevel');
   });
 
   describe('long division does not render its own answer', () => {
@@ -138,7 +140,7 @@ describe('Challenge redaction', () => {
       }
     });
 
-    it('only scaffolds regrouping when the target is the final answer', () => {
+    it('does not send a carry hint with a column question', () => {
       for (let i = 0; i < 300; i++) {
         const q = generateQuestion(SKILLS[i % 3], DIFFICULTIES[i % 3]);
         if (q.questionData.type !== 'column') continue;
@@ -146,9 +148,7 @@ describe('Challenge redaction', () => {
         const publicData = redactQuestionData(q.questionData);
         if (publicData.type !== 'column') continue;
 
-        if (q.questionData.missingPosition !== 'answer') {
-          expect(publicData.hasRegrouping).toBe(false);
-        }
+        expect(publicData).not.toHaveProperty('hasRegrouping');
       }
     });
   });

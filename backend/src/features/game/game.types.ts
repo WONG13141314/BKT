@@ -1,6 +1,6 @@
 // ============================================
 // Game Engine Types — MathOpoly Redesign
-// 20-tile board, 4 skills (Std 1 KSSR), RM currency
+// 20-tile board, 4 arithmetic skills, RM currency
 // ============================================
 
 import { SKILL_NAMES, type SkillName } from './game.constants';
@@ -82,6 +82,10 @@ export interface PlayerState {
   consecutiveFailures: Record<string, number>; // skillName → consecutive wrong count
   /** Last eight learning tasks issued to this player; server-only. */
   recentQuestionFingerprints: string[];
+  /** Recent skill exposure for this player's question selection; server-only. */
+  recentIssuedSkills: SkillName[];
+  /** Last question tier for each skill, used to avoid skipping a tier. */
+  lastQuestionDifficulty: Partial<Record<SkillName, 1 | 2 | 3>>;
 
   // Bot-specific
   isBot: boolean;
@@ -176,10 +180,10 @@ export interface MathChallenge {
   context: ChallengeContext;
   timeLimit: number;            // Seconds
   startedAt: number;            // Unix ms — when the challenge was issued
-  hintLevel: 0 | 1 | 2 | 3;
-  hintContent: string | null;
   /** Semantic task identity used only for server-side repetition control. */
   fingerprint: string;
+  /** Server-authoritative, first successful hint request; not sent to observers. */
+  hintRequestedAt?: number;
 }
 
 // ============================================
@@ -206,8 +210,6 @@ export interface PublicColumnQuestion {
   answerCells: DigitCell[];
   /** When a whole value is the target, its row renders as one wide '?' box. */
   hiddenRow: 'top' | 'bottom' | 'answer' | null;
-  /** Carry/borrow scaffold. Only sent when the target is the final answer. */
-  hasRegrouping: boolean;
 }
 
 export interface PublicDivisionStep {
@@ -233,6 +235,19 @@ export type PublicQuestionData =
   | PublicColumnQuestion
   | PublicLongDivisionQuestion;
 
+export interface HintHighlight {
+  row: 'top' | 'bottom' | 'answer' | 'quotient' | 'divisor' | 'dividend' | 'product' | 'result' | 'remainder';
+  /** Zero-based index in the public row's cell array. Omit for the whole row. */
+  column?: number;
+  /** Zero-based index in the public division steps, after skipped leading rows. */
+  stepIndex?: number;
+}
+
+export interface QuestionHint {
+  content: string;
+  highlights: HintHighlight[];
+}
+
 export interface PublicMathChallenge {
   id: string;
   questionData: PublicQuestionData;
@@ -240,16 +255,16 @@ export interface PublicMathChallenge {
   context: ChallengeContext;
   timeLimit: number;            // Seconds
   expiresAt: number;            // Unix ms — client drives its countdown from this
-  hintContent: string | null;
+  /** Available privately only after the learner has requested it. */
+  hint?: QuestionHint | null;
 }
 
 // ---- Math Duel ----
 //
 // Landing on an owned property starts a duel with the owner. Both answer at the
-// same time, each on a question BKT picked for *them* — same skill (the
-// property's theme), own difficulty. Because each question is calibrated to its
-// player, both have a similar chance of getting theirs right, so a duel between
-// the strongest and weakest player at the table is close to even.
+// same time, each on a question selected from their own mastery and evidence.
+// The property theme is a preference, and each player has their own difficulty.
+// Whether this produces comparable challenge is evaluated with pupil data.
 //
 // The stakes are upside-only: losing a duel costs exactly the rent that would
 // have been due anyway. Nothing a struggling child does can make it worse. The
@@ -318,9 +333,10 @@ export interface AnswerResult {
   reward: RewardResult;
   streakCount: number;
   streakBroken: boolean;
-  showHintNext: boolean;
   /** True when the server auto-submitted because the timer ran out. */
   timedOut: boolean;
+  /** This response followed a hint request and supplies no unassisted BKT evidence. */
+  assisted: boolean;
   /** Private, operation-specific worked line for the learner who answered. */
   feedback: string;
 }

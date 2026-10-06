@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { DigitCell, LongDivisionQuestion as LongDivisionQuestionData } from '../types/game.types';
+import { ChallengeHint, DigitCell, HintHighlight, LongDivisionQuestion as LongDivisionQuestionData } from '../types/game.types';
 import { ChallengeTimer } from './ChallengeTimer';
+import { QuestionHelp, isHintHighlighted } from './QuestionHelp';
+import { useChallengeDeadline } from '../hooks/useChallengeDeadline';
 import './LongDivisionQuestion.css';
 
 interface Props {
@@ -10,7 +12,8 @@ interface Props {
   disabled?: boolean;
   expiresAt: number;
   timeLimit: number;
-  hintContent?: string | null;
+  hint?: ChallengeHint | null;
+  onRequestHint?: () => Promise<void>;
   revealedAnswer?: string | null;
 }
 
@@ -28,14 +31,16 @@ export function LongDivisionQuestion({
   disabled,
   expiresAt,
   timeLimit,
-  hintContent,
+  hint,
+  onRequestHint,
   revealedAnswer,
 }: Props) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
+  const expired = useChallengeDeadline(expiresAt, timeLimit);
 
   const handleSelect = (index: number) => {
-    if (disabled || answered) return;
+    if (disabled || answered || (timeLimit > 0 && Date.now() >= expiresAt)) return;
     setSelectedOption(index);
     setAnswered(true);
     onAnswer(index);
@@ -44,11 +49,17 @@ export function LongDivisionQuestion({
   const cellContent = (cell: DigitCell) =>
     cell === '?' && revealedAnswer ? revealedAnswer : cell;
 
-  const renderRow = (cells: DigitCell[], keyPrefix: string, extraClass = '') =>
+  const renderRow = (
+    cells: DigitCell[],
+    keyPrefix: string,
+    row: HintHighlight['row'],
+    extraClass = '',
+    stepIndex?: number,
+  ) =>
     cells.map((cell, col) => (
       <span
         key={`${keyPrefix}-${col}`}
-        className={`ld-cell ${extraClass} ${cell === '?' ? 'ld-target' : ''}`}
+        className={`ld-cell ${extraClass} ${cell !== '' && isHintHighlighted(hint, row, col, stepIndex) ? 'question-hint-highlight' : ''} ${cell === '?' ? 'ld-target' : ''}`}
       >
         {cellContent(cell)}
       </span>
@@ -62,12 +73,12 @@ export function LongDivisionQuestion({
         {/* Quotient sits above the dividend, one digit per column */}
         <div className="ld-row ld-quotient-row">
           <span className="ld-cell" />
-          {renderRow(question.quotientCells, 'q', 'ld-quotient-digit')}
+          {renderRow(question.quotientCells, 'q', 'quotient', 'ld-quotient-digit')}
         </div>
 
         {/* Divisor, division house, dividend */}
         <div className="ld-row ld-dividend-row">
-          <span className="ld-cell ld-divisor">{question.divisor}</span>
+          <span className={`ld-cell ld-divisor ${isHintHighlighted(hint, 'divisor') ? 'question-hint-highlight' : ''}`}>{question.divisor}</span>
           <svg className="ld-house-bracket" viewBox="0 0 12 34" aria-hidden="true">
             <path
               d="M 2 32 C 9 23 9 9 2 1.5 L 12 1.5"
@@ -79,7 +90,7 @@ export function LongDivisionQuestion({
             />
           </svg>
           {question.dividendCells.map((digit, col) => (
-            <span key={`d-${col}`} className="ld-cell ld-dividend-digit">
+            <span key={`d-${col}`} className={`ld-cell ld-dividend-digit ${isHintHighlighted(hint, 'dividend', col) ? 'question-hint-highlight' : ''}`}>
               {digit}
             </span>
           ))}
@@ -91,7 +102,7 @@ export function LongDivisionQuestion({
             <div key={`step-${idx}`} className="ld-step">
               <div className="ld-row ld-product-row">
                 <span className="ld-cell ld-minus">{step.showMinus ? '−' : ''}</span>
-                {renderRow(step.productCells, `p${idx}`, 'ld-step-digit')}
+                {renderRow(step.productCells, `p${idx}`, 'product', 'ld-step-digit', idx)}
               </div>
 
               <div className="ld-row ld-step-line-row">
@@ -109,7 +120,7 @@ export function LongDivisionQuestion({
               {step.resultCells && (
                 <div className="ld-row ld-result-row">
                   <span className="ld-cell" />
-                  {renderRow(step.resultCells, `r${idx}`, 'ld-step-digit')}
+                  {renderRow(step.resultCells, `r${idx}`, 'result', 'ld-step-digit', idx)}
                 </div>
               )}
             </div>
@@ -119,7 +130,7 @@ export function LongDivisionQuestion({
             <div className="ld-remainder-row">
               <span className="ld-remainder-label">Remainder</span>
               <span
-                className={`ld-remainder-val ${
+                className={`ld-remainder-val ${isHintHighlighted(hint, 'remainder') ? 'question-hint-highlight' : ''} ${
                   question.remainderCell === '?' ? 'ld-target' : ''
                 }`}
               >
@@ -130,17 +141,18 @@ export function LongDivisionQuestion({
         </div>
       </div>
 
-      {hintContent && <div className="division-hint">{hintContent}</div>}
+      <QuestionHelp hint={hint} onRequestHint={onRequestHint}
+        disabled={!!disabled || answered || expired} expiresAt={expiresAt} timeLimit={timeLimit} />
 
       <div className="division-options">
         {options.map((opt, idx) => (
           <button
             key={idx}
             className={`division-option ${selectedOption === idx ? 'selected' : ''} ${
-              answered ? 'disabled' : ''
+              answered || expired ? 'disabled' : ''
             }`}
             onClick={() => handleSelect(idx)}
-            disabled={disabled || answered}
+            disabled={disabled || answered || expired}
           >
             {opt}
           </button>

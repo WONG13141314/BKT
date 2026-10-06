@@ -1,4 +1,4 @@
-import { selectChallenge, getAdjustedParams, determineHint } from '../bkt.selector';
+import { selectChallenge, getAdjustedParams } from '../bkt.selector';
 import { SKILL_NAMES } from '../../features/game/game.types';
 import { ACTIVE_SKILL_NAMES } from '../../features/game/game.constants';
 import { BKT_PARAMS_BY_DIFFICULTY } from '../bkt.defaults';
@@ -21,7 +21,7 @@ describe('BKT Question Selector', () => {
       expect(ACTIVE_SKILL_NAMES).toEqual(['Addition', 'Subtraction', 'Multiplication', 'Division']);
     });
 
-    it.each([[1, 25], [2, 20], [3, 15]] as const)(
+    it.each([[1, 30], [2, 45], [3, 60]] as const)(
       'assigns difficulty %s a %s second answer window',
       (difficulty, seconds) => {
         const challenge = selectChallenge(baseInput({
@@ -32,6 +32,18 @@ describe('BKT Question Selector', () => {
         expect(challenge.difficulty).toBe(difficulty);
         expect(challenge.timeLimit).toBe(seconds);
       }
+    );
+
+    it.each(['SMART_BUY', 'CHALLENGE_CARD', 'JAIL_ESCAPE', 'MATH_DUEL'] as const)(
+      'uses the shared difficulty windows in %s',
+      (context) => {
+        for (const requestedDifficulty of [1, 2, 3] as const) {
+          const challenge = selectChallenge(baseInput({
+            forceSkill: 'Addition', context, mastery: masteryFor(requestedDifficulty),
+          }));
+          expect(challenge.timeLimit).toBe(({ 1: 30, 2: 45, 3: 60 })[challenge.difficulty]);
+        }
+      },
     );
 
     it('should return a valid MathChallenge for CHALLENGE_CARD context', () => {
@@ -47,7 +59,7 @@ describe('BKT Question Selector', () => {
       expect(challenge.correctIndex).toBeGreaterThanOrEqual(0);
       expect(challenge.correctIndex).toBeLessThan(4);
       expect(challenge.context).toBe('CHALLENGE_CARD');
-      expect(challenge.timeLimit).toBe(25);
+      expect(challenge.timeLimit).toBe(30);
     });
 
     it.each(['SMART_BUY', 'CHALLENGE_CARD', 'JAIL_ESCAPE', 'MATH_DUEL'] as const)(
@@ -91,7 +103,7 @@ describe('BKT Question Selector', () => {
       });
 
       expect(challenge.difficulty).toBe(1);
-      expect(challenge.timeLimit).toBe(25);
+      expect(challenge.timeLimit).toBe(30);
     });
   });
 
@@ -112,17 +124,14 @@ describe('BKT Question Selector', () => {
     });
   });
 
-  describe('determineHint', () => {
-    it('should return no hint for 0 consecutive failures', () => {
-      const hint = determineHint(0, 0.5, 'Addition');
-      expect(hint.level).toBe(0);
-      expect(hint.content).toBeNull();
+  it('issues unassisted questions even for a cold-start player after failures', () => {
+    const challenge = selectChallenge({
+      masteryStates: { Addition: 0.1 },
+      context: 'CHALLENGE_CARD',
+      consecutiveFailures: { Addition: 3 },
+      forceSkill: 'Addition',
     });
-
-    it('should return hint level when mastery is critically low', () => {
-      const hint = determineHint(1, 0.1, 'Division');
-      expect(hint.level).toBe(3);
-      expect(hint.content).toContain('Division');
-    });
+    expect(challenge).not.toHaveProperty('hintLevel');
+    expect(challenge).not.toHaveProperty('hintContent');
   });
 });

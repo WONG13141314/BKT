@@ -23,8 +23,6 @@ function challenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     context: 'CHALLENGE_CARD',
     timeLimit: 25,
     startedAt: 1_000,
-    hintLevel: 0,
-    hintContent: null,
     fingerprint: 'addition:47:25',
     ...overrides,
   };

@@ -3,7 +3,9 @@
 // These are statistical properties, so they run many draws and assert on the
 // distribution rather than on any single pick.
 
-import { selectChallenge } from '../bkt.selector';
+import { RECENT_SKILL_HISTORY_LIMIT, selectChallenge } from '../bkt.selector';
+import { updateMastery } from '../bkt.engine';
+import { BKT_PARAMS_BY_DIFFICULTY, INITIAL_MASTERY } from '../bkt.defaults';
 import { questionFingerprint } from '../question.fingerprint';
 import * as questionGenerator from '../question.generator';
 import { ACTIVE_SKILL_NAMES, type SkillName } from '../../features/game/game.constants';
@@ -160,6 +162,81 @@ describe('Skill selection', () => {
       expect(challenge.skillName).toBe('Addition');
     }
   });
+
+  it('reviews a skill omitted from the last eight questions even when it is mastered', () => {
+    const challenge = selectChallenge({
+      masteryStates: weakAtSubtraction,
+      context: 'CHALLENGE_CARD',
+      consecutiveFailures: NO_FAILURES,
+      recentSkillHistory: ['Subtraction', 'Multiplication', 'Division', 'Subtraction',
+        'Multiplication', 'Division', 'Subtraction', 'Division'],
+      propertySkillTheme: 'Subtraction',
+    });
+    expect(challenge.skillName).toBe('Addition');
+  });
+
+  it('resolves equally overdue skills using weaker mastery first', () => {
+    const challenge = selectChallenge({
+      masteryStates: weakAtSubtraction,
+      context: 'CHALLENGE_CARD',
+      consecutiveFailures: NO_FAILURES,
+      recentSkillHistory: Array<SkillName>(RECENT_SKILL_HISTORY_LIMIT).fill('Division'),
+    });
+    expect(challenge.skillName).toBe('Subtraction');
+  });
+
+  it('limits repeated skills and guarantees coverage during a full adaptive sequence', () => {
+    const sequence = withSeededRandom(0x55AA, () => {
+      const issued: SkillName[] = [];
+      for (let i = 0; i < 96; i++) {
+        issued.push(selectChallenge({
+          masteryStates: weakAtSubtraction,
+          context: 'SMART_BUY',
+          consecutiveFailures: NO_FAILURES,
+          propertySkillTheme: 'Subtraction',
+          recentSkillHistory: issued.slice(-RECENT_SKILL_HISTORY_LIMIT),
+        }).skillName);
+      }
+      return issued;
+    });
+
+    for (let start = 0; start <= sequence.length - 4; start++) {
+      expect(new Set(sequence.slice(start, start + 4)).size).toBeGreaterThan(1);
+    }
+    // After eight omitted issuances, at most three overdue skills are serviced.
+    for (let start = 0; start <= sequence.length - 11; start++) {
+      expect(new Set(sequence.slice(start, start + 11)).size).toBe(ACTIVE_SKILL_NAMES.length);
+    }
+  });
+
+  it('uses only the supplied player history without mutating it', () => {
+    const playerOne = Object.freeze<SkillName[]>([
+      'Subtraction', 'Multiplication', 'Division', 'Subtraction',
+      'Multiplication', 'Division', 'Subtraction', 'Division',
+    ]);
+    const playerTwo = Object.freeze<SkillName[]>([
+      'Addition', 'Multiplication', 'Division', 'Addition',
+      'Multiplication', 'Division', 'Addition', 'Division',
+    ]);
+    const input = { masteryStates: weakAtSubtraction, context: 'CHALLENGE_CARD' as const,
+      consecutiveFailures: NO_FAILURES };
+    expect(selectChallenge({ ...input, recentSkillHistory: playerOne }).skillName).toBe('Addition');
+    expect(selectChallenge({ ...input, recentSkillHistory: playerTwo }).skillName).toBe('Subtraction');
+    expect(selectChallenge({ ...input, recentSkillHistory: playerOne }).skillName).toBe('Addition');
+    expect(playerOne).toHaveLength(8);
+    expect(playerTwo).toHaveLength(8);
+  });
+
+  it('keeps explicit forced duel skills despite recency pacing', () => {
+    const challenge = selectChallenge({
+      masteryStates: weakAtSubtraction,
+      context: 'MATH_DUEL',
+      consecutiveFailures: NO_FAILURES,
+      recentSkillHistory: Array<SkillName>(RECENT_SKILL_HISTORY_LIMIT).fill('Subtraction'),
+      forceSkill: 'Subtraction',
+    });
+    expect(challenge.skillName).toBe('Subtraction');
+  });
 });
 
 describe('Difficulty pacing', () => {
@@ -202,6 +279,44 @@ describe('Difficulty pacing', () => {
     });
 
     expect(challenge.difficulty).toBe(1);
+  });
+
+  it('prevents an easy-to-hard jump without changing the initial tier for returning players', () => {
+    const input = { masteryStates: { Addition: 0.95 }, context: 'CHALLENGE_CARD' as const,
+      consecutiveFailures: NO_FAILURES, skillAttempts: { Addition: 12 },
+      forceSkill: 'Addition' as const };
+    expect(selectChallenge(input).difficulty).toBe(3);
+    expect(selectChallenge({ ...input, previousDifficultyBySkill: { Addition: 1 } }).difficulty).toBe(2);
+    expect(selectChallenge({ ...input, previousDifficultyBySkill: { Addition: 2 } }).difficulty).toBe(3);
+    expect(selectChallenge({ ...input, previousDifficultyBySkill: { Addition: 3 },
+      consecutiveFailures: { Addition: 2 } }).difficulty).toBe(1);
+  });
+
+  it('preserves division readiness caps while smoothing upward tiers', () => {
+    const challenge = selectChallenge({
+      masteryStates: { Division: 0.95, Multiplication: 0.2, Subtraction: 0.9 },
+      context: 'CHALLENGE_CARD', consecutiveFailures: NO_FAILURES,
+      skillAttempts: { Division: 12, Multiplication: 1, Subtraction: 12 },
+      previousDifficultyBySkill: { Division: 1 }, forceSkill: 'Division',
+    });
+    expect(challenge.difficulty).toBe(1);
+  });
+
+  it('advances a cold-start correct-answer sequence through easy, medium and hard', () => {
+    let mastery = INITIAL_MASTERY;
+    let previous: 1 | 2 | 3 | undefined;
+    const tiers: number[] = [];
+    for (let attempts = 0; attempts < 7; attempts++) {
+      const challenge = selectChallenge({
+        masteryStates: { Addition: mastery }, context: 'CHALLENGE_CARD',
+        consecutiveFailures: NO_FAILURES, skillAttempts: { Addition: attempts },
+        previousDifficultyBySkill: previous ? { Addition: previous } : {}, forceSkill: 'Addition',
+      });
+      tiers.push(challenge.difficulty);
+      previous = challenge.difficulty;
+      mastery = updateMastery(mastery, true, BKT_PARAMS_BY_DIFFICULTY[challenge.difficulty]);
+    }
+    expect(tiers).toEqual([1, 1, 2, 2, 2, 3, 3]);
   });
 });
 

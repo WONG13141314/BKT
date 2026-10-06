@@ -47,12 +47,15 @@ export const TOTAL_CARDS = 12;
 export const LUCK_CARDS_COUNT = 7;
 export const MATH_CARDS_COUNT = 5;
 
-/** The answer window is determined solely by question difficulty. */
+/** Provisional reasoning windows for ages 10–12; calibrate with pupil pilot data. */
 export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
-  1: 25,
-  2: 20,
-  3: 15,
+  1: 30,
+  2: 45,
+  3: 60,
 };
+
+/** Recorded with each attempt so timing changes remain distinguishable. */
+export const QUESTION_TIMING_POLICY_VERSION = 'reasoning-30-45-60-v1';
 
 // ---- Question Timing ----
 
@@ -113,4 +116,5 @@ export const GAME_CONSTANTS = {
   TIME_LIMIT_MEDIUM,
   TIME_LIMIT_HARD,
   QUESTION_TIME_LIMITS,
+  QUESTION_TIMING_POLICY_VERSION,
 } as const;

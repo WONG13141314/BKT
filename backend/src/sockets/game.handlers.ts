@@ -15,6 +15,7 @@ import { AnswerResult, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
 import { buildWorkedFeedback } from '../bkt/feedback';
+import { toPublicChallenge } from '../features/game/challenge.public';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { recordGameResult } from '../features/game/game.persistence';
 import {
@@ -145,8 +146,8 @@ function emitAnswerResult(
           reward: result.reward,
           streakCount: result.streakCount,
           streakBroken: result.streakBroken,
-           showHintNext: result.showHintNext,
            timedOut: result.timedOut,
+           assisted: result.assisted,
            feedback: result.feedback,
         }
       : { isCorrect: result.isCorrect, timedOut: result.timedOut };
@@ -219,8 +220,8 @@ function emitPrivateDuelAnswerResult(
     reward: { type: 'NONE' as const, value: 0, description: 'Duel answer recorded.' },
     streakCount: learner.streak,
     streakBroken: false,
-    showHintNext: false,
     timedOut: side.timedOut === true,
+    assisted: side.challenge.hintRequestedAt !== undefined,
     feedback: buildWorkedFeedback(side.challenge),
   };
 
@@ -660,6 +661,37 @@ export const registerGameHandlers = (
     const state = await gameService.getGame(data.gameId);
     if (!state || !findAuthenticatedSeat(state)) return;
     publishGameStateToSocket(socket, state);
+  });
+
+  socket.on('game:request-hint', (
+    data: unknown,
+    acknowledgement?: (result: { success: boolean; error?: string }) => void
+  ) => {
+    const reply = (success: boolean, error?: string) => {
+      if (typeof acknowledgement === 'function') acknowledgement({ success, ...(error ? { error } : {}) });
+    };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      reply(false, 'Invalid hint request.');
+      return;
+    }
+    const { gameId, challengeId } = data as Record<string, unknown>;
+    if (typeof gameId !== 'string' || typeof challengeId !== 'string' || socket.data.gameId !== gameId) {
+      reply(false, 'This hint request does not match your current game.');
+      return;
+    }
+    const state = gameService.getGameSync(gameId);
+    const seat = state && findAuthenticatedSeat(state);
+    if (!seat || seat.isBot) {
+      reply(false, 'This question does not belong to your account.');
+      return;
+    }
+    const outcome = gameService.requestHint(gameId, seat.id, challengeId);
+    if (!outcome) {
+      reply(false, 'A hint is available only while your unanswered question is active.');
+      return;
+    }
+    socket.emit('game:challenge', { challenge: toPublicChallenge(outcome.challenge), playerId: seat.id });
+    reply(true);
   });
 
   // ---- Roll ----

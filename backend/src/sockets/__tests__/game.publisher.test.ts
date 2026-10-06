@@ -22,6 +22,8 @@ describe('game publisher', () => {
     expect(publicState.players[0]).not.toHaveProperty('skillAttempts');
     expect(publicState.players[0]).not.toHaveProperty('consecutiveFailures');
     expect(publicState.players[0]).not.toHaveProperty('recentQuestionFingerprints');
+    expect(publicState.players[0]).not.toHaveProperty('recentIssuedSkills');
+    expect(publicState.players[0]).not.toHaveProperty('lastQuestionDifficulty');
     expect(publicState).not.toHaveProperty('currentChallenge');
     expect(JSON.stringify(publicState)).not.toContain('correctIndex');
     expect(JSON.stringify(publicState)).not.toContain('private-history-fingerprint');

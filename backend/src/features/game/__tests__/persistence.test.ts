@@ -17,7 +17,7 @@ import * as persistence from '../game.persistence';
 import { gameService } from '../game.service';
 import { INITIAL_MASTERY } from '../../../bkt/bkt.defaults';
 import { getAdjustedParams } from '../../../bkt/bkt.selector';
-import { SKILL_NAMES } from '../game.constants';
+import { QUESTION_TIMING_POLICY_VERSION, SKILL_NAMES } from '../game.constants';
 import type { MathChallenge, PlayerState } from '../game.types';
 
 const BASE_PLAYERS = [
@@ -44,8 +44,6 @@ function makeChallenge(overrides: Partial<MathChallenge> = {}): MathChallenge {
     context: 'SMART_BUY',
     timeLimit: 15,
     startedAt: Date.now(),
-    hintLevel: 1,
-    hintContent: 'Take it one column at a time.',
     fingerprint: 'division:84:4:quotient_digit:1',
     ...overrides,
   };
@@ -159,7 +157,7 @@ describe('Attempt rows', () => {
     expect(data.skillId).toBe('skill-division');
     expect(data.difficulty).toBe(2);
     expect(data.context).toBe('SMART_BUY');
-    expect(data.hintLevel).toBe(1);
+    expect(data.hintLevel).toBe(0);
     expect(data.timeMs).toBe(4200);
   });
 
@@ -195,7 +193,7 @@ describe('Attempt rows', () => {
 
   it('flags a null timeout instead of inventing an answer or a mastery transition', () => {
     const data = buildAttemptData(
-      makeRecord({ selectedIndex: null as unknown as number, isCorrect: false, previousMastery: 0.3, newMastery: 0.3 }),
+      makeRecord({ selectedIndex: null, isCorrect: false, previousMastery: 0.3, newMastery: 0.3 }),
       'skill-division',
       3,
       answeredAt
@@ -205,7 +203,7 @@ describe('Attempt rows', () => {
     expect(data.selectedAnswer).toBeNull();
     expect(data.isCorrect).toBe(false);
     expect(data.pMasteryBefore).toBe(data.pMasteryAfter);
-    // Still a real observation — it counts as an opportunity.
+    // Retained as an opportunity, without supplying answered BKT evidence.
     expect(data.opportunityIndex).toBe(3);
   });
 
@@ -228,6 +226,35 @@ describe('Attempt rows', () => {
 
     // The client never sees `answer`; the research table must.
     expect(data.questionData).toMatchObject({ answer: 72, topNumber: 47, bottomNumber: 25 });
+  });
+
+  it('records the exact timing policy and an explicit unused hint', () => {
+    const challenge = makeChallenge({ timeLimit: 45, startedAt: 1_800_000 });
+    const data = buildAttemptData(makeRecord({ challenge }), 'skill-division', 1, answeredAt);
+
+    expect(data.questionData).toMatchObject({
+      timingPolicy: {
+        version: QUESTION_TIMING_POLICY_VERSION,
+        timeLimitSeconds: 45,
+        startedAt: 1_800_000,
+        expiresAt: 1_845_000,
+      },
+      hintUsage: { version: 'strategy-cue-v1', requestedAt: null, timeFromStartMs: null },
+    });
+    expect(data.hintLevel).toBe(0);
+  });
+
+  it('records actual hint timing and correctness separately from independent mastery', () => {
+    const challenge = makeChallenge({ timeLimit: 45, startedAt: 1_800_000, hintRequestedAt: 1_809_000 });
+    const data = buildAttemptData(makeRecord({ challenge, newMastery: 0.3 }), 'skill-division', 2, answeredAt);
+
+    expect(data.hintLevel).toBe(1);
+    expect(data.questionData).toMatchObject({
+      hintUsage: { version: 'strategy-cue-v1', requestedAt: 1_809_000, timeFromStartMs: 9_000 },
+      timingPolicy: { expiresAt: 1_845_000 },
+    });
+    expect(data.isCorrect).toBe(true);
+    expect(data.pMasteryBefore).toBe(data.pMasteryAfter);
   });
 
   it('never writes a row for a bot', () => {

@@ -1,6 +1,6 @@
 // ============================================
 // Game Types — Frontend (mirrors backend)
-// 20-tile board, 4 skills (Std 1 KSSR), RM currency
+// 20-tile board, 4 arithmetic skills, RM currency
 // ============================================
 
 // ---- Skill Names ----
@@ -13,12 +13,6 @@ export const SKILL_NAMES = [
 ] as const;
 
 export type SkillName = typeof SKILL_NAMES[number];
-
-export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
-  1: 25,
-  2: 20,
-  3: 15,
-};
 
 export const GAME_CONSTANTS = {
   TOTAL_TILES: 20,
@@ -33,9 +27,6 @@ export const GAME_CONSTANTS = {
   SMART_BUY_DISCOUNT: 0.20,
   LANDLORD_BONUS: 0,
   MAX_JAIL_TURNS: 2,
-  QUESTION_TIME_LIMIT_EASY: QUESTION_TIME_LIMITS[1],
-  QUESTION_TIME_LIMIT_MEDIUM: QUESTION_TIME_LIMITS[2],
-  QUESTION_TIME_LIMIT_HARD: QUESTION_TIME_LIMITS[3],
 } as const;
 
 // ---- Board & Tiles ----
@@ -147,7 +138,6 @@ export interface ColumnQuestion {
   answerCells: DigitCell[];
   /** When a whole value is the target, that row renders as one wide '?' box. */
   hiddenRow: 'top' | 'bottom' | 'answer' | null;
-  hasRegrouping: boolean;
 }
 
 export interface DivisionStep {
@@ -172,6 +162,19 @@ export type QuestionData = ColumnQuestion | LongDivisionQuestion;
 
 // ---- Math Challenge ----
 
+export interface HintHighlight {
+  row: 'top' | 'bottom' | 'answer' | 'quotient' | 'divisor' | 'dividend' | 'product' | 'result' | 'remainder';
+  /** Zero-based index in the public row's cell array. */
+  column?: number;
+  /** Zero-based index in the public long-division steps array. */
+  stepIndex?: number;
+}
+
+export interface ChallengeHint {
+  content: string;
+  highlights: HintHighlight[];
+}
+
 export interface MathChallenge {
   id: string;
   questionData: QuestionData;
@@ -180,7 +183,8 @@ export interface MathChallenge {
   timeLimit: number;
   /** Unix ms. The countdown is driven by this, not by a client-side start time. */
   expiresAt: number;
-  hintContent: string | null;
+  /** Sent privately only after this player requests help. */
+  hint?: ChallengeHint | null;
 }
 
 export interface AnswerResult {
@@ -191,7 +195,7 @@ export interface AnswerResult {
   streakBroken: boolean;
   /** True when the server auto-submitted because the timer ran out. */
   timedOut: boolean;
-  showHintNext: boolean;
+  assisted: boolean;
   feedback: string;
 }
 
