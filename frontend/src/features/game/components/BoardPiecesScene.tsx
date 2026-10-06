@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Group, MathUtils, Mesh, MeshBasicMaterial, OrthographicCamera, Vector3 } from 'three';
 import { Player } from '../types/game.types';
+import { TOKEN_HOP_SECONDS } from './board.animation';
 
 const BOARD_WORLD_SIZE = 10.05;
 
@@ -71,12 +72,12 @@ export function BoardPiecesScene({ players }: { players: Player[] }) {
     <div className="board-piece-layer" aria-label="Three-dimensional player tokens">
       <Canvas
         orthographic
-        shadows
+        shadows="percentage"
         frameloop="demand"
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         style={{ pointerEvents: 'none' }}
         camera={{ position: [0, 0, 12], zoom: 1, near: .1, far: 40 }}
-        gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}
+        gl={{ antialias: true, alpha: true }}
       >
         <ResponsiveBoardCamera />
         <ambientLight intensity={.82} />
@@ -104,6 +105,7 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
   const from = useRef(boardPoint(player.position, playerIndex, ground));
   const to = useRef(boardPoint(player.position, playerIndex, ground));
   const progress = useRef(1);
+  const animationStartedAt = useRef(0);
   const lastPosition = useRef(player.position);
   const current = useMemo(() => new Vector3(), []);
   const invalidate = useThree((state) => state.invalidate);
@@ -131,13 +133,16 @@ function MovingToken({ player, playerIndex }: { player: Player; playerIndex: num
     from.current.z = ground;
     to.current.copy(boardPoint(player.position, playerIndex, ground));
     progress.current = 0;
+    animationStartedAt.current = performance.now();
     lastPosition.current = player.position;
     invalidate();
   }, [ground, invalidate, player.position, playerIndex]);
 
-  useFrame((_, delta) => {
-    if (!group.current || !shadow.current) return;
-    progress.current = Math.min(1, progress.current + delta / .22);
+  useFrame(() => {
+    if (!group.current || !shadow.current || progress.current === 1) return;
+    // Demand rendering's first frame after an idle spell has a large delta.
+    // Measure this hop's elapsed time so that first frame cannot skip the hop.
+    progress.current = Math.min(1, (performance.now() - animationStartedAt.current) / (TOKEN_HOP_SECONDS * 1000));
     if (progress.current < 1) invalidate();
     const eased = MathUtils.smoothstep(progress.current, 0, 1);
     current.lerpVectors(from.current, to.current, eased);

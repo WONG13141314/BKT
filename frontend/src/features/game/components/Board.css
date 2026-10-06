@@ -223,6 +223,47 @@
 
 .physics-dice canvas { width: 100% !important; height: 100% !important; }
 
+.basic-dice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.basic-die {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 3px;
+  width: clamp(24px, 4vw, 40px);
+  aspect-ratio: 1;
+  padding: 6px;
+  background: #fffdf5;
+  border: 2px solid #17251c;
+  border-radius: 7px;
+  box-shadow: 3px 4px 0 rgba(0,0,0,.18);
+}
+
+.basic-die-pip {
+  background: #090a09;
+  border-radius: 50%;
+}
+
+.basic-dice--rolling .basic-die {
+  animation: basic-dice-roll .45s ease-in-out infinite alternate;
+}
+
+.basic-dice--rolling .basic-die:nth-child(2) { animation-direction: alternate-reverse; }
+
+@keyframes basic-dice-roll {
+  from { transform: translateY(-4px) rotate(-18deg); }
+  to { transform: translateY(4px) rotate(18deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .basic-dice--rolling .basic-die { animation: none; }
+}
+
 .board-center .dice-roll-btn {
   position: relative;
   z-index: 30;
@@ -276,6 +317,26 @@
   width: 100% !important;
   height: 100% !important;
   pointer-events: none !important;
+}
+
+.basic-token-layer {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+}
+
+.basic-player-token {
+  place-self: center;
+  display: grid;
+  place-items: center;
+  width: clamp(12px, 2.4vw, 18px);
+  aspect-ratio: 1;
+  background: #0f766e;
+  color: #fff;
+  border: 1px solid #111;
+  border-radius: 50%;
+  box-shadow: 1px 2px 0 rgba(0,0,0,.2);
+  font: 800 clamp(8px, 1.3vw, 11px) Arial, sans-serif;
 }
 
 .house-sticker {

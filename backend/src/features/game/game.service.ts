@@ -40,7 +40,7 @@ import {
   DuelState,
   DuelResolution,
 } from './game.types';
-import { executeBotTurn, submitBotDuelAnswers, BotTurnStep } from './bot.engine';
+import { executeBotStep, submitBotDuelAnswers, type BotStep } from './bot.engine';
 import { loadMasteryPriorsAfterWrites, newGameId, recordAttempt } from './game.persistence';
 import { RECENT_SKILL_HISTORY_LIMIT } from '../../bkt/bkt.selector';
 import { SKILL_NAMES, type SkillName } from './game.constants';
@@ -314,8 +314,9 @@ export const gameService = {
     const state = activeGames.get(gameId);
     if (!state || state.turnPhase !== 'MATH_DUEL' || !state.duelState) return null;
 
-    // A bot landlord answers the moment the challenge reaches it.
-    const next = submitBotDuelAnswers(submitDuelAnswer(state, playerId, selectedIndex, receivedAt));
+    // Bot answers are scheduled separately; a human response must not fast-forward
+    // the opponent's thinking delay or turn playback.
+    const next = submitDuelAnswer(state, playerId, selectedIndex, receivedAt);
 
     if (!bothDuellistsAnswered(next)) {
       activeGames.set(gameId, next);
@@ -442,20 +443,16 @@ export const gameService = {
 
   // ---- Bot Turn ----
 
-  planBotTurn: (gameId: string): BotTurnStep[] | null => {
+  executeBotStep: (gameId: string): BotStep | null => {
     const state = activeGames.get(gameId);
     if (!state) return null;
 
     const player = getCurrentPlayer(state);
     if (!player.isBot) return null;
 
-    return executeBotTurn(state);
-  },
-
-  /** Commits exactly one bot presentation step after its delay has elapsed. */
-  commitBotStep: (gameId: string, state: GameState): GameState => {
-    activeGames.set(gameId, state);
-    return state;
+    const step = executeBotStep(state);
+    if (step) activeGames.set(gameId, step.state);
+    return step;
   },
 
   // ---- Stall recovery ----

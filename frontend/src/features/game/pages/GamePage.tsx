@@ -12,6 +12,7 @@ import { ChallengeCardModal } from '../components/ChallengeCardModal';
 import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
 import { ChallengeDialog } from '../components/ChallengeDialog';
+import { AnswerFeedback } from '../components/AnswerFeedback';
 import { usePlayer } from '../../auth/PlayerContext';
 import { authService } from '../../auth/services/auth.service';
 import { StoredProfile } from '../../auth/types/auth.types';
@@ -24,6 +25,7 @@ import {
   MathChallenge,
   MasteryReport,
   PublicDuelState,
+  AnswerResult,
 } from '../types/game.types';
 import {
   Loader2,
@@ -39,7 +41,7 @@ export function GamePage() {
   const gameId = roomCode ? `game_${roomCode}` : null;
 
   const { player, setPlayer } = usePlayer();
-  const { socket, connectSocket, disconnectSocket } = useSocket();
+  const { socket, isConnected, connectSocket, disconnectSocket } = useSocket();
   const myPlayerId = player?.id ?? '';
 
   // A browser refresh can enter /game directly without passing through the
@@ -79,7 +81,45 @@ export function GamePage() {
   // arrives on its own channel rather than inside the shared state broadcast.
   const [duel, setDuel] = useState<PublicDuelState | null>(null);
   const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
-  const { markChallengeVisible, holdThenClear } = useAnswerResultHold();
+  const [duelAnswerResult, setDuelAnswerResult] = useState<AnswerResult | null>(null);
+  const activeChallengeIdRef = useRef<string | null>(null);
+  const duelChallengeIdRef = useRef<string | null>(null);
+  const duelIdRef = useRef<string | null>(null);
+  const duelAnswerResultRef = useRef<AnswerResult | null>(null);
+  const pendingDuelChallengeIdRef = useRef<string | null>(null);
+  const [questionRecoveryRevision, setQuestionRecoveryRevision] = useState(0);
+  const completedChallengeIdsRef = useRef(new Set<string>());
+  const { markChallengeVisible, holdThenClear, clearVisible } = useAnswerResultHold();
+  const {
+    markChallengeVisible: markDuelVisible,
+    holdThenClear: holdDuelThenClear,
+    clearVisible: clearDuelVisible,
+  } = useAnswerResultHold();
+
+  const dismissAnswerResult = useCallback(() => {
+    clearVisible();
+    activeChallengeIdRef.current = null;
+    setActiveChallenge(null);
+    setAnswerResult(null);
+    setChallengePlayerId(null);
+  }, [clearVisible, setAnswerResult]);
+
+  const dismissDuelResult = useCallback(() => {
+    clearDuelVisible();
+    duelIdRef.current = null;
+    duelChallengeIdRef.current = null;
+    duelAnswerResultRef.current = null;
+    pendingDuelChallengeIdRef.current = null;
+    setDuel(null);
+    setDuelChallenge(null);
+    setDuelAnswerResult(null);
+  }, [clearDuelVisible]);
+
+  const rememberCompletedChallenge = useCallback((challengeId: string) => {
+    const completed = completedChallengeIdsRef.current;
+    completed.add(challengeId);
+    if (completed.size > 64) completed.delete(completed.values().next().value!);
+  }, []);
 
   // Visual motion may delay a modal briefly, but it must never become the
   // authority for the turn. The server phase always controls legal actions.
@@ -174,8 +214,12 @@ export function GamePage() {
         setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
       }
       if (state.currentChallenge) {
-        markChallengeVisible(state.currentChallenge.id);
-        setActiveChallenge(state.currentChallenge);
+        if (!completedChallengeIdsRef.current.has(state.currentChallenge.id)) {
+          if (activeChallengeIdRef.current !== state.currentChallenge.id) setAnswerResult(null);
+          activeChallengeIdRef.current = state.currentChallenge.id;
+          markChallengeVisible(state.currentChallenge.id);
+          setActiveChallenge(state.currentChallenge);
+        }
       } else if (!isChallengePhase(state.turnPhase)) {
         setChallengePlayerId(null);
       }
@@ -185,24 +229,31 @@ export function GamePage() {
         setDuel(prev => prev?.resolution ? prev : null);
         setDuelChallenge(null);
       }
+      if (state.turnPhase === 'ROLL_PHASE' || state.turnPhase === 'MOVING') {
+        dismissDuelResult();
+      }
     },
     onChallenge: (data) => {
+      if (completedChallengeIdsRef.current.has(data.challenge.id)) return;
       // Help refreshes only the requesting player's existing question. A duel
       // stays open and the other side never receives this private cue.
       if (data.challenge.context === 'MATH_DUEL') {
+        if (pendingDuelChallengeIdRef.current === data.challenge.id) return;
+        duelChallengeIdRef.current = data.challenge.id;
         setDuelChallenge(data.challenge);
         return;
       }
       setChallengePlayerId(data.playerId);
-      if (activeChallenge?.id !== data.challenge.id) {
+      if (activeChallengeIdRef.current !== data.challenge.id) {
         markChallengeVisible(data.challenge.id);
         setAnswerResult(null);
       }
+      activeChallengeIdRef.current = data.challenge.id;
       setActiveChallenge(data.challenge);
       // The duel reveal lingers deliberately so the table can read it, but the
       // server has already advanced the turn. Drop it the moment the next
       // question arrives, or it would cover the new player's challenge.
-      setDuel(null);
+      dismissDuelResult();
     },
     onChallengeStarted: (data) => {
       setChallengePlayerId(data.playerId);
@@ -216,65 +267,75 @@ export function GamePage() {
       // It must not open our private question card (which we never received)
       // or spam us with every bot's learning feedback.
       if (!isMyAnswer) return;
-
+      // Each result belongs to an issued question, including an owner's duel
+      // answer on another player's turn. Late results cannot replace a new one.
+      if (data.challengeId === duelChallengeIdRef.current) {
+        pendingDuelChallengeIdRef.current = null;
+        rememberCompletedChallenge(data.challengeId);
+        duelAnswerResultRef.current = data.result;
+        setDuelAnswerResult(data.result);
+        return;
+      }
+      if (data.challengeId !== activeChallengeIdRef.current) return;
+      rememberCompletedChallenge(data.challengeId);
       setAnswerResult(data.result);
       playSound(data.result.isCorrect ? 'correct' : 'incorrect');
-
-      const { isCorrect, timedOut, correctAnswer, feedback } = data.result;
-      // Onlookers receive the outcome only — no reward or answer details.
-      const desc = data.result.reward?.description ? ` (${data.result.reward.description})` : '';
-
-      let msg: string;
-      if (isCorrect) {
-        msg = `Correct${desc}`;
-      } else if (timedOut) {
-        msg = correctAnswer ? `Time's up — answer was ${correctAnswer}${desc}` : "Time's up";
-      } else {
-        msg = correctAnswer ? `Incorrect — answer was ${correctAnswer}${desc}` : 'Incorrect';
-      }
-      addNotification(isCorrect ? 'reward' : 'penalty', feedback ? `${msg} ${feedback}` : msg);
-
-      // Hold the panel open long enough to read the revealed answer.
-      const holdMs = isCorrect ? 900 : 1800;
-
-      // Capture the ID of the challenge that was just answered. If a new
-      // challenge arrives before the hold expires (e.g. the player lands on a
-      // Challenge Card right after the Roll Challenge), the timeout must not
-      // wipe the newer challenge from the screen.
-      holdThenClear(activeChallenge?.id ?? null, holdMs, (answeredId) => {
-        setActiveChallenge(curr => !answeredId || curr?.id === answeredId ? null : curr);
-        setAnswerResult(null);
-        setChallengePlayerId(null);
+      // One primary card gives time to read, with an earlier Continue action.
+      holdThenClear(data.challengeId, 6000, (answeredId) => {
+        if (activeChallengeIdRef.current === answeredId) dismissAnswerResult();
       });
     },
     onDuel: (data) => {
       // Ignore re-sent resolved duels — they've already been handled by
       // onDuelResult and would re-show the card after the timeout cleared it.
       if (data.duel.resolution) return;
+      if (duelIdRef.current !== data.duel.id) {
+        dismissAnswerResult();
+        markDuelVisible(data.duel.id);
+        duelIdRef.current = data.duel.id;
+        duelAnswerResultRef.current = null;
+        setDuelAnswerResult(null);
+        duelChallengeIdRef.current = data.myChallenge?.id ?? null;
+        pendingDuelChallengeIdRef.current = null;
+      }
+      if (data.myChallenge) duelChallengeIdRef.current = data.myChallenge.id;
       setDuel(data.duel);
-      setDuelChallenge(data.myChallenge);
+      setDuelChallenge(data.myChallenge && !completedChallengeIdsRef.current.has(data.myChallenge.id)
+        && pendingDuelChallengeIdRef.current !== data.myChallenge.id
+        ? data.myChallenge : null);
     },
     onDuelResult: (data) => {
+      if (duelIdRef.current !== data.duel.id) return;
       setDuel(data.duel);
       setDuelChallenge(null);
-      playSound(data.resolution.outcome === 'DRAW_NEITHER' ? 'incorrect' : 'correct');
-      addNotification(
-        data.resolution.outcome === 'DRAW_NEITHER' ? 'info' : 'reward',
-        data.resolution.headline
-      );
-      // Hold the reveal long enough to read it, then clear for the next turn.
-      setTimeout(() => setDuel(null), 5000);
+      playSound(duelAnswerResultRef.current?.isCorrect === false ? 'incorrect' : 'correct');
+      holdDuelThenClear(data.duel.id, 6000, (answeredDuelId) => {
+        if (duelIdRef.current === answeredDuelId) dismissDuelResult();
+      });
     },
     onGameFinished: (data) => {
       playSound('gameOver');
       setFinalScores(data.scores);
       setMasteryReport(data.masteryReport ?? null);
+      dismissAnswerResult();
+      dismissDuelResult();
     },
     onBotAction: () => {
       // Bot actions are communicated through board animations (dice, piece movement).
       // No text banner needed.
     },
     onSeatMismatch: (data) => recoverGameSeat(data.seats),
+    onConnectionRestored: () => {
+      // A click can leave the browser without ever reaching the server. The
+      // recovery snapshot decides whether it was accepted; remount unanswered
+      // controls so a local pending selection cannot lock the restored question.
+      pendingDuelChallengeIdRef.current = null;
+      activeChallengeIdRef.current = null;
+      setActiveChallenge(null);
+      setAnswerResult(null);
+      setDuelChallenge(null);
+      setQuestionRecoveryRevision(revision => revision + 1);
+    },
     onError: (data) => {
       setRollRequested(false);
       if (data.code === 'GAME_NOT_FOUND') {
@@ -295,12 +356,12 @@ export function GamePage() {
 
   const handleMovementComplete = useCallback(() => {
     setIsPawnMoving(false);
-    if (!gameState || !isMyTurn || gameState.turnPhase !== 'MOVING') return;
+    if (!gameState || gameState.turnPhase !== 'MOVING') return;
     if (acknowledgedMovementRollRef.current === gameState.diceRollId) return;
 
     acknowledgedMovementRollRef.current = gameState.diceRollId;
     emitMovementComplete(gameState.diceRollId);
-  }, [emitMovementComplete, gameState, isMyTurn]);
+  }, [emitMovementComplete, gameState]);
 
   const handleDiceRollingChange = useCallback((rolling: boolean) => {
     if (!rolling && diceWasRollingRef.current) playSound('diceLand');
@@ -360,14 +421,13 @@ export function GamePage() {
   const handleAnswer = useCallback((selectedIndex: number) => {
     switch (turnPhase) {
       case 'SMART_BUY_CHALLENGE':
-        emitSmartBuyAnswer(selectedIndex);
-        break;
+        return emitSmartBuyAnswer(selectedIndex);
       case 'CARD_MATH_CHALLENGE':
-        emitCardAnswer(selectedIndex);
-        break;
+        return emitCardAnswer(selectedIndex);
       case 'JAIL_CHALLENGE':
-        emitJailAnswer(selectedIndex);
-        break;
+        return emitJailAnswer(selectedIndex);
+      default:
+        return false;
     }
   }, [turnPhase, emitSmartBuyAnswer, emitCardAnswer, emitJailAnswer]);
 
@@ -376,8 +436,10 @@ export function GamePage() {
    * someone else's turn, so this must not be gated on whose turn it is.
    */
   const handleDuelAnswer = useCallback((selectedIndex: number) => {
-    emitDuelAnswer(selectedIndex);
+    if (!emitDuelAnswer(selectedIndex)) return false;
+    pendingDuelChallengeIdRef.current = duelChallengeIdRef.current;
     setDuelChallenge(null);
+    return true;
   }, [emitDuelAnswer]);
 
 
@@ -390,14 +452,14 @@ export function GamePage() {
   /** Render a question body. Shared by solo challenges and duels. */
   function renderChallengeBody(
     challenge: MathChallenge,
-    onAnswer: (index: number) => void,
+    onAnswer: (index: number) => boolean | void,
     revealedAnswer: string | null,
     disabled: boolean
   ) {
     const shared = {
       options: challenge.options,
       onAnswer,
-      disabled,
+      disabled: disabled || !isConnected,
       expiresAt: challenge.expiresAt,
       timeLimit: challenge.timeLimit,
       hint: challenge.hint,
@@ -406,10 +468,10 @@ export function GamePage() {
     const questionData = challenge.questionData;
 
     if (questionData.type === 'column') {
-      return <ColumnQuestion key={challenge.id} {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
+      return <ColumnQuestion key={`${challenge.id}:${questionRecoveryRevision}`} {...shared} question={questionData} revealedAnswer={revealedAnswer} />;
     }
     return (
-      <LongDivisionQuestion key={challenge.id} {...shared} question={questionData} revealedAnswer={revealedAnswer} />
+      <LongDivisionQuestion key={`${challenge.id}:${questionRecoveryRevision}`} {...shared} question={questionData} revealedAnswer={revealedAnswer} />
     );
   }
 
@@ -517,7 +579,7 @@ export function GamePage() {
   // during MOVING. Give the board the deterministic dice destination as a
   // presentation-only target so its existing pawn animation can complete
   // before this client acknowledges the authoritative transition.
-  const presentationGameState = renderPhase === 'MOVING' && isMyTurn
+  const presentationGameState = renderPhase === 'MOVING'
     ? {
         ...gameState,
         players: gameState.players.map((seat, index) => index === gameState.currentPlayerIndex
@@ -610,6 +672,8 @@ export function GamePage() {
           myPlayerId={myPlayerId}
           isMyTurnToAnswer={!!duelChallenge}
           questionSlot={duelChallenge ? renderDuelQuestion(duelChallenge) : null}
+          answerResult={duelAnswerResult}
+          onContinue={dismissDuelResult}
         />
       )}
 
@@ -617,9 +681,10 @@ export function GamePage() {
       {showChallenge && (
         <ChallengeDialog
           title={formatContext(activeChallenge!.context)}
-          feedback={answerResult?.feedback}
         >
-          {renderQuestion()}
+          {answerResult
+            ? <AnswerFeedback result={answerResult} onContinue={dismissAnswerResult} />
+            : renderQuestion()}
         </ChallengeDialog>
       )}
 
@@ -672,6 +737,15 @@ export function GamePage() {
         notifications={notifications}
         onDismiss={dismissNotification}
       />
+      {!isConnected && (
+        <div className="game-reconnecting-overlay" role="status" aria-live="polite">
+          <div className="game-reconnecting-card">
+            <Loader2 size={26} className="icon-spin" aria-hidden="true" />
+            <h2>Reconnecting…</h2>
+            <p>Your game will refresh when the connection returns.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

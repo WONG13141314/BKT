@@ -292,4 +292,20 @@ describe('movement acknowledgement', () => {
 
     await advanceOnceAfterAcknowledgement(socket, moving.diceRollId);
   });
+
+  it('publishes game-over scores when an abandoned final end turn expires', async () => {
+    gameService.replaceState(gameId, makeGameState({
+      id: gameId, turnPhase: 'END_TURN', currentPlayerIndex: 1, isFinalRound: true,
+    }));
+    const socket = makeSocket({ player: { id: 'db-player-2' }, gameId });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+    await socket.trigger('game:request-state', { gameId });
+    await jest.advanceTimersByTimeAsync(PHASE_TIMEOUTS.endTurn);
+    expect(gameService.getGameSync(gameId)!.phase).toBe('FINISHED');
+    expect(socket.emit).toHaveBeenCalledWith('game:finished', expect.objectContaining({
+      scores: expect.any(Array),
+      masteryReport: expect.objectContaining({ playerId: 'seat-2' }),
+    }));
+  });
 });

@@ -15,6 +15,7 @@ export function toPublicDuelState(duel: DuelState): PublicDuelState {
   });
 
   return {
+    id: `${duel.challenger.challenge.id}:${duel.owner.challenge.id}`,
     tileIndex: duel.tileIndex,
     tileName: duel.tileName,
     rentAmount: duel.rentAmount,

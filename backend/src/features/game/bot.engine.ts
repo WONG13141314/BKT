@@ -1,257 +1,97 @@
-// ============================================
-// Bot Engine — AI Decision Logic
-// Rule-based bots for solo/small-group play
-// No BKT tracking needed — simple probability-of-correct
-// ============================================
-
-import { GameState, MathChallenge, PlayerState } from './game.types';
+// Rule-based opponents. Each delayed action reads live state rather than a
+// precomputed turn that can age questions or overwrite a player's response.
+import type { GameState, MathChallenge, PlayerState } from './game.types';
 import {
-  startRollPhase,
-  movePlayer,
-  resolveTileEvent,
-  buyPropertyFullPrice,
-  startSmartBuyChallenge,
-  processSmartBuyAnswer,
-  skipBuy,
-  submitDuelAnswer,
-  bothDuellistsAnswered,
-  resolveDuel,
-  acknowledgeCard,
-  processCardChallengeAnswer,
-  startJailMathEscape,
-  processJailEscapeAnswer,
-  payBail,
-  waitInJail,
-  endTurn,
-  getCurrentPlayer,
+  startRollPhase, buyPropertyFullPrice, startSmartBuyChallenge, processSmartBuyAnswer,
+  skipBuy, submitDuelAnswer, acknowledgeCard, processCardChallengeAnswer,
+  startJailMathEscape, processJailEscapeAnswer, payBail, waitInJail, endTurn, getCurrentPlayer,
 } from './game.engine';
 import { BAIL_COST } from './game.constants';
 
-// ---- Bot Difficulty Settings ----
+const BOT_CORRECT_PROBABILITY: Record<string, number> = { easy: 0.30, medium: 0.50, hard: 0.70 };
 
-const BOT_CORRECT_PROBABILITY: Record<string, number> = {
-  easy: 0.30,
-  medium: 0.50,
-  hard: 0.70,
-};
-
-// ---- Bot Decision Functions ----
-
-/** Simulate a bot answering a specific question — returns a selected index */
 function answerAs(player: PlayerState, challenge: MathChallenge): number {
-  const probability = BOT_CORRECT_PROBABILITY[player.botDifficulty ?? 'medium'];
-
-  if (Math.random() < probability) return challenge.correctIndex;
-
-  const wrongIndices = [0, 1, 2, 3].filter((i) => i !== challenge.correctIndex);
+  if (Math.random() < BOT_CORRECT_PROBABILITY[player.botDifficulty ?? 'medium']) return challenge.correctIndex;
+  const wrongIndices = challenge.options.map((_, index) => index).filter((index) => index !== challenge.correctIndex);
   return wrongIndices[Math.floor(Math.random() * wrongIndices.length)];
 }
 
-/** Simulate the current player (a bot) answering the active challenge. */
-function botAnswer(state: GameState): number {
-  const challenge = state.currentChallenge;
-  if (!challenge) return 0;
-  return answerAs(getCurrentPlayer(state), challenge);
-}
-
-/**
- * Submit any duel side belonging to a bot. Called for both the challenger and
- * the owner, since a bot landlord must fight duels on other players' turns.
- */
+/** Bot duellists answer through the same current-question grading path. */
 export function submitBotDuelAnswers(state: GameState): GameState {
   const duel = state.duelState;
   if (!duel || duel.resolution) return state;
-
   let next = state;
-
   for (const side of [duel.challenger, duel.owner]) {
     if (side.selectedIndex !== null || side.timedOut) continue;
-
-    const player = next.players.find((p) => p.id === side.playerId);
-    if (!player?.isBot) continue;
-
-    next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge));
+    const player = next.players.find((candidate) => candidate.id === side.playerId);
+    if (player?.isBot) next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge));
   }
-
   return next;
 }
 
-/** Should bot attempt Smart Buy? Always yes — they always try for the discount */
-function shouldSmartBuy(): boolean {
-  return true;
-}
-
-/** Should bot buy property at full price? */
-function shouldBuyProperty(player: PlayerState, price: number): boolean {
-  // Buy if price ≤ 50% of cash (keep a reserve)
-  return price <= player.money * 0.5;
-}
-
-/** How should bot escape jail? */
 function botJailDecision(player: PlayerState): 'math' | 'bail' | 'wait' {
-  // Try math first
   if (Math.random() < 0.7) return 'math';
-  // Pay bail if affordable
-  if (player.money >= BAIL_COST) return 'bail';
-  // Wait
-  return 'wait';
+  return player.money >= BAIL_COST ? 'bail' : 'wait';
 }
 
-// ============================================
-// BOT TURN EXECUTOR
-// Runs a complete bot turn, returning state transitions
-// ============================================
-
-export interface BotTurnStep {
-  state: GameState;
-  action: string;
-  delay: number; // ms to wait before this step (for animation purposes)
-}
-
-/**
- * Plan a full bot turn as immutable intermediate snapshots.
- *
- * This engine never owns session persistence: callers must commit each state
- * only after its presentation delay, before publishing it to recipients.
- */
-export function executeBotTurn(state: GameState): BotTurnStep[] {
-  const steps: BotTurnStep[] = [];
-  let currentState = state;
-  let safety = 0;
-  const MAX_ITERATIONS = 20;
-
-  while (currentState.phase === 'PLAYING' && safety < MAX_ITERATIONS) {
-    safety++;
-    const player = getCurrentPlayer(currentState);
-
-    // Only process if it's still this bot's turn
-    if (!player.isBot) break;
-
-    switch (currentState.turnPhase) {
-      case 'ROLL_PHASE': {
-        currentState = startRollPhase(currentState);
-        steps.push({ state: currentState, action: 'roll', delay: 800 });
-        break;
-      }
-
-      case 'MOVING': {
-        currentState = movePlayer(currentState);
-        steps.push({ state: currentState, action: 'move', delay: 1000 });
-        // Auto-resolve tile
-        currentState = resolveTileEvent(currentState);
-        steps.push({ state: currentState, action: 'resolve', delay: 500 });
-        break;
-      }
-
-      case 'BUY_DECISION': {
-        const event = currentState.pendingTileEvent!;
-        const price = event.propertyPrice!;
-
-        if (shouldBuyProperty(player, price)) {
-          if (shouldSmartBuy() && !event.bankOfferAttempted) {
-            currentState = startSmartBuyChallenge(currentState);
-            steps.push({ state: currentState, action: 'smart_buy_start', delay: 500 });
-          } else {
-            currentState = buyPropertyFullPrice(currentState);
-            steps.push({ state: currentState, action: 'buy_full', delay: 500 });
-          }
-        } else {
-          currentState = skipBuy(currentState);
-          steps.push({ state: currentState, action: 'skip_buy', delay: 300 });
-        }
-        break;
-      }
-
-      case 'SMART_BUY_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processSmartBuyAnswer(currentState, answer);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'smart_buy_answer', delay: 1500 });
-        break;
-      }
-
-      case 'MATH_DUEL': {
-        const beforeAnswers = currentState;
-        currentState = submitBotDuelAnswers(currentState);
-
-        // Only report a step if a bot actually answered. On a repeat call the
-        // bots are already in, and emitting another step would let the caller
-        // believe progress was made and run this turn again.
-        if (currentState !== beforeAnswers) {
-          steps.push({ state: currentState, action: 'duel_answer', delay: 1200 });
-        }
-
-        // A human duellist still has to answer. Hand control back; the socket
-        // layer resumes this turn when they do, or when the clock expires.
-        if (!bothDuellistsAnswered(currentState)) return steps;
-
-        currentState = resolveDuel(currentState).newState;
-        steps.push({ state: currentState, action: 'duel_resolve', delay: 1500 });
-        break;
-      }
-
-      case 'CARD_DRAW': {
-        currentState = acknowledgeCard(currentState);
-        steps.push({ state: currentState, action: 'card_ack', delay: 1500 });
-        break;
-      }
-
-      case 'CARD_MATH_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processCardChallengeAnswer(currentState, answer);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'card_answer', delay: 1500 });
-        break;
-      }
-
-      case 'JAIL_DECISION': {
-        const decision = botJailDecision(player);
-        switch (decision) {
-          case 'math':
-            currentState = startJailMathEscape(currentState);
-            steps.push({ state: currentState, action: 'jail_math_start', delay: 500 });
-            break;
-          case 'bail':
-            currentState = payBail(currentState);
-            steps.push({ state: currentState, action: 'jail_bail', delay: 500 });
-            break;
-          case 'wait':
-            currentState = waitInJail(currentState);
-            steps.push({ state: currentState, action: 'jail_wait', delay: 500 });
-            break;
-        }
-        break;
-      }
-
-      case 'JAIL_CHALLENGE': {
-        const answer = botAnswer(currentState);
-        const { newState } = processJailEscapeAnswer(currentState, answer);
-        currentState = newState;
-        steps.push({ state: currentState, action: 'jail_answer', delay: 1500 });
-        break;
-      }
-
-      case 'END_TURN': {
-        currentState = endTurn(currentState);
-        steps.push({ state: currentState, action: 'end_turn', delay: 300 });
-        // Break out — next player's turn
-        return steps;
-      }
-
-      case 'RESOLVE_TILE': {
-        currentState = resolveTileEvent(currentState);
-        steps.push({ state: currentState, action: 'resolve', delay: 500 });
-        break;
-      }
-
-      default: {
-        // Unknown phase — force end turn to prevent infinite loop
-        currentState = endTurn(currentState);
-        steps.push({ state: currentState, action: 'force_end', delay: 300 });
-        return steps;
-      }
-    }
+/** Presentation delays precede exactly one action. Movement waits for viewers. */
+export function getBotActionDelay(state: GameState): number | null {
+  if (state.phase !== 'PLAYING' || !getCurrentPlayer(state).isBot) return null;
+  switch (state.turnPhase) {
+    case 'ROLL_PHASE': return 800;
+    case 'BUY_DECISION': return 500;
+    case 'SMART_BUY_CHALLENGE':
+    case 'CARD_MATH_CHALLENGE':
+    case 'JAIL_CHALLENGE': return 1_500;
+    case 'CARD_DRAW': return 1_500;
+    case 'JAIL_DECISION': return 500;
+    case 'END_TURN': return state.duelState?.resolution ? 6_000 : 800;
+    // Presentation completion and duel settlement have separate handlers.
+    case 'MOVING':
+    case 'MATH_DUEL':
+    case 'RESOLVE_TILE': return null;
   }
+}
 
-  return steps;
+export interface BotStep { state: GameState; action: string }
+
+/** Compute one action when its delay has elapsed, from the latest state. */
+export function executeBotStep(state: GameState): BotStep | null {
+  if (getBotActionDelay(state) === null) return null;
+  const player = getCurrentPlayer(state);
+  switch (state.turnPhase) {
+    case 'ROLL_PHASE': return { state: startRollPhase(state), action: 'roll' };
+    case 'BUY_DECISION': {
+      const event = state.pendingTileEvent;
+      if (!event || typeof event.propertyPrice !== 'number') return { state: skipBuy(state), action: 'skip_buy' };
+      if (event.propertyPrice > player.money * 0.5) return { state: skipBuy(state), action: 'skip_buy' };
+      return event.bankOfferAttempted
+        ? { state: buyPropertyFullPrice(state), action: 'buy_full' }
+        : { state: startSmartBuyChallenge(state), action: 'smart_buy_start' };
+    }
+    case 'SMART_BUY_CHALLENGE':
+      return state.currentChallenge ? {
+        state: processSmartBuyAnswer(state, answerAs(player, state.currentChallenge)).newState,
+        action: 'smart_buy_answer',
+      } : null;
+    case 'CARD_DRAW': return { state: acknowledgeCard(state), action: 'card_ack' };
+    case 'CARD_MATH_CHALLENGE':
+      return state.currentChallenge ? {
+        state: processCardChallengeAnswer(state, answerAs(player, state.currentChallenge)).newState,
+        action: 'card_answer',
+      } : null;
+    case 'JAIL_DECISION': {
+      const decision = botJailDecision(player);
+      if (decision === 'math') return { state: startJailMathEscape(state), action: 'jail_math_start' };
+      if (decision === 'bail') return { state: payBail(state), action: 'jail_bail' };
+      return { state: waitInJail(state), action: 'jail_wait' };
+    }
+    case 'JAIL_CHALLENGE':
+      return state.currentChallenge ? {
+        state: processJailEscapeAnswer(state, answerAs(player, state.currentChallenge)).newState,
+        action: 'jail_answer',
+      } : null;
+    case 'END_TURN': return { state: endTurn(state), action: 'end_turn' };
+    default: return null;
+  }
 }

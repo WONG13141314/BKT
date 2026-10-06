@@ -19,4 +19,14 @@ describe('ChallengeDialog', () => {
     expect(screen.getByRole('timer')).toHaveClass('challenge-timer--critical');
     vi.useRealTimers();
   });
+
+  it('uses a newly issued deadline immediately, including after a paused answer', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const { rerender } = render(<ChallengeTimer expiresAt={15_000} totalSeconds={45} paused />);
+    expect(screen.getByRole('timer')).toHaveTextContent('5 seconds');
+    rerender(<ChallengeTimer expiresAt={70_000} totalSeconds={60} />);
+    expect(screen.getByRole('timer')).toHaveTextContent('60 seconds');
+    vi.useRealTimers();
+  });
 });

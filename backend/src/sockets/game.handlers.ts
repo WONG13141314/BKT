@@ -14,6 +14,7 @@ import { gameService } from '../features/game/game.service';
 import { AnswerResult, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
+import { getBotActionDelay } from '../features/game/bot.engine';
 import { buildWorkedFeedback } from '../bkt/feedback';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
@@ -54,7 +55,9 @@ function broadcastState(io: Server, _socketRoom: string, state: GameState) {
   armPhaseTimer(io, state.id);
   const liveState = gameService.getGameSync(state.id) ?? state;
   publishGameState(io, liveState);
+  syncMovementPresentation(liveState);
   scheduleBotDuelAnswer(io, liveState.id);
+  void triggerBotTurnIfNeeded(io, liveState.id);
 }
 
 /** Starts a freshly created game on the same deadline-managed publication path as later turns. */
@@ -69,13 +72,13 @@ export function publishGameStartTransition(io: Server, state: GameState): void {
 // Give it a beat of its own instead, so the card behaves the same whether the
 // opponent is a bot or a person.
 
-const botDuelTimers = new Map<string, NodeJS.Timeout>();
+const botDuelTimers = new Map<string, { duelId: string; timer: NodeJS.Timeout }>();
 const BOT_DUEL_THINK_MS = 2_200;
 
 function clearBotDuelTimer(gameId: string) {
-  const timer = botDuelTimers.get(gameId);
-  if (timer) {
-    clearTimeout(timer);
+  const pending = botDuelTimers.get(gameId);
+  if (pending) {
+    clearTimeout(pending.timer);
     botDuelTimers.delete(gameId);
   }
 }
@@ -93,10 +96,19 @@ function scheduleBotDuelAnswer(io: Server, gameId: string) {
     return state.players.find((p) => p.id === side.playerId)?.isBot === true;
   });
 
-  if (!waitingOnBot || botDuelTimers.has(gameId)) return;
+  if (!waitingOnBot) {
+    clearBotDuelTimer(gameId);
+    return;
+  }
+  const duelId = toPublicDuelState(state.duelState!).id;
+  if (botDuelTimers.get(gameId)?.duelId === duelId) return;
+  clearBotDuelTimer(gameId);
 
   const timer = setTimeout(() => {
+    if (botDuelTimers.get(gameId)?.duelId !== duelId) return;
     botDuelTimers.delete(gameId);
+    const live = gameService.getGameSync(gameId);
+    if (!live?.duelState || toPublicDuelState(live.duelState).id !== duelId) return;
 
     const outcome = gameService.submitBotDuelAnswers(gameId);
     if (!outcome) return;
@@ -106,11 +118,10 @@ function scheduleBotDuelAnswer(io: Server, gameId: string) {
 
     if (outcome.resolution) {
       emitDuelResult(io, socketRoom, outcome.state);
-      if (getCurrentPlayer(outcome.state).isBot) void handleEndTurnFlow(io, gameId);
     }
   }, BOT_DUEL_THINK_MS);
 
-  botDuelTimers.set(gameId, timer);
+  botDuelTimers.set(gameId, { duelId, timer });
 }
 
 function emitDuelResult(io: Server, socketRoom: string, state: GameState) {
@@ -126,7 +137,8 @@ function emitAnswerResult(
   io: Server,
   socketRoom: string,
   state: GameState,
-  result: AnswerResult
+  result: AnswerResult,
+  challengeId?: string
 ) {
   const activePlayer = state.players[state.currentPlayerIndex];
   const room = io.sockets.adapter.rooms.get(socketRoom);
@@ -155,6 +167,7 @@ function emitAnswerResult(
     s.emit('game:answer-result', {
       result: publicResult,
       playerId: activePlayer.id,
+      ...(challengeId ? { challengeId } : {}),
     });
   }
 }
@@ -164,6 +177,8 @@ function checkAndEmitGameOver(io: Server, socketRoom: string, state: GameState) 
 
   clearPhaseTimer(state.id);
   clearBotDuelTimer(state.id);
+  clearBotActionTimer(state.id);
+  movementPresentations.delete(state.id);
 
   const scores = gameService.getScores(state.id);
   if (scores) {
@@ -228,7 +243,7 @@ function emitPrivateDuelAnswerResult(
   for (const socketId of room) {
     const recipient = io.sockets.sockets.get(socketId);
     if (recipient?.data?.player?.id !== learner.playerId) continue;
-    recipient.emit('game:answer-result', { result, playerId: learner.id });
+    recipient.emit('game:answer-result', { result, playerId: learner.id, challengeId: side.challenge.id });
   }
 }
 
@@ -334,14 +349,15 @@ function armPhaseTimer(io: Server, gameId: string, overrideMs?: number) {
 }
 
 async function resolveStall(io: Server, gameId: string) {
-  const stalledPhase = gameService.getGameSync(gameId)?.turnPhase;
+  const before = gameService.getGameSync(gameId);
+  const stalledPhase = before?.turnPhase;
   const outcome = gameService.resolveStalledTurn(gameId);
   if (!outcome) return;
 
   const socketRoom = getSocketRoom(gameId);
 
   if (outcome.result) {
-    emitAnswerResult(io, socketRoom, outcome.state, outcome.result);
+    emitAnswerResult(io, socketRoom, outcome.state, outcome.result, before?.currentChallenge?.id);
   }
 
   // A duel forced to settle reveals its result like a normal one.
@@ -349,12 +365,11 @@ async function resolveStall(io: Server, gameId: string) {
   emitTimedOutDuelAnswerResults(io, socketRoom, outcome.state);
 
   publishTransition(io, gameId, socketRoom, outcome.state, stalledPhase === 'MOVING');
+  const finalState = gameService.getGameSync(gameId);
+  if (finalState?.phase === 'FINISHED') checkAndEmitGameOver(io, socketRoom, finalState);
 
-  const live = gameService.getGameSync(gameId);
-  if (live && getCurrentPlayer(live).isBot) {
-    if (live.turnPhase === 'END_TURN') await handleEndTurnFlow(io, gameId);
-    else if (live.turnPhase === 'ROLL_PHASE') await triggerBotTurnIfNeeded(io, gameId);
-  }
+  // Publication schedules the next bot phase; a resolved duel keeps its result
+  // visible for the same pause whether it ended by submission or timeout.
 }
 
 // ---- Turn advancement ----
@@ -427,115 +442,98 @@ function isDuelPending(state: GameState): boolean {
   return state.turnPhase === 'MATH_DUEL' && !!state.duelState && !state.duelState.resolution;
 }
 
-/**
- * Deadlines are refreshed after each publication, so they cannot identify the
- * source snapshot for a delayed bot step. Everything else must still match:
- * if it does not, a human action or recovery has made the remaining plan stale.
- */
-function isCurrentBotPlanSource(live: GameState, expected: GameState): boolean {
-  const withoutDeadline = ({ phaseDeadline: _deadline, phaseDeadlineFor: _deadlineFor, ...state }: GameState) => state;
-  return JSON.stringify(withoutDeadline(live)) === JSON.stringify(withoutDeadline(expected));
+const botActionTimers = new Map<string, { key: string; timer: NodeJS.Timeout }>();
+
+function clearBotActionTimer(gameId: string): void {
+  const pending = botActionTimers.get(gameId);
+  if (pending) clearTimeout(pending.timer);
+  botActionTimers.delete(gameId);
 }
 
-async function triggerBotTurnIfNeeded(io: Server, gameId: string) {
+/** Stable phase identity; publication-only deadline changes are immaterial. */
+function botActionKey(state: GameState): string {
+  return [state.dbGameId, getCurrentPlayer(state).id, state.turnPhase,
+    state.diceRollId, state.currentChallenge?.id ?? '',
+    state.duelState ? toPublicDuelState(state.duelState).id : ''].join('|');
+}
+
+/** At most one pending bot action per game, computed only when it runs. */
+async function triggerBotTurnIfNeeded(io: Server, gameId: string): Promise<void> {
   const state = gameService.getGameSync(gameId);
-  if (!state || state.phase === 'FINISHED') return;
-
-  const currentPlayer = getCurrentPlayer(state);
-  if (!currentPlayer.isBot) return;
-
-  clearPhaseTimer(gameId);
-
-  let steps: ReturnType<typeof gameService.planBotTurn>;
-  try {
-    // Planning is deliberately side-effect free. A snapshot becomes
-    // authoritative only once its own presentation delay has elapsed.
-    steps = gameService.planBotTurn(gameId);
-  } catch (err) {
-    console.error(`[BotTurn] Error executing bot turn for ${gameId}:`, err);
-    // Force the turn forward so the game isn't permanently stuck.
-    const socketRoom = getSocketRoom(gameId);
-    const stuck = gameService.getGameSync(gameId);
-    if (stuck) {
-      const recovered = gameService.resolveStalledTurn(gameId);
-      if (recovered) {
-        publishTransition(io, gameId, socketRoom, recovered.state);
-        await handleEndTurnFlow(io, gameId);
-      } else {
-        broadcastState(io, socketRoom, stuck);
-      }
-    }
+  const delay = state ? getBotActionDelay(state) : null;
+  if (!state || delay === null) {
+    clearBotActionTimer(gameId);
     return;
   }
+  const key = botActionKey(state);
+  if (botActionTimers.get(gameId)?.key === key) return;
+  clearBotActionTimer(gameId);
 
-  const socketRoom = getSocketRoom(gameId);
-
-  if (!steps || steps.length === 0) {
-    // The bot could not advance — it is waiting on a human. Broadcast properly
-    // so whoever is being waited on actually receives their prompt, and restore
-    // the deadline this function cleared on the way in.
-    broadcastState(io, socketRoom, gameService.getGameSync(gameId)!);
-    return;
-  }
-
-  let expectedPlanSource = state;
-  for (const step of steps) {
-    await new Promise((resolve) => setTimeout(resolve, step.delay));
-    const liveBeforeCommit = gameService.getGameSync(gameId);
-    if (!liveBeforeCommit || !isCurrentBotPlanSource(liveBeforeCommit, expectedPlanSource)) {
-      // A human duel response (or recovery) moved the real game while this
-      // presentation was visible. Never overwrite that newer state with a
-      // future snapshot calculated from the old plan.
+  const timer = setTimeout(() => {
+    if (botActionTimers.get(gameId)?.key !== key) return;
+    botActionTimers.delete(gameId);
+    const live = gameService.getGameSync(gameId);
+    if (!live || botActionKey(live) !== key) {
+      void triggerBotTurnIfNeeded(io, gameId);
       return;
     }
-    const committed = gameService.commitBotStep(gameId, step.state);
-    // `broadcastState` publishes through the shared public boundary and arms
-    // exactly the timer for the just-committed phase. Keeping the bot safety
-    // timer cleared until this point prevents it from resolving a future plan
-    // snapshot while the current presentation is still on screen.
-    broadcastState(io, socketRoom, committed);
-    io.to(socketRoom).emit('game:bot-action', {
-      botId: currentPlayer.id,
-      botName: currentPlayer.name,
-      action: step.action,
-    });
-    expectedPlanSource = step.state;
-  }
+    const bot = getCurrentPlayer(live);
+    const socketRoom = getSocketRoom(gameId);
+    try {
+      const step = gameService.executeBotStep(gameId);
+      if (!step) return;
+      publishTransition(io, gameId, socketRoom, step.state);
+      io.to(socketRoom).emit('game:bot-action', {
+        botId: bot.id, botName: bot.name, action: step.action,
+      });
+      checkAndEmitGameOver(io, socketRoom, gameService.getGameSync(gameId) ?? step.state);
+    } catch (error) {
+      console.error('[BotTurn] Could not advance bot phase:', error);
+      const recovered = gameService.resolveStalledTurn(gameId);
+      if (recovered) publishTransition(io, gameId, socketRoom, recovered.state);
+      else if (gameService.getGameSync(gameId)) broadcastState(io, socketRoom, gameService.getGameSync(gameId)!);
+      const finalState = gameService.getGameSync(gameId);
+      if (finalState?.phase === 'FINISHED') checkAndEmitGameOver(io, socketRoom, finalState);
+    }
+  }, delay);
+  botActionTimers.set(gameId, { key, timer });
+}
 
-  // Never make control-flow decisions from a planned snapshot: a duel answer,
-  // timeout, reconnect, or finish may have changed the authoritative state
-  // while a presentation delay was pending.
-  const liveAfterPlayback = gameService.getGameSync(gameId);
-  if (!liveAfterPlayback) return;
+type MovementPresentation = { matchId: string; diceRollId: number; acknowledged: Set<string> };
+const movementPresentations = new Map<string, MovementPresentation>();
 
-  // A bot turn does not always finish. If it landed on a human's property the
-  // duel needs that human's answer before it can settle.
-  //
-  // The raw emits above deliberately skip `emitDuel`, so without this the owner
-  // would never be sent their question; and because this function clears the
-  // phase timer on entry, recursing here would destroy the duel deadline on
-  // every pass and spin the turn forever. Hand control to the duel handler.
-  if (isDuelPending(liveAfterPlayback)) {
-    broadcastState(io, socketRoom, liveAfterPlayback);
+function syncMovementPresentation(state: GameState): void {
+  if (state.turnPhase !== 'MOVING' || state.phase !== 'PLAYING') {
+    movementPresentations.delete(state.id);
     return;
   }
+  const previous = movementPresentations.get(state.id);
+  if (previous?.matchId === state.dbGameId && previous.diceRollId === state.diceRollId) return;
+  movementPresentations.set(state.id, { matchId: state.dbGameId, diceRollId: state.diceRollId, acknowledged: new Set() });
+}
 
-  checkAndEmitGameOver(io, socketRoom, liveAfterPlayback);
-
-  const finalState = gameService.getGameSync(gameId);
-  if (finalState?.phase === 'PLAYING') {
-    // Only recurse when the turn actually moved on. Anything else means the bot
-    // is stuck, and repeating the same turn would loop indefinitely.
-    const advanced = finalState.currentPlayerIndex !== state.currentPlayerIndex;
-
-    if (advanced && getCurrentPlayer(finalState).isBot) {
-      await triggerBotTurnIfNeeded(io, gameId);
-    } else {
-      // Broadcast and arm the safety timer. If the bot somehow didn't
-      // advance, the timer will push the turn forward.
-      broadcastState(io, socketRoom, finalState);
-    }
+/** One readiness signal per seated account, including observers of a bot roll. */
+function connectedMovementViewers(io: Server, state: GameState): Set<string> {
+  const accounts = new Set(state.players.filter((player) => !player.isBot && !player.isBankrupt).map((player) => player.playerId));
+  const required = new Set<string>();
+  for (const socketId of io.sockets.adapter.rooms.get(getSocketRoom(state.id)) ?? []) {
+    const account = io.sockets.sockets.get(socketId)?.data?.player?.id;
+    if (typeof account === 'string' && accounts.has(account)) required.add(account);
   }
+  return required;
+}
+
+/** The existing MOVING deadline is the bounded escape if a viewer never replies. */
+function completeMovementIfReady(io: Server, gameId: string): boolean {
+  const state = gameService.getGameSync(gameId);
+  if (!state || state.turnPhase !== 'MOVING') return false;
+  const pending = movementPresentations.get(gameId);
+  if (!pending || pending.matchId !== state.dbGameId || pending.diceRollId !== state.diceRollId) return false;
+  const required = connectedMovementViewers(io, state);
+  if (required.size === 0 || [...required].some((account) => !pending.acknowledged.has(account))) return false;
+  movementPresentations.delete(gameId);
+  advanceServerPhases(io, gameId, getSocketRoom(gameId), true);
+  return true;
 }
 
 // ============================================
@@ -596,6 +594,7 @@ export const registerGameHandlers = (
   ) {
     if (!validateTurn(gameId)) return;
 
+    const challengeId = gameService.getGameSync(gameId)?.currentChallenge?.id;
     const outcome = action(gameId);
     if (!outcome) {
       if (opts.errorMessage) socket.emit('game:error', { message: opts.errorMessage });
@@ -603,7 +602,7 @@ export const registerGameHandlers = (
     }
 
     const socketRoom = getSocketRoom(gameId);
-    emitAnswerResult(io, socketRoom, outcome.state, outcome.result);
+    emitAnswerResult(io, socketRoom, outcome.state, outcome.result, challengeId);
     publishTransition(io, gameId, socketRoom, outcome.state);
 
     if (opts.autoEnd === true) void handleEndTurnFlow(io, gameId);
@@ -714,10 +713,14 @@ export const registerGameHandlers = (
   });
 
   socket.on('game:movement-complete', (data: { gameId: string; diceRollId: number }) => {
-    const state = validateTurn(data.gameId);
-    if (!state || state.turnPhase !== 'MOVING' || state.diceRollId !== data.diceRollId) return;
-
-    advanceServerPhases(io, data.gameId, getSocketRoom(data.gameId), true);
+    const state = gameService.getGameSync(data.gameId);
+    const seat = state && findAuthenticatedSeat(state);
+    const room = io.sockets.adapter.rooms.get(getSocketRoom(data.gameId));
+    if (!state || !seat || seat.isBot || !room?.has(socket.id) ||
+        state.turnPhase !== 'MOVING' || state.diceRollId !== data.diceRollId) return;
+    syncMovementPresentation(state);
+    movementPresentations.get(data.gameId)!.acknowledged.add(playerId);
+    completeMovementIfReady(io, data.gameId);
   });
 
   // ---- Challenge answers ----
@@ -761,10 +764,9 @@ export const registerGameHandlers = (
     if (outcome.resolution) {
       emitDuelResult(io, socketRoom, outcome.state);
       emitTimedOutDuelAnswerResults(io, socketRoom, outcome.state, seat.id);
-      // A human landlord may be the last respondent during a bot's turn. The
-      // bot has nothing left to review or click, so hand play back immediately.
-      // Human challengers keep the result visible until they end their turn.
-      if (getCurrentPlayer(outcome.state).isBot) void handleEndTurnFlow(io, d.gameId);
+      // A human landlord may finish the duel during a bot's turn. The bot
+      // scheduler keeps the result visible for six seconds before advancing.
+      // Human challengers keep it visible until they end their turn.
     }
   });
 
@@ -855,6 +857,7 @@ export const registerGameHandlers = (
 
     const gameId: string | undefined = socket.data.gameId;
     if (!gameId) return;
+    completeMovementIfReady(io, gameId);
 
     const state = gameService.getGameSync(gameId);
     if (!state || state.phase !== 'PLAYING') return;

@@ -4,6 +4,9 @@
   align-items: center;
   gap: 0.4rem;
   max-width: 320px;
+  width: min(100%, 320px);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .question-help__button {
@@ -42,7 +45,9 @@
   display: flex;
   align-items: flex-start;
   gap: 0.45rem;
-  max-width: 320px;
+  width: min(100%, 320px);
+  min-width: 0;
+  max-width: 100%;
   padding: 0.6rem 0.75rem;
   border: 2px solid #000;
   border-radius: 6px;
@@ -51,6 +56,7 @@
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .question-help__cue svg {
@@ -61,6 +67,7 @@
 .question-help__cue p,
 .question-help__error {
   margin: 0;
+  min-width: 0;
 }
 
 .question-help__error {

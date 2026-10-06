@@ -310,6 +310,7 @@ export interface PublicDuelSide {
 }
 
 export interface PublicDuelState {
+  id: string;
   tileIndex: number;
   tileName: string;
   rentAmount: number;

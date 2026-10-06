@@ -5,10 +5,11 @@ import {
   Physics,
   RapierRigidBody,
   RigidBody,
-  useRapier,
 } from '@react-three/rapier';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Euler, Quaternion, Vector3 } from 'three';
+import { Quaternion } from 'three';
+import { DICE_ROLL_LIMIT_MS } from './board.animation';
+import { buildThrowPlan, PlannedDie, restingRotation, ThrowPlan } from './dice.throw';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[0, 0]],
@@ -28,51 +29,31 @@ const FACES = [
   { value: 4, position: [0, 0, -.556], rotation: [0, Math.PI, 0] },
 ] as const;
 
-const FACE_NORMALS = [
-  { value: 1, normal: new Vector3(0, 1, 0) },
-  { value: 6, normal: new Vector3(0, -1, 0) },
-  { value: 2, normal: new Vector3(1, 0, 0) },
-  { value: 5, normal: new Vector3(-1, 0, 0) },
-  { value: 3, normal: new Vector3(0, 0, 1) },
-  { value: 4, normal: new Vector3(0, 0, -1) },
-] as const;
-
 const DIE_SCALE = 1.02;
 const DIE_HALF_EXTENT = .55;
 const FLOOR_Y = -.04;
 
-type Vec3Tuple = [number, number, number];
-type QuaternionTuple = [number, number, number, number];
-
-interface PlannedDie {
-  value: number;
-  position: Vec3Tuple;
-  rotation: Vec3Tuple;
-  linearVelocity: Vec3Tuple;
-  angularVelocity: Vec3Tuple;
-  modelRotation: QuaternionTuple;
-  isStatic?: boolean;
-}
-
-interface ThrowPlan {
-  id: number;
-  seed: number;
-  dice: PlannedDie[];
-}
-
 interface Props {
   values: [number, number];
   rollId: number;
+  /** The board can finish a roll even while this lazy-loaded scene is loading. */
+  animate?: boolean;
   onRollingChange?: (rolling: boolean) => void;
 }
 
-export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
+export function PhysicsDice({ values, rollId, animate = true, onRollingChange }: Props) {
   const [firstValue, secondValue] = values;
   const activeValues = useMemo(
     () => [firstValue, secondValue].filter((value) => value >= 1 && value <= 6),
     [firstValue, secondValue],
   );
-  const [plan, setPlan] = useState<ThrowPlan | null>(null);
+  const [completedRollId, setCompletedRollId] = useState(0);
+  const [restingRollId, setRestingRollId] = useState(0);
+  const completedRollRef = useRef(0);
+  const activeRollRef = useRef(rollId);
+  const rollingCallback = useRef(onRollingChange);
+  activeRollRef.current = rollId;
+  rollingCallback.current = onRollingChange;
   const settled = useRef(new Set<number>());
   const seed = useMemo(
     () => ((rollId * 1_103_515_245) ^ (firstValue * 12_345) ^ (secondValue * 2_654_435_761)) >>> 0,
@@ -80,19 +61,40 @@ export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
     [rollId, firstValue, secondValue],
   );
 
+  const plan = useMemo(() => buildThrowPlan(rollId, seed, activeValues), [rollId, seed, activeValues]);
+  const rolling = animate && rollId > 0 && completedRollId !== rollId;
+
+  const finishRoll = useCallback((forceRest: boolean) => {
+    if (activeRollRef.current !== rollId || completedRollRef.current === rollId) return;
+    completedRollRef.current = rollId;
+    if (forceRest) setRestingRollId(rollId);
+    setCompletedRollId(rollId);
+    rollingCallback.current?.(false);
+  }, [rollId]);
+
   useEffect(() => {
     settled.current.clear();
-    setPlan(null);
-    onRollingChange?.(rollId > 0);
-  }, [rollId, firstValue, secondValue, onRollingChange]);
+    if (rollId === 0) return;
+    rollingCallback.current?.(true);
+    // Background tabs and lost WebGL frames may never emit Rapier's sleep event.
+    const timer = setTimeout(() => finishRoll(true), DICE_ROLL_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [rollId, finishRoll]);
+
+  useEffect(() => {
+    if (!animate) finishRoll(true);
+  }, [animate, finishRoll]);
 
   const markSettled = useCallback((index: number) => {
     settled.current.add(index);
-    if (settled.current.size === activeValues.length) onRollingChange?.(false);
-  }, [activeValues.length, onRollingChange]);
+    if (settled.current.size === activeValues.length) finishRoll(false);
+  }, [activeValues.length, finishRoll]);
+  const markAwake = useCallback((index: number) => {
+    settled.current.delete(index);
+  }, []);
 
   const staticPlan = useMemo<ThrowPlan>(() => ({
-    id: 0,
+    id: rollId,
     seed: 0,
     dice: activeValues.map((value, index) => ({
       value,
@@ -100,18 +102,19 @@ export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
       rotation: [0, 0, 0],
       linearVelocity: [0, 0, 0],
       angularVelocity: [0, 0, 0],
-      modelRotation: quaternionTuple(targetRotation(value, index === 0 ? -.35 : .35)),
+      modelRotation: restingRotation(value, index === 0 ? -.35 : .35),
       isStatic: true,
     })),
-  }), [activeValues]);
+  }), [activeValues, rollId]);
 
-  const visiblePlan = rollId === 0 ? staticPlan : plan?.id === rollId ? plan : null;
+  const visiblePlan = rollId === 0 || restingRollId === rollId ? staticPlan : plan;
 
   return (
     <div className="physics-dice" aria-label={`Dice showing ${activeValues.join(' and ')}`}>
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        shadows="percentage"
+        frameloop={rolling ? 'always' : 'demand'}
+        dpr={[1, 1.5]}
         style={{ pointerEvents: 'none' }}
         camera={{ position: [0, 6.2, 7.7], fov: 29, near: .1, far: 50 }}
         gl={{ antialias: true, alpha: true }}
@@ -127,11 +130,8 @@ export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
             shadow-mapSize-height={1024}
           />
           <pointLight position={[4, 4, 4]} intensity={18} distance={12} color="#fff3d3" />
-          <Physics key={rollId} gravity={[0, -18, 0]} timeStep={1 / 60}>
-            {rollId > 0 && !visiblePlan && (
-              <ThrowPlanner rollId={rollId} seed={seed} values={activeValues} onPlan={setPlan} />
-            )}
-            <DiceWorld plan={visiblePlan} onSettled={markSettled} />
+          <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
+            <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} />
           </Physics>
         </Suspense>
       </Canvas>
@@ -139,27 +139,7 @@ export function PhysicsDice({ values, rollId, onRollingChange }: Props) {
   );
 }
 
-function ThrowPlanner({
-  rollId,
-  seed,
-  values,
-  onPlan,
-}: {
-  rollId: number;
-  seed: number;
-  values: number[];
-  onPlan: (plan: ThrowPlan) => void;
-}) {
-  const { rapier } = useRapier();
-
-  useEffect(() => {
-    onPlan(buildThrowPlan(rapier, rollId, seed, values));
-  }, [onPlan, rapier, rollId, seed, values]);
-
-  return null;
-}
-
-function DiceWorld({ plan, onSettled }: { plan: ThrowPlan | null; onSettled: (index: number) => void }) {
+function DiceWorld({ plan, onSettled, onAwake }: { plan: ThrowPlan; onSettled: (index: number) => void; onAwake: (index: number) => void }) {
   return (
     <>
       <RigidBody type="fixed" colliders={false}>
@@ -173,14 +153,14 @@ function DiceWorld({ plan, onSettled }: { plan: ThrowPlan | null; onSettled: (in
         <planeGeometry args={[7, 4.3]} />
         <shadowMaterial transparent opacity={.08} />
       </mesh>
-      {plan?.dice.map((die, index) => (
-        <PhysicsDie key={`${plan.id}-${plan.seed}-${index}`} index={index} die={die} onSettled={onSettled} />
+      {plan.dice.map((die, index) => (
+        <PhysicsDie key={`${plan.id}-${plan.seed}-${index}`} index={index} die={die} onSettled={onSettled} onAwake={onAwake} />
       ))}
     </>
   );
 }
 
-function PhysicsDie({ index, die, onSettled }: { index: number; die: PlannedDie; onSettled: (index: number) => void }) {
+function PhysicsDie({ index, die, onSettled, onAwake }: { index: number; die: PlannedDie; onSettled: (index: number) => void; onAwake: (index: number) => void }) {
   const body = useRef<RapierRigidBody>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reported = useRef(false);
@@ -205,6 +185,8 @@ function PhysicsDie({ index, die, onSettled }: { index: number; die: PlannedDie;
 
   const handleWake = () => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
+    reported.current = false;
+    onAwake(index);
   };
 
   return (
@@ -251,130 +233,4 @@ function PipFace({ value, position, rotation }: (typeof FACES)[number]) {
       ))}
     </group>
   );
-}
-
-function buildThrowPlan(rapier: ReturnType<typeof useRapier>['rapier'], rollId: number, seed: number, values: number[]): ThrowPlan {
-  let bestPlan: ThrowPlan | null = null;
-  let bestAlignment = -Infinity;
-
-  for (let attempt = 0; attempt < 14; attempt += 1) {
-    const random = mulberry32(seed + attempt * 0x9e3779b9);
-    const dice = values.map((value, index): PlannedDie => {
-      const direction = index === 0 ? -1 : 1;
-      return {
-        value,
-        position: [direction * (1.25 + random() * .22), 3.45 + random() * .65, -direction * (.45 + random() * .28)],
-        rotation: [random() * Math.PI * 2, random() * Math.PI * 2, random() * Math.PI * 2],
-        linearVelocity: [-direction * (.35 + random() * .55), -.8 + random(), direction * (.25 + random() * .55)],
-        angularVelocity: [
-          -direction * (8 + random() * 7),
-          direction * (8 + random() * 7),
-          -direction * (7 + random() * 7),
-        ],
-        modelRotation: [0, 0, 0, 1],
-      };
-    });
-
-    const prediction = simulateThrow(rapier, dice);
-    const minimumAlignment = Math.min(...prediction.map((result) => result.alignment));
-    const plannedDice = dice.map((die, index) => {
-      const desiredNormal = FACE_NORMALS.find((face) => face.value === die.value)!.normal;
-      const modelRotation = new Quaternion().setFromUnitVectors(desiredNormal, prediction[index].topNormal);
-      return { ...die, modelRotation: quaternionTuple(modelRotation) };
-    });
-    const candidate = { id: rollId, seed: seed + attempt, dice: plannedDice };
-
-    if (minimumAlignment > bestAlignment) {
-      bestAlignment = minimumAlignment;
-      bestPlan = candidate;
-    }
-    if (minimumAlignment >= .985) return candidate;
-  }
-
-  return bestPlan!;
-}
-
-function simulateThrow(rapier: ReturnType<typeof useRapier>['rapier'], dice: PlannedDie[]) {
-  const world = new rapier.World({ x: 0, y: -18, z: 0 });
-  world.timestep = 1 / 60;
-  const fixed = world.createRigidBody(rapier.RigidBodyDesc.fixed());
-
-  world.createCollider(
-    rapier.ColliderDesc.cuboid(3.7, .08, 2.3).setTranslation(0, FLOOR_Y - .08, 0).setFriction(.86).setRestitution(.28),
-    fixed,
-  );
-  world.createCollider(rapier.ColliderDesc.cuboid(.08, .72, 2.3).setTranslation(-3.78, .6, 0).setRestitution(.42), fixed);
-  world.createCollider(rapier.ColliderDesc.cuboid(.08, .72, 2.3).setTranslation(3.78, .6, 0).setRestitution(.42), fixed);
-  world.createCollider(rapier.ColliderDesc.cuboid(3.7, .72, .08).setTranslation(0, .6, -2.38).setRestitution(.42), fixed);
-  world.createCollider(rapier.ColliderDesc.cuboid(3.7, .72, .08).setTranslation(0, .6, 2.38).setRestitution(.42), fixed);
-
-  const bodies = dice.map((die) => {
-    const initialRotation = new Quaternion().setFromEuler(new Euler(...die.rotation));
-    const descriptor = rapier.RigidBodyDesc.dynamic()
-      .setTranslation(...die.position)
-      .setRotation(initialRotation)
-      .setLinvel(...die.linearVelocity)
-      .setAngvel({ x: die.angularVelocity[0], y: die.angularVelocity[1], z: die.angularVelocity[2] })
-      .setLinearDamping(.28)
-      .setAngularDamping(.34)
-      .setCanSleep(true)
-      .setCcdEnabled(true);
-    const body = world.createRigidBody(descriptor);
-    world.createCollider(
-      rapier.ColliderDesc.cuboid(DIE_HALF_EXTENT, DIE_HALF_EXTENT, DIE_HALF_EXTENT)
-        .setFriction(.82)
-        .setRestitution(.48)
-        .setDensity(1.1),
-      body,
-    );
-    return body;
-  });
-
-  for (let step = 0; step < 900; step += 1) {
-    world.step();
-    if (step > 90 && bodies.every((body) => body.isSleeping())) break;
-  }
-
-  const results = bodies.map((body) => {
-    const rotation = body.rotation();
-    const quaternion = new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-    let topNormal = FACE_NORMALS[0].normal;
-    let alignment = -Infinity;
-    FACE_NORMALS.forEach(({ normal }) => {
-      const height = normal.clone().applyQuaternion(quaternion).y;
-      if (height > alignment) {
-        alignment = height;
-        topNormal = normal;
-      }
-    });
-    return { topNormal: topNormal.clone(), alignment };
-  });
-
-  world.free();
-  return results;
-}
-
-function targetRotation(value: number, yaw: number) {
-  const base = new Quaternion();
-  if (value === 6) base.setFromEuler(new Euler(Math.PI, 0, 0));
-  else if (value === 2) base.setFromEuler(new Euler(0, 0, Math.PI / 2));
-  else if (value === 5) base.setFromEuler(new Euler(0, 0, -Math.PI / 2));
-  else if (value === 3) base.setFromEuler(new Euler(-Math.PI / 2, 0, 0));
-  else if (value === 4) base.setFromEuler(new Euler(Math.PI / 2, 0, 0));
-  return new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), yaw).multiply(base);
-}
-
-function quaternionTuple(quaternion: Quaternion): QuaternionTuple {
-  return [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
-}
-
-function mulberry32(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value += 0x6d2b79f5;
-    let result = value;
-    result = Math.imul(result ^ (result >>> 15), result | 1);
-    result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
-    return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
-  };
 }

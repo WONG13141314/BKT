@@ -23,6 +23,14 @@ Independent wrong answers still update BKT. The attempt log stores actual hint
 use and timing metadata inside `questionData`; no database migration is needed.
 BKT parameters remain provisional settings to evaluate with pupil data.
 
+During solo play, each bot action reads the current match state when it runs.
+Landing events wait for connected players' dice and token animations, with a
+12-second server fallback if an acknowledgement is lost. Questions are created
+at landing so each new defence gets its own full deadline. Idle 3D scenes render
+on demand; a basic board and dice remain available when WebGL is unavailable.
+Answer feedback uses one result card instead of simultaneous reward and answer
+notifications. See [runtime debugging notes](docs/gameplay-runtime.md).
+
 ## Tech Stack
 
 | Layer          | Technology              |

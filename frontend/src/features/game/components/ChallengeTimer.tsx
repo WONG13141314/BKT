@@ -15,15 +15,18 @@ interface Props {
  * player extra time.
  */
 export function ChallengeTimer({ expiresAt, totalSeconds, paused }: Props) {
-  const [remainingMs, setRemainingMs] = useState(() =>
-    Math.max(0, expiresAt - Date.now())
-  );
+  const [clock, setClock] = useState(() => ({
+    expiresAt,
+    remainingMs: Math.max(0, expiresAt - Date.now()),
+  }));
+  // A new issued deadline renders immediately, before the effect's first tick.
+  const remainingMs = clock.expiresAt === expiresAt
+    ? clock.remainingMs : Math.max(0, expiresAt - Date.now());
 
   useEffect(() => {
-    if (paused) return;
-
-    const tick = () => setRemainingMs(Math.max(0, expiresAt - Date.now()));
+    const tick = () => setClock({ expiresAt, remainingMs: Math.max(0, expiresAt - Date.now()) });
     tick();
+    if (paused) return;
 
     const id = setInterval(tick, 200);
     return () => clearInterval(id);

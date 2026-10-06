@@ -17,7 +17,7 @@ interface GameSocketEvents {
   onStateUpdate: (state: GameState) => void;
   onChallenge: (data: { challenge: MathChallenge; playerId: string }) => void;
   onChallengeStarted: (data: { playerId: string; context: string }) => void;
-  onAnswerResult: (data: { result: AnswerResult; playerId: string }) => void;
+  onAnswerResult: (data: { result: AnswerResult; playerId: string; challengeId: string }) => void;
   /** Duel opened or updated. `myChallenge` is null for onlookers and once answered. */
   onDuel: (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => void;
   onDuelResult: (data: { duel: PublicDuelState; resolution: DuelResolution }) => void;
@@ -25,6 +25,7 @@ interface GameSocketEvents {
   onBotAction: (data: { botId: string; botName: string; action: string }) => void;
   onSeatMismatch: (data: { seats: { playerId: string; name: string }[] }) => void;
   onError: (data: { message: string; code?: string }) => void;
+  onConnectionRestored?: () => void;
 }
 
 export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
@@ -38,7 +39,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleState = (data: { state: GameState }) => eventsRef.current.onStateUpdate(data.state);
     const handleChallenge = (data: { challenge: MathChallenge; playerId: string }) => eventsRef.current.onChallenge(data);
     const handleChallengeStarted = (data: { playerId: string; context: string }) => eventsRef.current.onChallengeStarted(data);
-    const handleAnswerResult = (data: { result: AnswerResult; playerId: string }) => eventsRef.current.onAnswerResult(data);
+    const handleAnswerResult = (data: { result: AnswerResult; playerId: string; challengeId: string }) => eventsRef.current.onAnswerResult(data);
     const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => eventsRef.current.onDuel(data);
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
     const handleFinished = (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => eventsRef.current.onGameFinished(data);
@@ -46,6 +47,10 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleSeatMismatch = (data: { seats: { playerId: string; name: string }[] }) => eventsRef.current.onSeatMismatch(data);
     const handleError = (data: { message: string; code?: string }) => eventsRef.current.onError(data);
     const requestState = () => socket.emit('game:request-state', { gameId });
+    const handleReconnect = () => {
+      eventsRef.current.onConnectionRestored?.();
+      requestState();
+    };
 
     socket.on('game:state', handleState);
     socket.on('game:challenge', handleChallenge);
@@ -57,7 +62,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     socket.on('game:bot-action', handleBotAction);
     socket.on('game:seat-mismatch', handleSeatMismatch);
     socket.on('game:error', handleError);
-    socket.on('connect', requestState);
+    socket.on('connect', handleReconnect);
 
     // Subscribe before requesting state. A local server can answer in the same
     // tick, and registering afterwards occasionally left a refreshed board on
@@ -75,15 +80,18 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
       socket.off('game:bot-action', handleBotAction);
       socket.off('game:seat-mismatch', handleSeatMismatch);
       socket.off('game:error', handleError);
-      socket.off('connect', requestState);
+      socket.off('connect', handleReconnect);
     };
   }, [socket, gameId]);
 
   // ---- Emit Helpers ----
 
   const emit = useCallback((event: string, data?: Record<string, any>) => {
-    if (!socket || !gameId) return;
+    // Socket.IO normally queues offline emissions. Replaying a roll or an
+    // answer after recovery could apply it to a different turn or question.
+    if (!socket?.connected || !gameId) return false;
     socket.emit(event, { gameId, ...data });
+    return true;
   }, [socket, gameId]);
 
   // Roll

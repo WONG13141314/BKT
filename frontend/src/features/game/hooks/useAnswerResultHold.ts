@@ -13,6 +13,8 @@ export function useAnswerResultHold() {
   useEffect(() => cancelPendingClear, [cancelPendingClear]);
 
   const markChallengeVisible = useCallback((challengeId: string) => {
+    // A private hint or reconnect refresh is still the same visible question.
+    if (visibleChallengeIdRef.current === challengeId) return;
     cancelPendingClear();
     visibleChallengeIdRef.current = challengeId;
   }, [cancelPendingClear]);
@@ -22,7 +24,9 @@ export function useAnswerResultHold() {
     delayMs: number,
     onClear: (answeredChallengeId: string | null) => void,
   ) => {
-    const answeredChallengeId = visibleChallengeIdRef.current ?? fallbackChallengeId;
+    const answeredChallengeId = fallbackChallengeId ?? visibleChallengeIdRef.current;
+    if (answeredChallengeId && visibleChallengeIdRef.current
+      && visibleChallengeIdRef.current !== answeredChallengeId) return;
     cancelPendingClear();
 
     clearTimerRef.current = setTimeout(() => {
@@ -34,5 +38,10 @@ export function useAnswerResultHold() {
     }, delayMs);
   }, [cancelPendingClear]);
 
-  return { markChallengeVisible, holdThenClear };
+  const clearVisible = useCallback(() => {
+    cancelPendingClear();
+    visibleChallengeIdRef.current = null;
+  }, [cancelPendingClear]);
+
+  return { markChallengeVisible, holdThenClear, clearVisible };
 }

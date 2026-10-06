@@ -8,7 +8,7 @@ import './LongDivisionQuestion.css';
 interface Props {
   question: LongDivisionQuestionData;
   options: string[];
-  onAnswer: (selectedIndex: number) => void;
+  onAnswer: (selectedIndex: number) => boolean | void;
   disabled?: boolean;
   expiresAt: number;
   timeLimit: number;
@@ -41,9 +41,9 @@ export function LongDivisionQuestion({
 
   const handleSelect = (index: number) => {
     if (disabled || answered || (timeLimit > 0 && Date.now() >= expiresAt)) return;
+    if (onAnswer(index) === false) return;
     setSelectedOption(index);
     setAnswered(true);
-    onAnswer(index);
   };
 
   const cellContent = (cell: DigitCell) =>

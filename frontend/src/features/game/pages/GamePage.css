@@ -585,3 +585,25 @@
   opacity: 0.6;
   filter: grayscale(100%);
 }
+.game-reconnecting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 28, 21, 0.8);
+}
+
+.game-reconnecting-card {
+  width: min(100%, 360px);
+  padding: 1.25rem;
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  text-align: center;
+}
+
+.game-reconnecting-card h2 { margin: 0.5rem 0; }
+.game-reconnecting-card p { margin: 0; line-height: 1.5; }

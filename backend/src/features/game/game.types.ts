@@ -315,6 +315,8 @@ export interface PublicDuelSide {
 }
 
 export interface PublicDuelState {
+  /** Stable identity for one encounter, independent of its tile or players. */
+  id: string;
   tileIndex: number;
   tileName: string;
   rentAmount: number;

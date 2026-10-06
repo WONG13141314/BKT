@@ -15,7 +15,6 @@ describe('Board rendering safeguards', () => {
 
   it('retains idle token frames instead of continuously repainting them', () => {
     expect(boardPiecesSource).toContain('frameloop="demand"');
-    expect(boardPiecesSource).toContain('preserveDrawingBuffer: true');
     expect(boardPiecesSource).toContain('if (progress.current < 1) invalidate()');
   });
 });
