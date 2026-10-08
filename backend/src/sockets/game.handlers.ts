@@ -770,6 +770,24 @@ export const registerGameHandlers = (
     }
   });
 
+  socket.on('game:duel-continue', (data: unknown) => {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    const { gameId, duelId } = data as Record<string, unknown>;
+    if (typeof gameId !== 'string' || typeof duelId !== 'string') return;
+
+    const current = gameService.getGameSync(gameId);
+    const seat = current && findAuthenticatedSeat(current);
+    const socketRoom = getSocketRoom(gameId);
+    const room = io.sockets.adapter.rooms.get(socketRoom);
+    if (!current || !seat || seat.isBot || seat.id !== getCurrentPlayer(current).id || !room?.has(socket.id)) return;
+
+    const state = gameService.continueDuel(gameId, duelId);
+    if (!state) return;
+
+    io.to(socketRoom).emit('game:duel-dismissed', { duelId });
+    broadcastState(io, socketRoom, state);
+  });
+
   socket.on('game:smart-buy-answer', (d: AnswerPayload) =>
     runAnswer(d.gameId, (id) => gameService.submitSmartBuyAnswer(id, answerIndex(id, d.selectedIndex)), {
       errorMessage: 'No active Smart Buy challenge',

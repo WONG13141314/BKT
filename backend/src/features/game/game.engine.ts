@@ -1322,7 +1322,7 @@ export function endTurn(state: GameState): GameState {
     return { ...updatedState, phase: 'FINISHED' };
   }
 
-  return {
+  const nextState: GameState = {
     ...updatedState,
     currentPlayerIndex: nextIdx,
     round: nextRound,
@@ -1331,6 +1331,10 @@ export function endTurn(state: GameState): GameState {
     currentChallenge: null,
     duelState: null,
   };
+
+  // Jail options are the first action of a jailed turn. Reuse the roll entry
+  // point so a completed sentence still releases the player and rolls normally.
+  return getCurrentPlayer(nextState).isInJail ? startRollPhase(nextState) : nextState;
 }
 
 // ---- BANKRUPTCY & GAME END ----

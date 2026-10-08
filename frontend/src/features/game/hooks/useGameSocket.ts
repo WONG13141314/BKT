@@ -21,6 +21,7 @@ interface GameSocketEvents {
   /** Duel opened or updated. `myChallenge` is null for onlookers and once answered. */
   onDuel: (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => void;
   onDuelResult: (data: { duel: PublicDuelState; resolution: DuelResolution }) => void;
+  onDuelDismissed: (data: { duelId: string }) => void;
   onGameFinished: (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => void;
   onBotAction: (data: { botId: string; botName: string; action: string }) => void;
   onSeatMismatch: (data: { seats: { playerId: string; name: string }[] }) => void;
@@ -42,6 +43,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleAnswerResult = (data: { result: AnswerResult; playerId: string; challengeId: string }) => eventsRef.current.onAnswerResult(data);
     const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => eventsRef.current.onDuel(data);
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
+    const handleDuelDismissed = (data: { duelId: string }) => eventsRef.current.onDuelDismissed(data);
     const handleFinished = (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => eventsRef.current.onGameFinished(data);
     const handleBotAction = (data: { botId: string; botName: string; action: string }) => eventsRef.current.onBotAction(data);
     const handleSeatMismatch = (data: { seats: { playerId: string; name: string }[] }) => eventsRef.current.onSeatMismatch(data);
@@ -58,6 +60,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     socket.on('game:answer-result', handleAnswerResult);
     socket.on('game:duel', handleDuel);
     socket.on('game:duel-result', handleDuelResult);
+    socket.on('game:duel-dismissed', handleDuelDismissed);
     socket.on('game:finished', handleFinished);
     socket.on('game:bot-action', handleBotAction);
     socket.on('game:seat-mismatch', handleSeatMismatch);
@@ -76,6 +79,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
       socket.off('game:answer-result', handleAnswerResult);
       socket.off('game:duel', handleDuel);
       socket.off('game:duel-result', handleDuelResult);
+      socket.off('game:duel-dismissed', handleDuelDismissed);
       socket.off('game:finished', handleFinished);
       socket.off('game:bot-action', handleBotAction);
       socket.off('game:seat-mismatch', handleSeatMismatch);
@@ -110,6 +114,8 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   // turn, so this is deliberately not gated on whose turn it is.
   const emitDuelAnswer = useCallback((selectedIndex: number) =>
     emit('game:duel-answer', { selectedIndex }), [emit]);
+  const emitDuelContinue = useCallback((duelId: string) =>
+    emit('game:duel-continue', { duelId }), [emit]);
 
   // Challenge Card
   const emitCardAck = useCallback(() => emit('game:card-ack'), [emit]);
@@ -158,6 +164,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitSmartBuyAnswer,
     emitSkipBuy,
     emitDuelAnswer,
+    emitDuelContinue,
     emitCardAck,
     emitCardAnswer,
     emitJailMath,

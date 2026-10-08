@@ -106,6 +106,76 @@ describe('live game question feedback', () => {
     expect(screen.queryByText(answer.feedback)).not.toBeInTheDocument();
   });
 
+  it('lets only the active player continue and sends the matching duel dismissal to the server', () => {
+    mount();
+    receive('game:state', { state: makeState('MATH_DUEL') });
+    const duel = makeDuel('duel-1');
+    receive('game:duel', { duel, myChallenge: null });
+    receive('game:state', { state: makeState('END_TURN') });
+    receive('game:duel-result', { duel: { ...duel, resolution }, resolution });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(socket.emit).toHaveBeenCalledWith('game:duel-continue', { gameId: 'game_ONE', duelId: duel.id });
+    expect(screen.queryByText('Property Dispute')).not.toBeInTheDocument();
+  });
+
+  it('shows a bot duel without spectator controls and closes it when the active player continues', () => {
+    mount();
+    const botPlayers = [...players, { id: 'seat-three', playerId: 'account-three', name: 'May', isBot: true, position: 0 }] as Player[];
+    receive('game:state', { state: { ...makeState('MATH_DUEL'), players: botPlayers, currentPlayerIndex: 1 } });
+    const duel = { ...makeDuel('bot-duel'), challenger: { playerId: 'seat-two', hasAnswered: false, isCorrect: null },
+      owner: { playerId: 'seat-three', hasAnswered: false, isCorrect: null } };
+    receive('game:duel', { duel, myChallenge: null });
+    expect(screen.getByText(/is disputing the rent/)).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+
+    receive('game:state', { state: { ...makeState('END_TURN'), players: botPlayers, currentPlayerIndex: 1 } });
+    receive('game:duel-result', { duel: { ...duel, resolution }, resolution });
+    expect(screen.getByText(resolution.headline)).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    receive('game:duel-dismissed', { duelId: duel.id });
+    expect(screen.queryByText('Property Dispute')).not.toBeInTheDocument();
+  });
+
+  it('keeps a defending owner\'s private feedback visible without an inactive Continue button', () => {
+    mount();
+    receive('game:state', { state: { ...makeState('MATH_DUEL'), currentPlayerIndex: 1 } });
+    const duel = { ...makeDuel('owner-duel'), challenger: { playerId: 'seat-two', hasAnswered: false, isCorrect: null },
+      owner: { playerId: 'seat-one', hasAnswered: false, isCorrect: null } };
+    receive('game:duel', { duel, myChallenge: makeQuestion('owner-question', 'MATH_DUEL') });
+    fireEvent.click(screen.getByRole('button', { name: '6' }));
+    receive('game:answer-result', { playerId: 'seat-one', challengeId: 'owner-question', result: answer });
+    receive('game:state', { state: { ...makeState('END_TURN'), currentPlayerIndex: 1 } });
+    receive('game:duel-result', { duel: { ...duel, resolution }, resolution });
+
+    expect(screen.getByText(answer.feedback)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    receive('game:duel-dismissed', { duelId: duel.id });
+    expect(screen.queryByText(answer.feedback)).not.toBeInTheDocument();
+  });
+
+  it('ignores an earlier duel dismissal when a new duel is open', () => {
+    mount();
+    receive('game:state', { state: makeState('MATH_DUEL') });
+    receive('game:duel', { duel: makeDuel('duel-2'), myChallenge: makeQuestion('duel-question-2', 'MATH_DUEL') });
+    receive('game:duel-dismissed', { duelId: 'duel-1' });
+    expect(screen.getByRole('button', { name: '6' })).toBeEnabled();
+  });
+
+  it('clears the previous duel result when the next turn starts with jail decisions', () => {
+    mount();
+    receive('game:state', { state: makeState('MATH_DUEL') });
+    const duel = makeDuel('duel-1');
+    receive('game:duel', { duel, myChallenge: null });
+    receive('game:duel-result', { duel: { ...duel, resolution }, resolution });
+    expect(screen.getByText(resolution.headline)).toBeVisible();
+
+    receive('game:state', { state: { ...makeState('JAIL_DECISION'), currentPlayerIndex: 1 } });
+    expect(screen.queryByText('Property Dispute')).not.toBeInTheDocument();
+  });
+
   it('preserves a same-question hint deadline and starts the next question with its fresh deadline', () => {
     mount();
     receive('game:state', { state: makeState() });

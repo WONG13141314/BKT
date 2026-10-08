@@ -13,10 +13,17 @@ Signals carry the roll ID; stale or duplicate signals cannot advance another
 roll. Disconnecting viewers leave the required set. The existing 12-second
 movement deadline remains the fallback for missing signals and hidden tabs.
 
-The visual dice roll is bounded at 4.5 seconds, token steps take 280 milliseconds,
-and each physical token hop takes 220 milliseconds. These are presentation
-settings; they do not change the 30/45/60-second pupil question windows. A
-resolved bot-turn duel remains visible for six seconds before turn advancement.
+The visual dice roll is bounded at 4.5 seconds. Once both dice show the intended
+upper face and remain nearly motionless for 200 milliseconds, token movement
+begins without waiting for the physics sleep cooldown. Token steps take 280
+milliseconds, and each physical token hop takes 220 milliseconds. These are
+presentation settings; they do not change the 30/45/60-second pupil question
+windows. A resolved bot-turn duel remains visible for six seconds before turn
+advancement.
+
+A jailed player's next turn begins with Math Escape, Pay Bail and Wait choices.
+No preliminary Roll Dice click is required. The existing maximum sentence still
+automatically releases the player and starts their movement roll.
 
 ## Browser work
 
@@ -37,8 +44,12 @@ The help cue stays inside a scrollable question panel. Answered questions are
 replaced by one compact feedback card containing the outcome, reward and worked
 line, with a Continue button and a six-second automatic hold. Redundant personal
 answer/reward toasts are removed. Each learner's worked feedback is displayed
-after the duel settles and remains private. Question and duel IDs scope the timers, so an older dismissal cannot
-close a new question.
+after the duel settles and remains private. During a duel reveal, only the active
+player sees Continue; the defending owner and spectators have no dismissal
+button. The server broadcasts the active player's Continue to close that reveal
+for the whole table. Moving to the next player's turn also clears it, including
+a turn that begins with jail choices. Question and duel IDs scope timers and
+dismissals, so an older dismissal cannot close a new question or duel.
 
 Disconnected clients show a recovery status and do not queue gameplay actions for
 later replay. Reconnection requests the authoritative match state. Deadlines
@@ -90,3 +101,21 @@ The built gameplay-controls chunk changed from 3,205,501 bytes to 53,850 bytes.
 The 3D and physics dependencies now load in separate chunks, so controls can
 appear before those scenes finish loading. Those dependencies remain sizeable;
 the split does not imply a comparable reduction in total downloaded bytes.
+
+## Verification on 8 October 2026
+
+Lint, typechecks and production builds passed, together with 52 frontend tests
+and 313 backend tests. An isolated test runtime used the real game engine and
+Socket.IO handlers with fixture accounts and database persistence disabled.
+
+Three simultaneous Chromium screens confirmed that only the active player sees
+duel Continue, the defending owner retains private feedback, and one Continue
+closes all three panels. Bot Ali/May duels had no spectator buttons. Both human
+and bot turn advancement exposed jail choices directly, and Math Escape opened
+the live question. Desktop and 390-pixel layouts were visually checked.
+
+With the 3D scene already loaded, one observed dice roll completed in 2,175 ms
+and its first token step began 31 ms later. This is a local test measurement,
+not a timing guarantee across devices. Browser checks recorded no page or
+console errors; screenshots and the report are retained in the local
+visualization folder.

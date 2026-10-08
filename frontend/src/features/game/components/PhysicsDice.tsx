@@ -5,10 +5,11 @@ import {
   Physics,
   RapierRigidBody,
   RigidBody,
+  useAfterPhysicsStep,
 } from '@react-three/rapier';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Quaternion } from 'three';
-import { DICE_ROLL_LIMIT_MS } from './board.animation';
+import { Quaternion, Vector3 } from 'three';
+import { DICE_ROLL_LIMIT_MS, DICE_SETTLE_HOLD_MS } from './board.animation';
 import { buildThrowPlan, PlannedDie, restingRotation, ThrowPlan } from './dice.throw';
 
 const PIPS: Record<number, [number, number][]> = {
@@ -168,26 +169,54 @@ function PhysicsDie({ index, die, onSettled, onAwake }: { index: number; die: Pl
     () => new Quaternion(die.modelRotation[0], die.modelRotation[1], die.modelRotation[2], die.modelRotation[3]),
     [die.modelRotation],
   );
+  const expectedFaceNormal = useMemo(() => {
+    const face = FACES.find((face) => face.value === die.value)!;
+    return new Vector3(...face.position).normalize().applyQuaternion(modelQuaternion);
+  }, [die.value, modelQuaternion]);
+  const bodyQuaternion = useMemo(() => new Quaternion(), []);
+  const faceNormal = useMemo(() => new Vector3(), []);
 
   useEffect(() => () => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
   }, []);
 
-  const handleSleep = () => {
-    if (die.isStatic || reported.current) return;
-    if (settleTimer.current) clearTimeout(settleTimer.current);
+  const isVisuallySettled = () => {
+    const rigidBody = body.current;
+    if (!rigidBody) return false;
+    const linear = rigidBody.linvel();
+    const angular = rigidBody.angvel();
+    const rotation = rigidBody.rotation();
+    bodyQuaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    faceNormal.copy(expectedFaceNormal).applyQuaternion(bodyQuaternion);
+    return Math.hypot(linear.x, linear.y, linear.z) < .06
+      && Math.hypot(angular.x, angular.y, angular.z) < .08
+      && faceNormal.y > .999;
+  };
+
+  const handleRest = () => {
+    if (die.isStatic || reported.current || settleTimer.current) return;
     settleTimer.current = setTimeout(() => {
-      if (!body.current?.isSleeping() || reported.current) return;
+      settleTimer.current = null;
+      if (!isVisuallySettled() || reported.current) return;
       reported.current = true;
       onSettled(index);
-    }, 280);
+    }, DICE_SETTLE_HOLD_MS);
   };
 
   const handleWake = () => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
     reported.current = false;
     onAwake(index);
   };
+
+  useAfterPhysicsStep(() => {
+    if (die.isStatic) return;
+    // Rapier waits for its sleep cooldown even after the dice look still.
+    // Confirm a readable, stationary result briefly and start moving sooner.
+    if (isVisuallySettled()) handleRest();
+    else if (settleTimer.current || reported.current) handleWake();
+  });
 
   return (
     <RigidBody
@@ -202,7 +231,7 @@ function PhysicsDie({ index, die, onSettled, onAwake }: { index: number; die: Pl
       angularDamping={.34}
       canSleep
       ccd
-      onSleep={handleSleep}
+      onSleep={handleRest}
       onWake={handleWake}
     >
       <CuboidCollider args={[DIE_HALF_EXTENT, DIE_HALF_EXTENT, DIE_HALF_EXTENT]} friction={.82} restitution={.48} density={1.1} />

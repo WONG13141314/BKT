@@ -13,9 +13,10 @@ import {
   processCardChallengeAnswer,
   startJailMathEscape,
   processJailEscapeAnswer,
+  waitInJail,
 } from '../game.engine';
 import { GameState } from '../game.types';
-import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, SKILL_NAMES, type SkillName } from '../game.constants';
+import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, MAX_JAIL_TURNS, SKILL_NAMES, type SkillName } from '../game.constants';
 import { gameService } from '../game.service';
 import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
@@ -112,6 +113,73 @@ describe('Game Engine — MathOpoly Redesign', () => {
 
       expect(newState.currentPlayerIndex).toBe(0);
       expect(newState.round).toBe(2);
+    });
+
+    it('opens jail options directly after the other three players finish their turns', () => {
+      const jailIndex = gameState.tiles.findIndex((tile) => tile.type === 'GO_TO_JAIL');
+      const sentToJail = resolveTileEvent({
+        ...gameState,
+        turnPhase: 'RESOLVE_TILE',
+        players: gameState.players.map((player, index) => index === 0
+          ? { ...player, position: jailIndex }
+          : player),
+      });
+      expect(sentToJail.turnPhase).toBe('END_TURN');
+
+      let next = endTurn(sentToJail);
+      for (let index = 1; index <= 3; index++) {
+        expect(next.currentPlayerIndex).toBe(index);
+        expect(next.turnPhase).toBe('ROLL_PHASE');
+        next = endTurn({ ...next, turnPhase: 'END_TURN' });
+      }
+
+      expect(next.currentPlayerIndex).toBe(0);
+      expect(next.turnPhase).toBe('JAIL_DECISION');
+      expect(getCurrentPlayer(next).isInJail).toBe(true);
+      expect(getCurrentPlayer(next).jailTurns).toBe(0);
+      expect(next.diceRollId).toBe(sentToJail.diceRollId);
+      expect(next.currentChallenge).toBeNull();
+      expect(startJailMathEscape(next).turnPhase).toBe('JAIL_CHALLENGE');
+    });
+
+    it('offers jail options again after waiting, then releases on the final jail turn', () => {
+      gameState.players[0].isInJail = true;
+      gameState.turnPhase = 'JAIL_DECISION';
+      let next = waitInJail(gameState);
+      expect(next.turnPhase).toBe('END_TURN');
+      expect(next.players[0].jailTurns).toBe(1);
+
+      for (let turn = 0; turn < gameState.players.length; turn++) {
+        next = endTurn({ ...next, turnPhase: 'END_TURN' });
+      }
+
+      expect(next.currentPlayerIndex).toBe(0);
+      expect(next.turnPhase).toBe('JAIL_DECISION');
+      expect(next.diceRollId).toBe(gameState.diceRollId);
+
+      const released = waitInJail(next);
+      expect(released.turnPhase).toBe('MOVING');
+      expect(getCurrentPlayer(released).isInJail).toBe(false);
+      expect(getCurrentPlayer(released).jailTurns).toBe(0);
+      expect(released.diceRollId).toBe(gameState.diceRollId + 1);
+      expect(released.diceCount).toBe(2);
+    });
+
+    it('auto-releases an incoming jailed player who already served the maximum turns', () => {
+      gameState.players[0].isInJail = true;
+      gameState.players[0].jailTurns = MAX_JAIL_TURNS;
+      gameState.currentPlayerIndex = 3;
+      gameState.turnPhase = 'END_TURN';
+
+      const next = endTurn(gameState);
+
+      expect(next.currentPlayerIndex).toBe(0);
+      expect(next.turnPhase).toBe('MOVING');
+      expect(getCurrentPlayer(next).isInJail).toBe(false);
+      expect(getCurrentPlayer(next).jailTurns).toBe(0);
+      expect(next.diceRollId).toBe(gameState.diceRollId + 1);
+      expect(next.diceCount).toBe(2);
+      expect(next.currentChallenge).toBeNull();
     });
 
     it('should end the game after maxRounds', () => {

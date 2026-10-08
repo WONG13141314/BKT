@@ -299,6 +299,18 @@ export const gameService = {
 
   // ---- Math Duel ----
 
+  /** Clear the current reveal without ending the active player's turn. */
+  continueDuel: (gameId: string, duelId: string): GameState | null => {
+    const state = activeGames.get(gameId);
+    const duel = state?.duelState;
+    if (!state || state.phase !== 'PLAYING' || state.turnPhase !== 'END_TURN' || !duel?.resolution) return null;
+    if (`${duel.challenger.challenge.id}:${duel.owner.challenge.id}` !== duelId) return null;
+
+    const newState = { ...state, duelState: null };
+    activeGames.set(gameId, newState);
+    return newState;
+  },
+
   /**
    * Record one duellist's answer, then settle if both sides are in.
    *

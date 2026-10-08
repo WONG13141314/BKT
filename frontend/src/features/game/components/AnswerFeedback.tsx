@@ -3,7 +3,7 @@ import './AnswerFeedback.css';
 
 interface Props {
   result: AnswerResult;
-  onContinue: () => void;
+  onContinue?: () => void;
   inDuel?: boolean;
 }
 
@@ -18,9 +18,11 @@ export function AnswerFeedback({ result, onContinue, inDuel }: Props) {
       {result.reward?.type !== 'NONE' && result.reward?.description &&
         <p className="answer-feedback__reward">{result.reward.description}</p>}
       {result.feedback && <p className="answer-feedback__worked">{result.feedback}</p>}
-      <button type="button" className="answer-feedback__continue" onClick={onContinue} autoFocus>
-        Continue
-      </button>
+      {onContinue && (
+        <button type="button" className="answer-feedback__continue" onClick={onContinue} autoFocus>
+          Continue
+        </button>
+      )}
     </section>
   );
 }

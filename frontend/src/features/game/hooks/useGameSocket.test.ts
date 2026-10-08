@@ -11,7 +11,7 @@ vi.mock('../../../shared/contexts/SocketContext', () => ({ useSocket: () => ({ s
 
 const events = () => ({
   onStateUpdate: vi.fn(), onChallenge: vi.fn(), onChallengeStarted: vi.fn(), onAnswerResult: vi.fn(),
-  onDuel: vi.fn(), onDuelResult: vi.fn(), onGameFinished: vi.fn(), onBotAction: vi.fn(),
+  onDuel: vi.fn(), onDuelResult: vi.fn(), onDuelDismissed: vi.fn(), onGameFinished: vi.fn(), onBotAction: vi.fn(),
   onSeatMismatch: vi.fn(), onError: vi.fn(),
 });
 
@@ -54,6 +54,23 @@ describe('private hint requests', () => {
     socket.connected = false;
     const { result } = renderHook(() => useGameSocket('game_one', events()));
     await expect(result.current.emitRequestHint('question_one')).rejects.toThrow('Reconnect to get help.');
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
+
+  it('forwards a shared duel dismissal and removes its listener when unmounted', () => {
+    const handlers = events();
+    const { unmount } = renderHook(() => useGameSocket('game_one', handlers));
+    const receiveDismissal = socket.on.mock.calls.find(([event]) => event === 'game:duel-dismissed')![1];
+    act(() => { receiveDismissal({ duelId: 'duel_one' }); });
+    expect(handlers.onDuelDismissed).toHaveBeenCalledWith({ duelId: 'duel_one' });
+    unmount();
+    expect(socket.off).toHaveBeenCalledWith('game:duel-dismissed', receiveDismissal);
+  });
+
+  it('does not buffer duel Continue while disconnected', () => {
+    socket.connected = false;
+    const { result } = renderHook(() => useGameSocket('game_one', events()));
+    expect(result.current.emitDuelContinue('duel_one')).toBe(false);
     expect(socket.emit).not.toHaveBeenCalled();
   });
 });

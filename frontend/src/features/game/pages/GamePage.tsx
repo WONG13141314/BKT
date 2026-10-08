@@ -184,6 +184,7 @@ export function GamePage() {
     emitSmartBuyAnswer,
     emitSkipBuy,
     emitDuelAnswer,
+    emitDuelContinue,
     emitCardAck,
     emitCardAnswer,
     emitJailMath,
@@ -229,7 +230,8 @@ export function GamePage() {
         setDuel(prev => prev?.resolution ? prev : null);
         setDuelChallenge(null);
       }
-      if (state.turnPhase === 'ROLL_PHASE' || state.turnPhase === 'MOVING') {
+      if (state.players[state.currentPlayerIndex]?.id !== gameState?.players[gameState.currentPlayerIndex]?.id
+        || state.turnPhase === 'ROLL_PHASE' || state.turnPhase === 'MOVING') {
         dismissDuelResult();
       }
     },
@@ -312,6 +314,9 @@ export function GamePage() {
       holdDuelThenClear(data.duel.id, 6000, (answeredDuelId) => {
         if (duelIdRef.current === answeredDuelId) dismissDuelResult();
       });
+    },
+    onDuelDismissed: (data) => {
+      if (data.duelId === duelIdRef.current) dismissDuelResult();
     },
     onGameFinished: (data) => {
       playSound('gameOver');
@@ -441,6 +446,11 @@ export function GamePage() {
     setDuelChallenge(null);
     return true;
   }, [emitDuelAnswer]);
+
+  const handleDuelContinue = useCallback(() => {
+    if (!isMyTurn || !duel?.resolution) return;
+    if (emitDuelContinue(duel.id)) dismissDuelResult();
+  }, [isMyTurn, duel, emitDuelContinue, dismissDuelResult]);
 
 
 
@@ -673,7 +683,7 @@ export function GamePage() {
           isMyTurnToAnswer={!!duelChallenge}
           questionSlot={duelChallenge ? renderDuelQuestion(duelChallenge) : null}
           answerResult={duelAnswerResult}
-          onContinue={dismissDuelResult}
+          onContinue={isMyTurn && isConnected ? handleDuelContinue : undefined}
         />
       )}
 

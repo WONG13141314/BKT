@@ -38,7 +38,7 @@ export function MathDuel({
   const amDuellist = isMe(duel.challenger.playerId) || isMe(duel.owner.playerId);
   const titleId = useId();
   const duelRef = useRef<HTMLDivElement>(null);
-  const isAnswerDialog = !!resolved || (amDuellist && isMyTurnToAnswer);
+  const isAnswerDialog = (!!resolved && !!onContinue) || (amDuellist && isMyTurnToAnswer);
   useDialogFocus(isAnswerDialog, duelRef);
 
   const stamp = resolved
@@ -88,7 +88,7 @@ export function MathDuel({
                   {stamp}
                 </div>
                 <p className="duel-result__headline">{resolved.headline}</p>
-                {answerResult && onContinue ? (
+                {answerResult ? (
                   <AnswerFeedback result={answerResult} onContinue={onContinue} inDuel />
                 ) : onContinue ? (
                   <button type="button" className="answer-feedback__continue" onClick={onContinue} autoFocus>Continue</button>
