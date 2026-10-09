@@ -1,5 +1,11 @@
 # Mathopoly — Adaptive Arithmetic Property Game
 
+The `migration` branch adds Cloudflare hosting for the complete website and live
+game server, using the existing Neon database. Follow
+[the Cloudflare setup and rollback guide](docs/CLOUDFLARE_MIGRATION.md) to deploy.
+Run `npm run test:cloudflare` for isolated Cloudflare runtime checks. The ordinary
+development/build commands below still support the Render backend.
+
 A public multiplayer web game for primary-school mathematics. One player hosts, up
 to three join with a room code. Underneath the Monopoly shell is a Bayesian
 Knowledge Tracing (BKT) engine that models each player's mastery of four

@@ -12,15 +12,22 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces",
+    "lint": "npm run lint --workspaces && eslint scripts",
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build",
+    "build:cloudflare": "npm run build --workspace=frontend -- --mode cloudflare && wrangler deploy --dry-run --outdir .cloudflare-test/bundle",
+    "dev:cloudflare": "npm run build --workspace=frontend -- --mode cloudflare && wrangler dev",
+    "deploy:cloudflare": "npm run build --workspace=frontend -- --mode cloudflare && wrangler deploy",
+    "test:cloudflare": "npm run build:cloudflare && node --test scripts/cloudflare.integration.test.mjs",
+    "dev:cloudflare:test": "npm run build:cloudflare && node scripts/cloudflare-test-runtime.mjs"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.14.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261009.1",
+    "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^10.0.1",
     "concurrently": "^10.0.3",
     "esbuild": "^0.28.1",
@@ -29,6 +36,8 @@
     "eslint-plugin-react-refresh": "^0.5.4",
     "globals": "^17.11.0",
     "kill-port": "^2.0.1",
-    "typescript-eslint": "^8.67.0"
+    "miniflare": "^5.20261006.1-alpha",
+    "typescript-eslint": "^8.67.0",
+    "wrangler": "^4.149.0"
   }
 }

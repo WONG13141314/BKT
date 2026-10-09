@@ -1,5 +1,6 @@
 import type { Server } from 'socket.io';
 import type { GameState } from '../features/game/game.types';
+import { nodeTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 
 export const PHASE_TIMEOUTS = {
   roll: 45_000,
@@ -31,23 +32,29 @@ export function getPhaseDeadline(
 
 /** Maintains one authoritative expiry callback for each game. */
 export class PhaseTimerRegistry {
-  private readonly timers = new Map<string, NodeJS.Timeout>();
+  private readonly timers = new Map<string, unknown>();
+
+  constructor(private readonly scheduler: TimerScheduler = nodeTimerScheduler) {}
 
   arm(_io: Server, gameId: string, deadline: number, onExpire: () => void): void {
     this.clear(gameId);
 
-    const timer = setTimeout(() => {
+    const timer = this.scheduler.setTimeout(() => {
       this.timers.delete(gameId);
       onExpire();
-    }, Math.max(0, deadline - Date.now()));
+    }, Math.max(0, deadline - Date.now()), `phase:${gameId}`);
 
     this.timers.set(gameId, timer);
   }
 
   clear(gameId: string): void {
     const timer = this.timers.get(gameId);
-    if (!timer) return;
-    clearTimeout(timer);
+    if (!this.timers.has(gameId)) return;
+    this.scheduler.clearTimeout(timer);
     this.timers.delete(gameId);
+  }
+
+  clearAll(): void {
+    for (const gameId of this.timers.keys()) this.clear(gameId);
   }
 }

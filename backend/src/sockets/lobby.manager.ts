@@ -15,17 +15,50 @@ export interface Room {
   status: 'waiting' | 'starting' | 'playing';
 }
 
+export interface RoomManagerSnapshot {
+  rooms: Array<Omit<Room, 'players'> & { players: LobbyPlayer[] }>;
+  botCounter: number;
+}
+
 /** Fallback token when a bot joins; humans bring their own from their profile. */
 const BOT_AVATARS = ['ship', 'boot', 'thimble', 'iron'] as const;
 const BOT_NAMES = ['Bot Ali', 'Bot Mei', 'Bot Raju', 'Bot Siti'];
-let botCounter = 0;
-
-class RoomManager {
+export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private playerRoomMap: Map<string, string> = new Map();
+  private botCounter = 0;
+  private readonly fixedCode?: string;
+
+  constructor(options: { fixedCode?: string } = {}) {
+    this.fixedCode = options.fixedCode?.toUpperCase();
+  }
+
+  public snapshot(): RoomManagerSnapshot {
+    return structuredClone({
+      rooms: [...this.rooms.values()].map((room) => this.serializeRoom(room)),
+      botCounter: this.botCounter,
+    });
+  }
+
+  public restore(snapshot: RoomManagerSnapshot): void {
+    this.rooms.clear();
+    this.playerRoomMap.clear();
+    this.botCounter = snapshot.botCounter;
+    for (const saved of snapshot.rooms) {
+      if (this.fixedCode && saved.code !== this.fixedCode) {
+        throw new Error('Room snapshot does not belong to this runtime.');
+      }
+      const room: Room = { ...saved, players: new Map(saved.players.map((player) => [player.id, player])) };
+      this.rooms.set(room.code, room);
+      for (const player of room.players.values()) {
+        if (!player.isBot) this.playerRoomMap.set(player.id, room.code);
+      }
+    }
+  }
 
   /** Generate a random 6-character alphanumeric room code */
   private generateCode(): string {
+    if (this.fixedCode) return this.fixedCode;
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
     for (let i = 0; i < 6; i++) {
@@ -37,6 +70,13 @@ class RoomManager {
 
   /** Create a new room. The creator becomes the host. */
   public createRoom(playerId: string, playerName: string, avatar: string): Room {
+    if (this.fixedCode) {
+      const existing = this.rooms.get(this.fixedCode);
+      if (existing) {
+        if (existing.hostId !== playerId) throw new Error('This room already has a host.');
+        return existing;
+      }
+    }
     this.removePlayer(playerId);
 
     const code = this.generateCode();
@@ -89,15 +129,15 @@ class RoomManager {
     if (room.status !== 'waiting') return { room: null, error: 'Game already in progress.' };
     if (room.players.size >= room.maxPlayers) return { room: null, error: 'Room is full (max 4 players).' };
 
-    botCounter++;
-    const botId = `bot_${botCounter}_${Date.now()}`;
-    const botName = BOT_NAMES[(botCounter - 1) % BOT_NAMES.length];
+    this.botCounter++;
+    const botId = `bot_${this.botCounter}_${Date.now()}`;
+    const botName = BOT_NAMES[(this.botCounter - 1) % BOT_NAMES.length];
 
     const bot: LobbyPlayer = {
       id: botId,
       name: botName,
       isReady: true,       // Bots are always ready
-      avatar: BOT_AVATARS[(botCounter - 1) % BOT_AVATARS.length],
+      avatar: BOT_AVATARS[(this.botCounter - 1) % BOT_AVATARS.length],
       isBot: true,
       botDifficulty: difficulty,
     };

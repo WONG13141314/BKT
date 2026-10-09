@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useRef, useState, ReactNode, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+import { WebSocketEventSocket, type RealtimeSocket } from '../utils/WebSocketEventSocket';
 
 interface SocketContextType {
-  socket: Socket | null;
+  socket: RealtimeSocket | null;
   isConnected: boolean;
   connectSocket: () => void;
   disconnectSocket: () => void;
@@ -21,12 +22,13 @@ interface SocketProviderProps {
   children: ReactNode;
 }
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const USE_WEBSOCKET = import.meta.env.VITE_REALTIME_TRANSPORT === 'websocket';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (USE_WEBSOCKET ? '/ws' : 'http://localhost:3001');
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<RealtimeSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<RealtimeSocket | null>(null);
   const currentTokenRef = useRef<string | null>(null);
 
   // NOTE: We do NOT auto-connect on mount.
@@ -63,10 +65,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     currentTokenRef.current = token;
 
-    const newSocket = io(SOCKET_URL, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
+    const newSocket: RealtimeSocket = USE_WEBSOCKET
+      ? new WebSocketEventSocket(SOCKET_URL, token)
+      : io(SOCKET_URL, {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+      });
 
     newSocket.on('connect', () => {
       setIsConnected(true);
