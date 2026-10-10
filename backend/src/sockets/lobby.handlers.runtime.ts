@@ -1,6 +1,6 @@
-import type { Server, Socket } from 'socket.io';
+import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
 import type { RoomManager } from './lobby.manager';
-import { nodeTimerScheduler, type TimerScheduler } from './runtime.scheduler';
+import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 import type { GameService } from '../features/game/game.runtime';
 import type { GameState } from '../features/game/game.types';
 import { SocketPresence } from './presence.manager';
@@ -21,7 +21,7 @@ export interface LobbyHandlersRuntimeOptions {
 
 export function createLobbyHandlersRuntime(options: LobbyHandlersRuntimeOptions) {
   const { gameService, roomManager, publishGameStart: publishGameStartTransition } = options;
-  const scheduler = options.scheduler ?? nodeTimerScheduler;
+  const scheduler = options.scheduler ?? defaultTimerScheduler;
   const defaultPresence = options.presence ?? new SocketPresence();
   const pendingLobbyRemovals = new Map<string, { code: string; playerId: string; deadline: number; timer: unknown }>();
   const restoredLobbyRemovals = new Map<string, { code: string; playerId: string; deadline: number }>();

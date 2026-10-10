@@ -1,7 +1,6 @@
 // Fetch wrapper that attaches the player token and surfaces server messages.
 
-const API_BASE_URL = import.meta.env.VITE_API_URL
-  || (import.meta.env.VITE_REALTIME_TRANSPORT === 'websocket' ? '/api' : 'http://localhost:3001/api');
+const API_BASE_URL = '/api';
 
 const TOKEN_KEY = 'mm.token';
 

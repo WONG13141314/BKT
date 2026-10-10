@@ -1,4 +1,4 @@
-import type { PublicPlayer } from '../features/auth/auth.service';
+import type { PublicPlayer } from '../features/auth/auth.types';
 
 export interface WorkerEnv {
   DATABASE_URL: string;

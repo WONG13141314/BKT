@@ -1,5 +1,4 @@
-// Runtime-independent research row construction shared by Node and Workers.
-import type { Prisma } from '@prisma/client';
+// Runtime-independent research row construction for the Cloudflare game runtime.
 import { QUESTION_TIMING_POLICY_VERSION } from './game.constants';
 import { getAdjustedParams } from '../../bkt/bkt.selector';
 import { predictCorrectProbability } from '../../bkt/bkt.engine';
@@ -63,7 +62,7 @@ export function buildAttemptData(
         timeFromStartMs: challenge.hintRequestedAt === undefined
           ? null : Math.max(0, challenge.hintRequestedAt - challenge.startedAt),
       },
-    } as unknown as Prisma.InputJsonValue,
+    },
     correctAnswer: challenge.options[challenge.correctIndex] ?? '',
     // Null is explicit no-answer evidence. Flag it rather than dropping it: a
     // timeout is often "didn't know", but can also be a closed laptop.

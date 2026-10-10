@@ -133,6 +133,56 @@ describe('Cloudflare SQL against the existing PostgreSQL schema', () => {
     expect((await persistence.loadPriors(['db-player-1'])).get('db-player-1')?.attempts.Addition).toBe(2);
   });
 
+  it('loads historical independent counts separately for each learner and skill', async () => {
+    for (let n = 0; n < 12; n++) {
+      await persistence.persistAttempt(event(`learner-1-addition-${n}`, {
+        selectedIndex: n < 7 ? 1 : null,
+        previousMastery: 0.6, newMastery: 0.6, isCorrect: n < 7,
+      }));
+    }
+    for (let n = 0; n < 5; n++) {
+      await persistence.persistAttempt(event(`learner-1-division-${n}`, {
+        challenge: makePrivateChallenge({ skillName: 'Division' }), selectedIndex: null,
+        previousMastery: 0.1, newMastery: 0.1, isCorrect: false,
+      }));
+    }
+    for (let n = 0; n < 9; n++) {
+      await persistence.persistAttempt(event(`learner-2-addition-${n}`, {
+        player: makeGameState().players[1], selectedIndex: n < 3 ? 1 : null,
+        previousMastery: 0.4, newMastery: 0.4, isCorrect: n < 3,
+      }));
+    }
+
+    const priors = await persistence.loadPriors(['db-player-1', 'db-player-2']);
+    expect(priors.get('db-player-1')?.attempts).toEqual({ Addition: 7, Division: 0 });
+    expect(priors.get('db-player-2')?.attempts).toEqual({ Addition: 3 });
+    expect(priors.get('db-player-1')?.mastery.Addition).toBeCloseTo(0.6, 6);
+    expect(priors.get('db-player-1')?.mastery.Division).toBe(0.1);
+  });
+
+  for (const isCorrect of [true, false]) {
+    it(`retains a first assisted answer (${isCorrect}) without inventing independent practice`, async () => {
+      const assisted = event('synthetic-first-assisted', {
+        challenge: makePrivateChallenge({ hintRequestedAt: 3_000 }),
+        previousMastery: 0.4, newMastery: 0.4, selectedIndex: isCorrect ? 1 : 0, isCorrect,
+      });
+      await persistence.persistAttempt(assisted);
+      expect(await masteryRow()).toEqual({
+        pMastery: 0.4, attempts: 1, correct: 0, lastPracticedAt: null,
+      });
+      const rows = await postgres.query<{
+        isCorrect: boolean; timedOut: boolean; hintLevel: number;
+        pMasteryBefore: number; pMasteryAfter: number; opportunityIndex: number;
+      }>(`SELECT "isCorrect", "timedOut", "hintLevel", "pMasteryBefore",
+        "pMasteryAfter", "opportunityIndex" FROM question_attempts`);
+      expect(rows.rows).toEqual([{
+        isCorrect, timedOut: false, hintLevel: 1,
+        pMasteryBefore: 0.4, pMasteryAfter: 0.4, opportunityIndex: 1,
+      }]);
+      expect((await persistence.loadPriors(['db-player-1'])).get('db-player-1')?.attempts.Addition).toBe(0);
+    });
+  }
+
   it('does not create a practice timestamp when the first observation is a timeout', async () => {
     await persistence.persistAttempt(event('synthetic-first-timeout', {
       selectedIndex: null, newMastery: 0.4, isCorrect: false,

@@ -1,6 +1,6 @@
 import { initializeGameState } from '../game.engine';
-import { gameService } from '../game.service';
-import { publishGameStartTransition, registerGameHandlers } from '../../../sockets/game.handlers';
+import { gameService } from '../../../test/game.service';
+import { publishGameStartTransition, registerGameHandlers } from '../../../test/socket.runtime';
 import { makeServer, makeSocket } from '../../../sockets/__tests__/socket.harness';
 import { PHASE_TIMEOUTS } from '../../../sockets/phase.deadlines';
 import { toPublicDuelState } from '../../../sockets/game.publisher';

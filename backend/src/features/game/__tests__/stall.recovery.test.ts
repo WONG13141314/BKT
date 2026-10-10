@@ -1,6 +1,6 @@
 import { endTurn, initializeGameState, processCardChallengeAnswer } from '../game.engine';
 import { selectChallenge } from '../../../bkt/bkt.selector';
-import { gameService } from '../game.service';
+import { gameService } from '../../../test/game.service';
 import { GameState } from '../game.types';
 import { CLOCK_CAP_MINUTES } from '../game.constants';
 

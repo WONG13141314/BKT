@@ -4,8 +4,8 @@ export interface TimerScheduler {
   clearTimeout(handle: unknown): void;
 }
 
-/** Existing Node scheduling retained for Render. */
-export const nodeTimerScheduler: TimerScheduler = {
+/** Platform timers for standalone rule tests; live rooms inject stored alarms. */
+export const defaultTimerScheduler: TimerScheduler = {
   setTimeout: (callback, delayMs) => setTimeout(callback, Math.max(0, delayMs)),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };

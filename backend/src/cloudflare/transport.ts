@@ -1,10 +1,10 @@
-import type { Server, Socket } from 'socket.io';
+import type { RealtimeServer as Server, RealtimeSocket as Socket } from '../sockets/realtime.types';
 import type { ConnectionAttachment } from './types';
 
 type Handler = (...args: any[]) => unknown;
 type Send = (socket: HibernatingSocket, frame: unknown) => void;
 
-/** The subset of Socket.IO used by the unchanged game handlers, over native WS. */
+/** Native WebSocket events used by the room rules. */
 export class HibernatingSocket {
   readonly handlers = new Map<string, Handler[]>();
   readonly id: string;

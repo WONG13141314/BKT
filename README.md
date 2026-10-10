@@ -1,10 +1,39 @@
-# Mathopoly — Adaptive Arithmetic Property Game
+# MonoMath — Adaptive Arithmetic Property Game
 
-The `migration` branch adds Cloudflare hosting for the complete website and live
-game server, using the existing Neon database. Follow
-[the Cloudflare setup and rollback guide](docs/CLOUDFLARE_MIGRATION.md) to deploy.
-Run `npm run test:cloudflare` for isolated Cloudflare runtime checks. The ordinary
-development/build commands below still support the Render backend.
+**Play now: [Open MonoMath](https://monomath-migration.monomath-a32bfd97d1bd.workers.dev).**
+
+The Cloudflare account, public address and application secrets are already
+configured for this deployment. To play, open the link. To keep an existing
+claimed profile, sign in with its username and six-digit PIN.
+
+Future updates from this computer use `npm run deploy`. Optional automatic
+deploys from GitHub are explained in the
+[setup guide](docs/CLOUDFLARE_MIGRATION.md#9-optional-automatic-deploys-from-github).
+
+The **`migration` branch runs the website and game server on Cloudflare**, with
+the existing Neon PostgreSQL database. Its default development, build and deploy
+commands use Cloudflare. **`main` is the separate Render backup.**
+
+## Fresh setup on another computer or account
+
+1. Install Node.js **24**, open PowerShell in `D:\Documents\BKT` on the
+   `migration` branch, and run `npm ci`.
+2. Run `npm run setup:cloudflare`. If a browser opens, sign in to your Cloudflare
+   account and authorize Wrangler. The script uses the existing database and JWT
+   settings, builds the game, prepares a free public hostname, uploads the two
+   required secrets privately, and deploys
+   **`monomath-migration`**.
+3. Open the `https://monomath-migration.<your-account>.workers.dev` link printed
+   after deployment. Try solo play, then multiplayer using two separate browser
+   profiles or devices.
+
+Use **Workers Free** and **Neon Free** for RM0 hosting. Setup publishes a real
+deployment; games played there write to the configured Neon database. The
+[setup guide](docs/CLOUDFLARE_MIGRATION.md) explains database isolation, existing
+players, evaluation checks and free allowances. See the
+[validation record](docs/CLOUDFLARE_VALIDATION.md) for what has been tested.
+
+## The game
 
 A public multiplayer web game for primary-school mathematics. One player hosts, up
 to three join with a room code. Underneath the Monopoly shell is a Bayesian
@@ -37,186 +66,53 @@ on demand; a basic board and dice remain available when WebGL is unavailable.
 Answer feedback uses one result card instead of simultaneous reward and answer
 notifications. See [runtime debugging notes](docs/gameplay-runtime.md).
 
-## Tech Stack
+## Stack and architecture
 
-| Layer          | Technology              |
-| -------------- | ----------------------- |
-| Frontend       | React, Vite, TypeScript |
-| Backend        | Node.js, Express.js     |
-| Database       | PostgreSQL (Neon)       |
-| ORM            | Prisma                  |
-| Realtime       | Socket.IO               |
-| Authentication | JWT (anonymous-first)   |
-| Hosting        | Render                  |
+| Part | Technology |
+| --- | --- |
+| Website | React, Vite and TypeScript, served by Worker Static Assets |
+| HTTP entry point | Cloudflare Worker |
+| Live game | SQLite-backed `GameRoom` Durable Objects and native WebSockets |
+| Login/profile API | `ApiService` Durable Objects, JWT and bcrypt |
+| Room membership | `PlayerDirectory` Durable Objects |
+| Permanent database | Neon PostgreSQL, accessed through its HTTP SQL driver |
 
-## Architecture
+The website, API and live connection share one origin. Each room owns its game
+rules, sockets, durable snapshots, saved deadlines and pending research writes.
+Idle connections use WebSocket hibernation; persisted alarms resume deadlines
+and retry database writes. Stable event IDs prevent retrying an attempt from
+incrementing mastery twice.
 
-- **Monorepo** — frontend and backend in one repository
-- **Server-authoritative** — all game state and grading happen server-side; the
-  client never receives an answer
-- **In-memory match state** — positions, money and turn phase live in
-  `backend/src/features/game/game.service.ts` for the duration of a match
-- **Postgres for what must outlive a match** — player identity, BKT mastery, and
-  the attempt log that backs the evaluation
-- **Anonymous-first identity** — a permanent profile is created the first time
-  someone types a nickname; no signup step, and mastery carries across sessions
+Neon retains player identity, BKT mastery, question evidence and finished-match
+history. The existing schema and four seeded skills are reused without a schema
+migration or reset. Prisma files remain database tooling; the deployed game does
+not use a Prisma client, Express server or Socket.IO.
 
-## Local development
+Players can begin with a nickname and later claim a username/PIN to recover the
+same profile on another browser. A new website origin has separate browser
+storage, so existing players should use their claimed credentials to retain
+their previous progress.
 
-```bash
-npm install
+## Development and publishing
 
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-# Fill in DATABASE_URL, DIRECT_URL and JWT_SECRET in backend/.env
+| Command | Purpose |
+| --- | --- |
+| `npm run setup:cloudflare` | Authenticate if needed, upload existing settings and publish the game |
+| `npm run dev:cloudflare:test` | Play locally with a temporary database and no account secrets |
+| `npm run dev` | Run the Cloudflare development server using local `.dev.vars` |
+| `npm run build` | Build the website and create a deployment dry run |
+| `npm run deploy` | Build and publish an update after the first setup |
+| `npm run test:cloudflare` | Run isolated Cloudflare/workerd integration checks |
 
-cd backend
-npx prisma generate
-npx prisma migrate deploy   # or: npx prisma migrate dev
-npx prisma db seed          # creates the 4 skills
+For a local game connected to Neon, copy `.dev.vars.example` to `.dev.vars`,
+enter a test database connection string and JWT secret, then run `npm run dev`.
+The detailed guide explains this option. Real database settings allow real
+database writes; the isolated test command keeps its data temporary.
 
-cd ..
-npm run dev                 # backend :3001, frontend :5173
-```
-
-`backend/src/config/env.ts` validates configuration at startup, so a missing or
-malformed variable fails the boot with a message naming the offending key.
-
-## Deploying to Neon + Render
-
-### 1. Neon — two connection strings
-
-Neon gives you a **pooled** and a **direct** connection string. You need both:
-
-| Variable       | Which string                      | Used by            |
-| -------------- | --------------------------------- | ------------------ |
-| `DATABASE_URL` | Pooled — host contains `-pooler`  | the running server |
-| `DIRECT_URL`   | Direct — host has **no** `-pooler` | `prisma migrate`   |
-
-PgBouncer (the pooler) cannot run migrations, which is why they are separate.
-Both need `?sslmode=require`.
-
-In the Neon console: **Dashboard → Connection Details**, copy the pooled string,
-then toggle **Connection pooling** off and copy the direct string.
-
-### 2. Render — environment variables
-
-On the **monomath-api** service, set:
-
-| Key            | Value                                          |
-| -------------- | ---------------------------------------------- |
-| `DATABASE_URL` | Neon pooled string                             |
-| `DIRECT_URL`   | Neon direct string                             |
-| `JWT_SECRET`   | auto-generated by Render (≥16 chars)           |
-| `CORS_ORIGIN`  | your frontend URL, e.g. `https://monomath.onrender.com` |
-
-On the **monomath** static site, set `VITE_API_URL` (ending in `/api`) and
-`VITE_SOCKET_URL` (no `/api`) to the API service URL.
-
-> `JWT_EXPIRES_IN` is `90d` and should stay long. The token *is* the player's
-> identity — shortening it resets everyone's learning progress when it lapses.
-
-### 3. Migrations are applied manually, not on deploy
-
-`startCommand` deliberately does **not** run `prisma migrate deploy`.
-
-`startCommand` runs on every container start — restarts, health-check failures,
-free-tier spin-ups — and each run competes for Prisma's advisory lock. Through
-Neon's pooler that lock can end up orphaned on a reused backend, and once one
-attempt fails the service crash-loops with every retry making it worse.
-
-So apply migrations yourself, **before** deploying code that needs them:
-
-```bash
-cd backend
-npm run db:status    # what is applied
-npm run db:deploy    # apply anything pending
-```
-
-Then push. Render just starts the server.
-
-### 4. Migrating an existing database
-
-The Phase 2 schema is a clean baseline: `User` became `Player`, the `Question`
-table was dropped, and several stale columns were removed. There is a **single**
-migration (`20260726000000_init`) and no upgrade path from the old schema.
-
-Existing rows were throwaway guest accounts, so reset rather than migrate. From
-your machine, with `backend/.env` pointing at Neon:
-
-```bash
-cd backend
-npx prisma migrate reset --force   # drops everything, replays the baseline, reseeds
-```
-
-If you would rather not use `reset` against a remote database, drop the schema in
-the Neon SQL editor:
-
-```sql
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
-```
-
-then rebuild it with `npm run db:deploy && npm run db:seed`.
-
-### 5. Seeding
-
-Migrations do not seed. Run it once from your machine with `backend/.env`
-pointing at Neon:
-
-```bash
-cd backend && npm run db:seed
-```
-
-`prisma migrate reset` runs the seed automatically, so you only need this after a
-plain `db:deploy` onto an empty database. The four skill rows must exist before
-mastery can be recorded.
-
-## Troubleshooting
-
-### `P1002 — Timed out trying to acquire a postgres advisory lock`
-
-Prisma takes an advisory lock before migrating. Neon's pooler (PgBouncer) reuses
-server backends, so a migration that was interrupted can leave that lock orphaned
-on a pooled connection, blocking every later attempt.
-
-Advisory locks are session-scoped and cannot be released from another session, so
-either reconnect until you land on the holding backend, or terminate it:
-
-```sql
--- Who holds it (72707369 is Prisma's migrate lock)
-SELECT l.pid, a.application_name, a.backend_start
-FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
-WHERE l.locktype = 'advisory' AND l.objid = 72707369;
-
--- Release
-SELECT pg_advisory_unlock_all();          -- works only on the holding session
-SELECT pg_terminate_backend(<pid>);       -- otherwise kill it
-```
-
-Then `npm run db:status` to confirm.
-
-### `[persistence] Skill rows missing from the database`
-
-Mastery and attempt logging are silently inactive until the four `Skill` rows
-exist. The server reports this at boot and again whenever a write is skipped.
-
-```bash
-cd backend && npm run db:seed
-```
-
-### `P3009 — migrate found failed migrations in the target database`
-
-A migration record exists with no `finished_at`. Check whether it actually
-changed anything before removing it:
-
-```sql
-SELECT migration_name, started_at, finished_at, applied_steps_count
-FROM _prisma_migrations ORDER BY started_at;
-```
-
-`applied_steps_count = 0` means no DDL ran and the row is safe to delete. Anything
-above 0 means the schema is half-migrated — inspect before touching it.
+Only the `main` branch contains the original Render setup. Deleting the GitHub
+`migration` branch would not delete a deployed Cloudflare Worker or undo database
+writes. Saved Cloudflare rooms belong to their Worker and do not transfer between
+hosting platforms.
 
 ## Tests
 
@@ -224,9 +120,10 @@ above 0 means the schema is half-migrated — inspect before touching it.
 npm run verify
 ```
 
-The verification command checks formatting rules, unused code, TypeScript,
-backend game/learning tests, frontend component tests, and production builds.
-For the responsive browser check, run `npm run test:e2e --workspace=frontend`.
+The verification command checks lint, TypeScript, game/learning tests, frontend
+component tests and the Cloudflare build. Run `npm run test:cloudflare` for the
+isolated runtime checks. Browser checks use the same temporary Cloudflare game:
+`npm run test:e2e --workspace=frontend`.
 
 ## License
 

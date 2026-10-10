@@ -1,6 +1,6 @@
-import type { Server } from 'socket.io';
+import type { RealtimeServer as Server } from './realtime.types';
 import type { GameState } from '../features/game/game.types';
-import { nodeTimerScheduler, type TimerScheduler } from './runtime.scheduler';
+import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 
 export const PHASE_TIMEOUTS = {
   roll: 45_000,
@@ -34,7 +34,7 @@ export function getPhaseDeadline(
 export class PhaseTimerRegistry {
   private readonly timers = new Map<string, unknown>();
 
-  constructor(private readonly scheduler: TimerScheduler = nodeTimerScheduler) {}
+  constructor(private readonly scheduler: TimerScheduler = defaultTimerScheduler) {}
 
   arm(_io: Server, gameId: string, deadline: number, onExpire: () => void): void {
     this.clear(gameId);

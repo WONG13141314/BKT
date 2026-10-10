@@ -1,7 +1,7 @@
-import { gameService } from '../../features/game/game.service';
+import { gameService } from '../../test/game.service';
 import type { GameState } from '../../features/game/game.types';
 import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
-import { registerGameHandlers } from '../game.handlers';
+import { registerGameHandlers } from '../../test/socket.runtime';
 import { makeServer, makeSocket } from './socket.harness';
 
 const DUEL_ID = 'challenger-question:owner-question';

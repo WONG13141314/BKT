@@ -1,4 +1,4 @@
-import type { Server, Socket } from 'socket.io';
+import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { toPublicGameState } from '../features/game/game.public';
 import type { DuelState, FinalScore, GameState, MasteryReport, PublicDuelState } from '../features/game/game.types';

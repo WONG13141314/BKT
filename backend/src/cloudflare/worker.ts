@@ -1,4 +1,5 @@
 import { handleApiRequest, jsonResponse } from './http';
+import { allowedOrigin } from './origins';
 import type { WorkerEnv } from './types';
 export { GameRoom } from './room';
 export { PlayerDirectory } from './player-directory';
@@ -7,12 +8,6 @@ export { PlayerDirectory } from './player-directory';
 export class ApiService {
   constructor(_ctx: DurableObjectState, private readonly env: WorkerEnv) {}
   fetch(request: Request): Promise<Response> { return handleApiRequest(request, this.env); }
-}
-
-function allowedOrigin(request: Request, env: WorkerEnv): boolean {
-  const origin = request.headers.get('origin');
-  if (!origin || origin === new URL(request.url).origin) return true;
-  return (env.CORS_ORIGIN ?? '').split(',').map((value) => value.trim()).includes(origin);
 }
 
 export default {

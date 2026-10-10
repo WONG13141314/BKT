@@ -1,4 +1,4 @@
-import type { Server, Socket } from 'socket.io';
+import type { RealtimeServer as Server, RealtimeSocket as Socket } from '../realtime.types';
 
 type SocketListener = (...args: any[]) => unknown;
 

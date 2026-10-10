@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useRef, useState, ReactNode, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import { WebSocketEventSocket, type RealtimeSocket } from '../utils/WebSocketEventSocket';
 
 interface SocketContextType {
@@ -21,9 +20,6 @@ export const useSocket = () => useContext(SocketContext);
 interface SocketProviderProps {
   children: ReactNode;
 }
-
-const USE_WEBSOCKET = import.meta.env.VITE_REALTIME_TRANSPORT === 'websocket';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (USE_WEBSOCKET ? '/ws' : 'http://localhost:3001');
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
@@ -65,12 +61,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     currentTokenRef.current = token;
 
-    const newSocket: RealtimeSocket = USE_WEBSOCKET
-      ? new WebSocketEventSocket(SOCKET_URL, token)
-      : io(SOCKET_URL, {
-        auth: { token },
-        transports: ['websocket', 'polling'],
-      });
+    const newSocket: RealtimeSocket = new WebSocketEventSocket('/ws', token);
 
     newSocket.on('connect', () => {
       setIsConnected(true);

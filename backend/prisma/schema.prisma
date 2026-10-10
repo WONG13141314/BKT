@@ -1,8 +1,8 @@
 // Math Monopoly — database schema
 //
 // Scope note: live game state (positions, money, properties, turn phase) is NOT
-// stored here. It lives in memory in `game.service.ts` for the duration of a
-// match. Postgres holds the things that must outlive a match: who the player is,
+// stored here. Cloudflare Durable Objects store and restore it for the duration
+// of a match. Postgres holds the things that must outlive a match: who the player is,
 // what the BKT engine believes about them, and the evidence behind that belief.
 
 generator client {

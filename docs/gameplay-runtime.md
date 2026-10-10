@@ -58,19 +58,31 @@ grant additional question time.
 
 ## Hosting limits
 
-These changes address observed gameplay ordering and browser work. They do not
-establish the cause of every reported freeze or remove network latency. Render
-documents that its free web service can spin down after 15 minutes without
-inbound HTTP/WebSocket traffic and can restart at any time. See
-[Render's free service documentation](https://render.com/docs/free).
+On the `migration` branch, Cloudflare hosts the website, API and live game.
+Each `GameRoom` Durable Object saves match state, absolute deadlines and pending
+research writes in durable SQLite-backed storage. WebSocket hibernation lets
+idle rooms sleep; waking a room restores its state and remaining deadlines.
+Persisted alarms continue deadline processing and retry evidence synchronization
+with Neon. Player identity and long-term learning records remain in PostgreSQL.
 
-This prototype holds active matches in server memory. A server restart loses the
-active match even though player identity and persisted learning records remain
-in PostgreSQL. Durable match recovery would require a separate persistence
-change. This update requires no database migration and does not change BKT
-parameters or the hint/timing evaluation policy.
+Stable event IDs make retried evidence writes idempotent, and mastery changes
+commit with their corresponding question rows. Local Cloudflare/workerd tests
+exercise hibernation, reconnects, database outages and durable recovery. See the
+[Cloudflare validation record](CLOUDFLARE_VALIDATION.md) for the tested behavior
+and its limits.
 
-## Verification on 6 October 2026
+Network delay and browser work can still affect play. Cloudflare and Neon Free
+have finite request, compute and storage allowances; recovery does not establish
+a simultaneous-player capacity. Use the
+[Cloudflare setup and evaluation guide](CLOUDFLARE_MIGRATION.md) to check usage
+and rehearse the intended school-network workload. The original Render
+implementation remains on `main`.
+
+## Historical verification on 6 October 2026
+
+The following 6 and 8 October observations were recorded with the earlier
+Node/Socket.IO implementation. They preserve the original browser measurements;
+they are not live Cloudflare performance measurements.
 
 The full checks passed: backend lint/types/build and 296 tests in 31 suites;
 frontend lint/types/build and 40 tests in 11 suites. Browser debugging used the
@@ -102,7 +114,7 @@ The 3D and physics dependencies now load in separate chunks, so controls can
 appear before those scenes finish loading. Those dependencies remain sizeable;
 the split does not imply a comparable reduction in total downloaded bytes.
 
-## Verification on 8 October 2026
+## Historical verification on 8 October 2026
 
 Lint, typechecks and production builds passed, together with 52 frontend tests
 and 313 backend tests. An isolated test runtime used the real game engine and

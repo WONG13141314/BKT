@@ -1,9 +1,9 @@
-import { gameService } from '../../features/game/game.service';
+import { gameService } from '../../test/game.service';
 import type { DuelState } from '../../features/game/game.types';
 import { makeFinishedFixture, makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
-import { registerGameHandlers } from '../game.handlers';
-import { registerLobbyHandlers } from '../lobby.handlers';
-import { roomManager } from '../lobby.manager';
+import { registerGameHandlers } from '../../test/socket.runtime';
+import { registerLobbyHandlers } from '../../test/socket.runtime';
+import { roomManager } from '../../test/socket.runtime';
 import { SocketPresence } from '../presence.manager';
 import { makeServer, makeSocket } from './socket.harness';
 

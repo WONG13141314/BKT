@@ -1,8 +1,8 @@
-import { gameService } from '../../features/game/game.service';
-import { registerGameHandlers } from '../game.handlers';
+import { gameService } from '../../test/game.service';
+import { registerGameHandlers } from '../../test/socket.runtime';
 import { makeGameState } from '../../test/game.fixtures';
-import { registerLobbyHandlers } from '../lobby.handlers';
-import { roomManager } from '../lobby.manager';
+import { registerLobbyHandlers } from '../../test/socket.runtime';
+import { roomManager } from '../../test/socket.runtime';
 import { SocketPresence } from '../presence.manager';
 import { PHASE_TIMEOUTS } from '../phase.deadlines';
 import { makeServer, makeSocket } from './socket.harness';

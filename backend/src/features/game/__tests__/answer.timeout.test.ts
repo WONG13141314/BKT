@@ -1,6 +1,6 @@
 import { selectChallenge } from '../../../bkt/bkt.selector';
 import { initializeGameState } from '../game.engine';
-import { gameService } from '../game.service';
+import { gameService } from '../../../test/game.service';
 import type { AnswerResult, GameState, TurnPhase } from '../game.types';
 
 const PLAYERS = [

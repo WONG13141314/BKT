@@ -1,4 +1,4 @@
-// Hook for Socket.IO game event listeners — MathOpoly Redesign
+// Hook for native WebSocket game event listeners — MathOpoly Redesign
 // All new events for the redesigned turn flow
 
 import { useEffect, useCallback, useRef } from 'react';
@@ -91,8 +91,8 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   // ---- Emit Helpers ----
 
   const emit = useCallback((event: string, data?: Record<string, any>) => {
-    // Socket.IO normally queues offline emissions. Replaying a roll or an
-    // answer after recovery could apply it to a different turn or question.
+    // Replaying an offline roll or answer after recovery could apply it to a
+    // different turn or question.
     if (!socket?.connected || !gameId) return false;
     socket.emit(event, { gameId, ...data });
     return true;

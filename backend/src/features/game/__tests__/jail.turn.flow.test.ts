@@ -1,7 +1,7 @@
 import { initializeGameState } from '../game.engine';
 import { MAX_JAIL_TURNS } from '../game.constants';
-import { gameService } from '../game.service';
-import { registerGameHandlers } from '../../../sockets/game.handlers';
+import { gameService } from '../../../test/game.service';
+import { registerGameHandlers } from '../../../test/socket.runtime';
 import { makeServer, makeSocket } from '../../../sockets/__tests__/socket.harness';
 
 describe('jail turn entry through the live game flow', () => {

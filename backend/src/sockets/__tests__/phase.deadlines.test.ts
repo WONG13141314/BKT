@@ -1,6 +1,6 @@
-import type { Server } from 'socket.io';
-import { gameService } from '../../features/game/game.service';
-import { registerGameHandlers } from '../game.handlers';
+import type { RealtimeServer as Server } from '../realtime.types';
+import { gameService } from '../../test/game.service';
+import { registerGameHandlers } from '../../test/socket.runtime';
 import {
   getPhaseDeadline,
   PHASE_TIMEOUTS,

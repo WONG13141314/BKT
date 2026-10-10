@@ -1,20 +1,15 @@
 // Phase 3 — the durable learner model.
 //
-// These cover the two halves that decide whether the research data is usable:
-// the mastery a returning player resumes from, and the exact shape of the row
-// written for each answer. Neither touches a database — `game.persistence` is
-// inert under NODE_ENV=test so a test run can never append to the real dataset.
+// Returning-player initialization and exact research rows are tested without
+// database access. Actual SQL evidence rules run in the isolated PGlite suite.
 
 import { initializeGameState } from '../game.engine';
 import {
   buildAttemptData,
   isRecordablePlayer,
-  PlayerWriteQueue,
-  recordAttempt,
-  type AttemptRecord,
-} from '../game.persistence';
-import * as persistence from '../game.persistence';
-import { gameService } from '../game.service';
+} from '../game.persistence.shared';
+import type { AttemptRecord, PlayerPriors } from '../game.persistence.types';
+import { createGameService } from '../game.runtime';
 import { INITIAL_MASTERY } from '../../../bkt/bkt.defaults';
 import { getAdjustedParams } from '../../../bkt/bkt.selector';
 import { QUESTION_TIMING_POLICY_VERSION, SKILL_NAMES } from '../game.constants';
@@ -105,42 +100,42 @@ describe('Resuming mastery across sessions', () => {
   });
 });
 
-describe('Per-player prior read barriers', () => {
-  it('runs a deferred read after the learner write already queued before it', async () => {
-    const queue = new PlayerWriteQueue();
-    let mastery = 0.1;
-    let releaseWrite!: () => void;
-    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve; });
+describe('Runtime prior read barriers', () => {
+  it('does not expose a new game before its saved mastery read completes', async () => {
+    let releaseRead!: (priors: Map<string, PlayerPriors>) => void;
+    const readGate = new Promise<Map<string, PlayerPriors>>((resolve) => { releaseRead = resolve; });
+    const loadMasteryPriorsAfterWrites = jest.fn(() => readGate);
+    const service = createGameService({ persistence: {
+      loadMasteryPriorsAfterWrites, newGameId: () => crypto.randomUUID(), recordAttempt: () => {},
+    } });
 
-    const write = queue.enqueue('db-alice', async () => {
-      await writeGate;
-      mastery = 0.82;
-    });
-    const read = queue.enqueue('db-alice', async () => mastery);
-
-    releaseWrite();
-    await write;
-    expect(await read).toBe(0.82);
+    const creating = service.createGame('game_PRIOR_BARRIER', BASE_PLAYERS);
+    expect(loadMasteryPriorsAfterWrites).toHaveBeenCalledWith(['db-alice']);
+    expect(service.getGameSync('game_PRIOR_BARRIER')).toBeNull();
+    releaseRead(new Map());
+    expect((await creating).players[0].masteryStates.Addition).toBe(INITIAL_MASTERY);
   });
 
-  it('makes createGame wait for the queued prior read that observes the latest attempt', async () => {
+  it('starts with the latest mastery and independent evidence supplied by the persistence barrier', async () => {
     let releaseRead!: () => void;
     const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
     const latest = new Map([['db-alice', { mastery: { Addition: 0.82 }, attempts: { Addition: 6 } }]]);
-    const barrier = jest.spyOn(persistence, 'loadMasteryPriorsAfterWrites').mockImplementation(async () => {
+    const barrier = jest.fn(async () => {
       await readGate;
       return latest;
     });
+    const service = createGameService({ persistence: {
+      loadMasteryPriorsAfterWrites: barrier,
+      newGameId: () => crypto.randomUUID(), recordAttempt: () => {},
+    } });
 
-    const creating = gameService.createGame('game_QUEUE_BARRIER', [BASE_PLAYERS[0]]);
+    const creating = service.createGame('game_QUEUE_BARRIER', [BASE_PLAYERS[0]]);
     expect(barrier).toHaveBeenCalledWith(['db-alice']);
     releaseRead();
 
     const state = await creating;
     expect(state.players[0].masteryStates.Addition).toBe(0.82);
     expect(state.players[0].skillAttempts.Addition).toBe(6);
-    gameService.removeGame('game_QUEUE_BARRIER');
-    barrier.mockRestore();
   });
 });
 
@@ -266,6 +261,5 @@ describe('Attempt rows', () => {
     // mastery table and the evaluation data.
     expect(isRecordablePlayer(bot)).toBe(false);
     expect(isRecordablePlayer(human)).toBe(true);
-    expect(() => recordAttempt(makeRecord({ player: bot }))).not.toThrow();
   });
 });

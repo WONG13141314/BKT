@@ -1,4 +1,4 @@
-import type { PublicPlayer } from '../features/auth/auth.service';
+import type { PublicPlayer } from '../features/auth/auth.types';
 import { createGameService, type GameService } from '../features/game/game.runtime';
 import type { GameState } from '../features/game/game.types';
 import { toPublicGameState } from '../features/game/game.public';

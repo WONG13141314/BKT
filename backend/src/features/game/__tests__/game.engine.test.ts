@@ -17,7 +17,7 @@ import {
 } from '../game.engine';
 import { GameState } from '../game.types';
 import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, MAX_JAIL_TURNS, SKILL_NAMES, type SkillName } from '../game.constants';
-import { gameService } from '../game.service';
+import { gameService } from '../../../test/game.service';
 import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
 describe('Game Engine — MathOpoly Redesign', () => {

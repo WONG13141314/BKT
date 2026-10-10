@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import type { AuthResult, PublicPlayer } from '../features/auth/auth.service';
+import type { AuthResult, PublicPlayer } from '../features/auth/auth.types';
 import type { ClaimInput, GuestInput, SignInInput } from '../features/auth/auth.validation';
 import { CloudflareDatabase, type DatabasePlayer } from './database';
 import type { WorkerEnv } from './types';

@@ -1,5 +1,5 @@
-import { gameService } from '../../features/game/game.service';
-import { registerGameHandlers } from '../game.handlers';
+import { gameService } from '../../test/game.service';
+import { registerGameHandlers } from '../../test/socket.runtime';
 import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
 import { makeServer, makeSocket } from './socket.harness';
 import type { DuelSide } from '../../features/game/game.types';

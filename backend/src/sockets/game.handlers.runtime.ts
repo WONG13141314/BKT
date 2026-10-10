@@ -9,10 +9,10 @@
 //      by a server-side deadline that resolves it if they never respond.
 // ============================================
 
-import type { Server, Socket } from 'socket.io';
+import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
 import type { GameService } from '../features/game/game.runtime';
 import type { RoomManager } from './lobby.manager';
-import { nodeTimerScheduler, type TimerScheduler } from './runtime.scheduler';
+import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 import type { AnswerResult, FinalScore, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
@@ -54,10 +54,10 @@ export interface GameHandlersRuntimeOptions {
   recordGameResult: (state: GameState, scores: FinalScore[]) => void;
 }
 
-/** All mutable handler state belongs to one Node or Durable Object runtime. */
+/** All mutable handler state belongs to one room runtime. */
 export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
   const { gameService, recordGameResult } = options;
-  const scheduler = options.scheduler ?? nodeTimerScheduler;
+  const scheduler = options.scheduler ?? defaultTimerScheduler;
   const defaultPresence = options.presence ?? new SocketPresence();
   const phaseTimers = new PhaseTimerRegistry(scheduler);
   const cleanupTimers = new Map<string, { timer: unknown; deadline: number }>();

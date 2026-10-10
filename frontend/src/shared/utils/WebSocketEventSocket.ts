@@ -1,6 +1,6 @@
 type SocketListener = (...args: any[]) => void;
 
-/** The event API used by the lobby and game, shared by both transports. */
+/** The native WebSocket event API used by the lobby and game. */
 export interface RealtimeSocket {
   readonly connected: boolean;
   readonly id?: string;

@@ -1,4 +1,4 @@
-/** Tracks the open Socket.IO connections for each authenticated player. */
+/** Tracks the open real-time connections for each authenticated player. */
 export class SocketPresence {
   private readonly socketsByPlayer = new Map<string, Set<string>>();
 
