@@ -7,7 +7,7 @@ import { parseEnv } from 'node:util';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const wrangler = join(root, 'node_modules/wrangler/bin/wrangler.js');
 const npm = process.env.npm_execpath;
-const workerName = 'monomath-migration';
+const workerName = 'mathopoly';
 const local = {};
 for (const file of ['.env', 'backend/.env', '.dev.vars']) {
   const path = join(root, file);
@@ -104,7 +104,7 @@ async function preparePublicHostname() {
   if (!current.errors?.some((error) => error.code === 10007)) {
     throw new Error('Cloudflare could not check the public hostname. Verify your account email and retry setup.');
   }
-  const candidate = `monomath-${childEnv.CLOUDFLARE_ACCOUNT_ID.slice(0, 12)}`;
+  const candidate = `mathopoly-${childEnv.CLOUDFLARE_ACCOUNT_ID.slice(0, 12)}`;
   const created = await request('PUT', { subdomain: candidate });
   if (!created.success) {
     throw new Error('Cloudflare could not register a free public hostname. Open Workers & Pages in Cloudflare, create a workers.dev subdomain, then retry setup.');
@@ -129,11 +129,11 @@ async function main() {
   console.log('Building the website and Cloudflare game server.');
   await run(process.execPath, [npm, 'run', 'build']);
   await preparePublicHostname();
-  console.log('Installing the two application secrets on the migration Worker.');
+  console.log('Installing the two application secrets on the Mathopoly Worker.');
   await cf(['secret', 'bulk', '--name', workerName], { input: JSON.stringify(secrets) });
-  console.log('Publishing the migration game.');
+  console.log('Publishing Mathopoly.');
   const deployed = await cf(['deploy', '--name', workerName]);
-  const url = deployed.output.match(/https:\/\/monomath-migration\.[a-z0-9-]+\.workers\.dev\b/i)?.[0];
+  const url = deployed.output.match(/https:\/\/mathopoly\.[a-z0-9-]+\.workers\.dev\b/i)?.[0];
   if (!url) throw new Error('Deployment completed, but no public link was returned. Check the Worker in Cloudflare.');
   let healthy = false;
   const healthDeadline = Date.now() + 180_000;
