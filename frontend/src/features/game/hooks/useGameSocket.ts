@@ -1,4 +1,4 @@
-// Hook for native WebSocket game event listeners — MathOpoly Redesign
+// Hook for native WebSocket game event listeners — Mathopoly
 // All new events for the redesigned turn flow
 
 import { useEffect, useCallback, useRef } from 'react';

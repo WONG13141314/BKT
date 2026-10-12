@@ -1,5 +1,5 @@
 // ============================================
-// Game Engine Types — MathOpoly Redesign
+// Game Engine Types — Mathopoly
 // 20-tile board, 4 arithmetic skills, RM currency
 // ============================================
 

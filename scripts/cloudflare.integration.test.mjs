@@ -158,7 +158,7 @@ function assertNoAnswer(value) {
 test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recovery', { timeout: 150_000 }, async (t) => {
   const fixture = await createTestRuntime(0, { extraWorkerSource: testRoomSource, roomClassName: 'TestGameRoom' });
   const roomTest = async (roomCode, action, body) => {
-    const namespace = await fixture.runtime.getDurableObjectNamespace('ROOMS', 'monomath-test');
+    const namespace = await fixture.runtime.getDurableObjectNamespace('ROOMS', 'mathopoly-test');
     const response = await namespace.get(namespace.idFromName(`room:${roomCode}`)).fetch(`https://room/__test/${action}`, {
       method: body ? 'POST' : 'GET', ...(body ? { body: JSON.stringify(body) } : {}),
     });
@@ -323,7 +323,7 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       assert.deepEqual(afterDuplicate.diceValues, moving.diceValues);
       assert.equal(afterDuplicate.diceRollId, moving.diceRollId);
       assert.equal(host.frames.slice(duplicateMark).some((frame) => frame.event === 'game:error'), false);
-      await fixture.runtime.unsafeEvictDurableObject('monomath-test', 'TestGameRoom', { name: `room:${code}`, webSockets: 'hibernate' });
+      await fixture.runtime.unsafeEvictDurableObject('mathopoly-test', 'TestGameRoom', { name: `room:${code}`, webSockets: 'hibernate' });
       const restored = await host.state(gameId);
       assert.equal(restored.turnPhase, 'MOVING');
       assert.equal(restored.phaseDeadline, before.phaseDeadline, 'Wake must retain the absolute movement deadline');
@@ -405,7 +405,7 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       // Avoid local automatic-alarm/forced-eviction control requests racing each
       // other; the real failed write above already established retry behavior.
       await roomTest(code, 'patch', { gameId, patch: {}, deferRetriesFor: 100_000 });
-      await fixture.runtime.unsafeEvictDurableObject('monomath-test', 'TestGameRoom', { name: `room:${code}`, webSockets: 'hibernate' });
+      await fixture.runtime.unsafeEvictDurableObject('mathopoly-test', 'TestGameRoom', { name: `room:${code}`, webSockets: 'hibernate' });
       await host.state(gameId);
       const recovered = await roomTest(code, 'snapshot');
       assert.equal(recovered.outbox[0].value.id, event.value.id);

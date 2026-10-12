@@ -178,7 +178,7 @@ export class CloudflarePersistence {
     const results = await this.sql.transaction([
       {
         text: 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        values: [`monomath:player:${record.player.playerId}`],
+        values: [`mathopoly:player:${record.player.playerId}`],
       },
       {
         text: `WITH skill AS (

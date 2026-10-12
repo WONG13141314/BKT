@@ -1,4 +1,4 @@
-// Math Monopoly — database schema
+// Mathopoly — database schema
 //
 // Scope note: live game state (positions, money, properties, turn phase) is NOT
 // stored here. Cloudflare Durable Objects store and restore it for the duration
@@ -13,7 +13,7 @@ datasource db {
   provider = "postgresql"
   // Pooled connection (Neon: the "-pooler" host) used at runtime.
   url       = env("DATABASE_URL")
-  // Direct, unpooled connection used for migrations. PgBouncer cannot run them.
+  // Direct, unpooled connection used for schema updates. PgBouncer cannot run them.
   directUrl = env("DIRECT_URL")
 }
 

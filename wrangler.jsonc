@@ -13,11 +13,16 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "ROOMS", "class_name": "GameRoom" },
-      { "name": "API", "class_name": "ApiService" },
-      { "name": "PLAYERS", "class_name": "PlayerDirectory" }
+      { "name": "ROOMS", "class_name": "MathopolyGameRoom" },
+      { "name": "API", "class_name": "MathopolyApi" },
+      { "name": "PLAYERS", "class_name": "MathopolyPlayerDirectory" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom", "ApiService", "PlayerDirectory"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom", "ApiService", "PlayerDirectory"] },
+    { "tag": "v2", "renamed_classes": [{ "from": "ApiService", "to": "MathopolyApiService" }] },
+    { "tag": "v3", "new_sqlite_classes": ["MathopolyGameRoom", "MathopolyApi", "MathopolyPlayerDirectory"] },
+    { "tag": "v4", "deleted_classes": ["GameRoom", "MathopolyApiService", "PlayerDirectory"] }
+  ],
   "vars": { "JWT_EXPIRES_IN": "90d" }
 }

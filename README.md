@@ -1,14 +1,13 @@
-# MonoMath — Adaptive Arithmetic Property Game
+# Mathopoly — Adaptive Arithmetic Property Game
 
-**Play now: [Open MonoMath](https://monomath-migration.monomath-a32bfd97d1bd.workers.dev).**
+**Play now: [Open Mathopoly](https://mathopoly.mathopoly.workers.dev).**
 
-The Cloudflare account, public address and application secrets are already
-configured for this deployment. To play, open the link. To keep an existing
-claimed profile, sign in with its username and six-digit PIN.
+Open the public link above to play. To keep an existing claimed profile,
+sign in with its username and six-digit PIN.
 
 Future updates from this computer use `npm run deploy`. Optional automatic
 deploys from GitHub are explained in the
-[setup guide](docs/CLOUDFLARE_MIGRATION.md#9-optional-automatic-deploys-from-github).
+[Mathopoly setup guide](docs/CLOUDFLARE_SETUP.md#9-optional-automatic-deploys-from-github).
 
 The **`migration` branch runs the website and game server on Cloudflare**, with
 the existing Neon PostgreSQL database. Its default development, build and deploy
@@ -22,14 +21,14 @@ commands use Cloudflare. **`main` is the separate Render backup.**
    account and authorize Wrangler. The script uses the existing database and JWT
    settings, builds the game, prepares a free public hostname, uploads the two
    required secrets privately, and deploys
-   **`monomath-migration`**.
-3. Open the `https://monomath-migration.<your-account>.workers.dev` link printed
+   **`mathopoly`**.
+3. Open the `https://mathopoly.<your-account>.workers.dev` link printed
    after deployment. Try solo play, then multiplayer using two separate browser
    profiles or devices.
 
 Use **Workers Free** and **Neon Free** for RM0 hosting. Setup publishes a real
 deployment; games played there write to the configured Neon database. The
-[setup guide](docs/CLOUDFLARE_MIGRATION.md) explains database isolation, existing
+[Mathopoly setup guide](docs/CLOUDFLARE_SETUP.md) explains database isolation, existing
 players, evaluation checks and free allowances. See the
 [validation record](docs/CLOUDFLARE_VALIDATION.md) for what has been tested.
 
@@ -55,7 +54,7 @@ for the research rationale and pilot calibration plan.
 A timeout or assisted answer remains a recorded game opportunity but does not
 update BKT mastery, supply difficulty evidence or refresh the last practice date.
 Independent wrong answers still update BKT. The attempt log stores actual hint
-use and timing metadata inside `questionData`; no database migration is needed.
+use and timing metadata inside `questionData`; no database schema update is needed.
 BKT parameters remain provisional settings to evaluate with pupil data.
 
 During solo play, each bot action reads the current match state when it runs.
@@ -72,9 +71,9 @@ notifications. See [runtime debugging notes](docs/gameplay-runtime.md).
 | --- | --- |
 | Website | React, Vite and TypeScript, served by Worker Static Assets |
 | HTTP entry point | Cloudflare Worker |
-| Live game | SQLite-backed `GameRoom` Durable Objects and native WebSockets |
-| Login/profile API | `ApiService` Durable Objects, JWT and bcrypt |
-| Room membership | `PlayerDirectory` Durable Objects |
+| Live game | SQLite-backed `MathopolyGameRoom` Durable Objects and native WebSockets |
+| Login/profile API | `MathopolyApi` Durable Objects, JWT and bcrypt |
+| Room membership | `MathopolyPlayerDirectory` Durable Objects |
 | Permanent database | Neon PostgreSQL, accessed through its HTTP SQL driver |
 
 The website, API and live connection share one origin. Each room owns its game
@@ -85,7 +84,7 @@ incrementing mastery twice.
 
 Neon retains player identity, BKT mastery, question evidence and finished-match
 history. The existing schema and four seeded skills are reused without a schema
-migration or reset. Prisma files remain database tooling; the deployed game does
+update or reset. Prisma files remain database tooling; the deployed game does
 not use a Prisma client, Express server or Socket.IO.
 
 Players can begin with a nickname and later claim a username/PIN to recover the

@@ -1,4 +1,4 @@
-# Gameplay runtime and recovery
+# Mathopoly gameplay runtime and recovery
 
 ## Turn presentation
 
@@ -74,7 +74,7 @@ and its limits.
 Network delay and browser work can still affect play. Cloudflare and Neon Free
 have finite request, compute and storage allowances; recovery does not establish
 a simultaneous-player capacity. Use the
-[Cloudflare setup and evaluation guide](CLOUDFLARE_MIGRATION.md) to check usage
+[Mathopoly Cloudflare setup and evaluation guide](CLOUDFLARE_SETUP.md) to check usage
 and rehearse the intended school-network workload. The original Render
 implementation remains on `main`.
 

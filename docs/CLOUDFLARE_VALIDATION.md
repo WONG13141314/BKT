@@ -1,4 +1,4 @@
-# Cloudflare application validation
+# Mathopoly: Cloudflare application validation
 
 Checks recorded on 10 October 2026 with Node 24.15.0. The implementation is on
 `migration`, whose default `dev`, `build` and `deploy` commands now use Cloudflare.
@@ -51,8 +51,9 @@ duels, challenge cards, jail, bankruptcy, scoring, mastery and difficulty rules.
 
 ## Passing deployed checks
 
-Cloudflare accepted the deployment for
-[the migration URL](https://monomath-migration.monomath-a32bfd97d1bd.workers.dev).
+Cloudflare accepted the Mathopoly application deployment during these checks.
+The current public deployment is
+[Mathopoly](https://mathopoly.mathopoly.workers.dev).
 The automatic `npm run setup:cloudflare` flow completed successfully, including
 account checks, build, public hostname, private secret upload, deploy and health.
 
@@ -94,7 +95,7 @@ was untouched by this cleanup.
 
 For a new account or checkout, `npm run setup:cloudflare` handles browser
 sign-in when required, hostname registration, private secret upload and
-deployment. The [setup guide](CLOUDFLARE_MIGRATION.md) explains the process.
+deployment. The [Mathopoly setup guide](CLOUDFLARE_SETUP.md) explains the process.
 
 ## Before the school evaluation
 

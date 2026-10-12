@@ -22,10 +22,10 @@ describe('Cloudflare SQL against the existing PostgreSQL schema', () => {
   beforeAll(async () => {
     postgres = new PGlite();
     await postgres.waitReady;
-    const migrationPath = resolve(
+    const schemaPath = resolve(
       process.cwd(), 'prisma/migrations/20260726000000_init/migration.sql',
     );
-    await postgres.exec(readFileSync(migrationPath, 'utf8'));
+    await postgres.exec(readFileSync(schemaPath, 'utf8'));
     executor = {
       async query<T>(text: string, values: unknown[] = []): Promise<T[]> {
         const result = await postgres.query<T>(text, values);

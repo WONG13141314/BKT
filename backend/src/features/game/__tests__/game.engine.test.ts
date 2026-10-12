@@ -20,7 +20,7 @@ import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, MAX_JAIL_TURNS, SKILL_NAMES, typ
 import { gameService } from '../../../test/game.service';
 import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
-describe('Game Engine — MathOpoly Redesign', () => {
+describe('Game Engine — Mathopoly', () => {
   let gameState: GameState;
 
   beforeEach(() => {

@@ -1,8 +1,8 @@
-# MonoMath: Cloudflare setup and evaluation checks
+# Mathopoly: Cloudflare setup and evaluation checks
 
-The **`migration` branch is the Cloudflare implementation**. Its website, API and live game deploy together as **`monomath-migration`**, with your existing Neon PostgreSQL database. The original Render implementation stays on **`main`** as a separate backup.
+The **`migration` branch is the Cloudflare implementation**. Its website, API and live game deploy together as **`mathopoly`**, with your existing Neon PostgreSQL database. The original Render implementation stays on **`main`** as a separate backup.
 
-The current account is already configured: **[open the deployed game](https://monomath-migration.monomath-a32bfd97d1bd.workers.dev)**. Local and deployed checks are recorded in [the validation document](CLOUDFLARE_VALIDATION.md). The setup steps below are for a fresh computer/account; later updates from this computer use `npm run deploy`.
+The current public deployment is **[open Mathopoly](https://mathopoly.mathopoly.workers.dev)**. Local and deployed checks are recorded in [the Mathopoly validation document](CLOUDFLARE_VALIDATION.md). The setup steps below are for a fresh computer/account; use the exact URL printed by Wrangler for that account. After setup, later updates use `npm run deploy`.
 
 ## 1. Get a playable link in three steps
 
@@ -24,7 +24,7 @@ The current account is already configured: **[open the deployed game](https://mo
 
    If a browser opens, sign in to your Cloudflare account and select **Allow** to authorize Wrangler. Return to the terminal and let setup finish. Use the **Workers Free** plan. Setup reuses your account's `workers.dev` hostname, or registers a free one automatically when the account has none. [Cloudflare public addresses](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
 
-3. Open the exact **`https://monomath-migration.<your-account>.workers.dev`** link printed after deployment. Try solo play, then join a multiplayer room from a second browser profile or device.
+3. Open the exact **`https://mathopoly.<your-account>.workers.dev`** link printed after deployment. Try solo play, then join a multiplayer room from a second browser profile or device.
 
 Setup checks Cloudflare authentication and starts browser login if needed. It then builds the website/game server, prepares the free public hostname, privately uploads `DATABASE_URL` and `JWT_SECRET`, deploys the Worker and checks `/api/health`. It normally reuses `backend/.env` without editing it. Settings take precedence in this order: **process environment → `.dev.vars` → `backend/.env` → root `.env`**. If `.dev.vars` already exists, check which database it names before setup. This is a real deployment: playtests write to the configured Neon database.
 
@@ -51,16 +51,16 @@ The intended free setup is:
 | Part | Service | What it does |
 | --- | --- | --- |
 | Game website | Cloudflare Worker Static Assets | Serves the React/Vite frontend |
-| Live multiplayer | Cloudflare SQLite-backed `GameRoom` Durable Objects | Owns each room, game state, WebSockets, saved deadlines and pending database writes |
-| Login/profile API | SQLite-backed `ApiService` Durable Objects | Runs the existing guest/profile/username/PIN flows |
-| Player room membership | SQLite-backed `PlayerDirectory` Durable Objects | Coordinates one profile's room claims across browser tabs/devices and room objects |
+| Live multiplayer | Cloudflare SQLite-backed `MathopolyGameRoom` Durable Objects | Owns each room, game state, WebSockets, saved deadlines and pending database writes |
+| Login/profile API | SQLite-backed `MathopolyApi` Durable Objects | Runs the existing guest/profile/username/PIN flows |
+| Player room membership | SQLite-backed `MathopolyPlayerDirectory` Durable Objects | Coordinates one profile's room claims across browser tabs/devices and room objects |
 | Permanent database | Your existing Neon PostgreSQL database | Keeps player identities, BKT mastery, question evidence and finished matches |
 
 The frontend, `/api/*`, and `/ws` share one Cloudflare URL. This is a **Workers deployment**, using the existing `wrangler.jsonc`; you do not need a separate Cloudflare Pages project, Supabase project or paid domain.
 
-Neon keeps the existing PostgreSQL schema. The runtime accesses it through Neon's HTTP SQL driver; Prisma remains database tooling. **This migration requires no PostgreSQL schema migration or database reset.** The `new_sqlite_classes` entry in `wrangler.jsonc` creates three Cloudflare classes: `GameRoom`, `ApiService` and `PlayerDirectory`, separately from Neon. Each object owns its own storage; the directory coordinates a player's room membership across objects.
+Neon keeps the existing PostgreSQL schema. The runtime accesses it through Neon's HTTP SQL driver; Prisma remains database tooling. **This setup requires no PostgreSQL schema update or database reset.** Wrangler provisions the three Cloudflare classes defined in `wrangler.jsonc`: `MathopolyGameRoom`, `MathopolyApi` and `MathopolyPlayerDirectory`, separately from Neon. Each object owns its own storage; the directory coordinates a player's room membership across objects.
 
-Keep `wrangler.jsonc`'s Worker name, Durable Object class names, and migration tag stable after deployment. Renaming them can select different storage rather than upgrading your existing rooms.
+Keep `wrangler.jsonc`'s Worker name, Durable Object class names and storage backends consistent with the deployed application. Changing the Worker name only in local configuration can create a separate application and room storage; an existing Worker's rename must preserve its provisioned namespaces.
 
 The deployed API needs `DATABASE_URL` and `JWT_SECRET`; `JWT_EXPIRES_IN` is already `90d`. Use the **same JWT secret** as the existing application to keep its signed tokens compatible. The shared origin normally needs no production `CORS_ORIGIN`. `DIRECT_URL` is a Prisma tooling setting, not a Worker secret.
 
@@ -124,16 +124,16 @@ The automatic setup uses your existing database unless an override takes precede
 
 A Neon branch starts with the parent's schema/data, while later writes are isolated. It is independent of the Git branch; its compute and new data consume the project's free allowances. [Neon branching workflow](https://neon.com/docs/get-started/workflow-primer)
 
-For a **separately deployed** database trial, use a different Worker name, such as `monomath-neon-test`. After browser login, enter the test database URL and a test JWT secret at Wrangler's prompts:
+For a **separately deployed** database trial, use a different Worker name, such as `mathopoly-neon-test`. After browser login, enter the test database URL and a test JWT secret at Wrangler's prompts:
 
 ```powershell
-npx wrangler secret put DATABASE_URL --name monomath-neon-test
-npx wrangler secret put JWT_SECRET --name monomath-neon-test
+npx wrangler secret put DATABASE_URL --name mathopoly-neon-test
+npx wrangler secret put JWT_SECRET --name mathopoly-neon-test
 npm run build
-npx wrangler deploy --name monomath-neon-test
+npx wrangler deploy --name mathopoly-neon-test
 ```
 
-If Wrangler offers to create a missing Worker, check that the name is `monomath-neon-test`. Use its printed URL for the trial. This separates Cloudflare room storage and pending writes from `monomath-migration`. Avoid changing a deployed Worker's database while it still holds saved rooms or unsent evidence. Test-branch data is not automatically merged into the original database.
+If Wrangler offers to create a missing Worker, check that the name is `mathopoly-neon-test`. Use its printed URL for the trial. This separates Cloudflare room storage and pending writes from `mathopoly`. Avoid changing a deployed Worker's database while it still holds saved rooms or unsent evidence. Test-branch data is not automatically merged into the original database.
 
 ## 5. Check the deployed game before sharing it
 
@@ -230,7 +230,7 @@ Limits below were checked against official documentation on **10 October 2026**.
 
 Sources: [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [static asset billing](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/), [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Neon Free plan update](https://neon.com/blog/neon-free-plan-1-gb-per-project).
 
-PIN hashing runs inside `ApiService`, where Durable Objects have a default **30-second CPU allowance**, rather than the outer Worker's 10 ms allowance. It retains bcrypt cost 10. [Durable Object limits](https://developers.cloudflare.com/durable-objects/platform/limits/)
+PIN hashing runs inside `MathopolyApi`, where Durable Objects have a default **30-second CPU allowance**, rather than the outer Worker's 10 ms allowance. It retains bcrypt cost 10. [Durable Object limits](https://developers.cloudflare.com/durable-objects/platform/limits/)
 
 Hibernating WebSockets and persisted alarms let idle rooms sleep while retaining state and deadlines. Alarms can execute more than once; saved state and idempotent writes handle retries. Active work, database waits, alarms and storage writes still consume allowances. Free-limit exhaustion can reject operations even while the static game screen still loads. [Durable Object alarms](https://developers.cloudflare.com/durable-objects/api/alarms/), [static asset billing](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)
 
@@ -238,13 +238,13 @@ The 13,000 GB-second allowance corresponds to about **28.2 aggregate continuousl
 
 Neon scales idle compute to zero, so the first database request after inactivity can take longer. Avoid a permanent database keep-alive loop, which spends the compute allowance. Check storage, compute and network-transfer usage in Neon. [Neon compute management](https://neon.com/docs/manage/endpoints/)
 
-**The proposal's 120 pupils are a total study sample, not a verified simultaneous capacity.** Rehearse the real number of pupils playing at once, the solo/multiplayer split, school Wi-Fi/devices, and one-hour evaluation schedule. Observe room latency, reconnects, missing writes and account usage. Schedule manageable groups based on that evidence; the migration does not establish that 120 simultaneous pupils fit the free quotas.
+**The proposal's 120 pupils are a total study sample, not a verified simultaneous capacity.** Rehearse the real number of pupils playing at once, the solo/multiplayer split, school Wi-Fi/devices, and one-hour evaluation schedule. Observe room latency, reconnects, missing writes and account usage. Schedule manageable groups based on that evidence; the Cloudflare implementation does not establish that 120 simultaneous pupils fit the free quotas.
 
 ## 8. The `main` backup and branch deletion
 
 The original Render code and its deployment instructions remain on **`main`**. Keep the existing Render services tied to that branch. This branch contains only the Cloudflare application; returning to the old implementation means using the existing `main` deployment or checking out `main`, not deploying `migration` to Render. Each deployment uses its own complete website/server pair.
 
-**Git branches, deployed applications and database data have separate lifetimes.** Deleting `migration` on GitHub would remove that Git branch reference. It would not delete `monomath-migration` from Cloudflare, remove its Durable Object storage, stop the existing Render deployment, or undo synchronized Neon writes. Retiring a Worker requires a separate Cloudflare action.
+**Git branches, deployed applications and database data have separate lifetimes.** Deleting `migration` on GitHub would remove that Git branch reference. It would not delete `mathopoly` from Cloudflare, remove its Durable Object storage, stop the existing Render deployment, or undo synchronized Neon writes. Retiring a Worker requires a separate Cloudflare action.
 
 **A code rollback does not undo database writes.** With the shared Neon database, successfully synchronized player profiles, mastery and question evidence remain available under the existing schema. Live Cloudflare rooms and their pending evidence remain in Durable Objects; unfinished matches do not transfer to the `main` implementation. Check synchronization before retiring the Cloudflare deployment.
 

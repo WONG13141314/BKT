@@ -1,5 +1,5 @@
 // ============================================
-// Game Service — MathOpoly Redesign
+// Game Service — Mathopoly
 // Bridges game engine with socket layer
 // Manages active game sessions in memory
 // ============================================

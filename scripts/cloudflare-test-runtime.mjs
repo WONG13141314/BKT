@@ -7,7 +7,7 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 /** A real workerd runtime with isolated PostgreSQL. Never reads project secrets. */
-export async function createTestRuntime(port = 0, { extraWorkerSource = '', roomClassName = 'GameRoom' } = {}) {
+export async function createTestRuntime(port = 0, { extraWorkerSource = '', roomClassName = 'MathopolyGameRoom' } = {}) {
   const postgres = new PGlite();
   await postgres.waitReady;
   await postgres.exec(await readFile(resolve(root, 'backend/prisma/migrations/20260726000000_init/migration.sql'), 'utf8'));
@@ -36,7 +36,7 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
 
   const runtime = new Miniflare(convertV4MiniflareOptions({
     host: '127.0.0.1', port, workers: [{
-    name: 'monomath-test',
+    name: 'mathopoly-test',
     script: await readFile(resolve(root, '.cloudflare-test/bundle/worker.js'), 'utf8') + '\n' + extraWorkerSource, modules: true,
     compatibilityDate: '2026-10-06', compatibilityFlags: ['nodejs_compat'],
     bindings: {
@@ -46,8 +46,8 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
     },
     durableObjects: {
       ROOMS: { className: roomClassName, useSQLite: true },
-      API: { className: 'ApiService', useSQLite: true },
-      PLAYERS: { className: 'PlayerDirectory', useSQLite: true },
+      API: { className: 'MathopolyApi', useSQLite: true },
+      PLAYERS: { className: 'MathopolyPlayerDirectory', useSQLite: true },
     },
     assets: {
       directory: resolve(root, 'frontend/dist'), binding: 'ASSETS',

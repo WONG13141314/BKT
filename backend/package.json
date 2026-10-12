@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --config ../wrangler.jsonc",
-    "build": "wrangler deploy --config ../wrangler.jsonc --dry-run --outdir ../.cloudflare-test/bundle",
+    "build": "wrangler deploy --cwd .. --config wrangler.jsonc --dry-run --outdir .cloudflare-test/bundle",
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

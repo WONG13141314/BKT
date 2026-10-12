@@ -1,11 +1,11 @@
 import { handleApiRequest, jsonResponse } from './http';
 import { allowedOrigin } from './origins';
 import type { WorkerEnv } from './types';
-export { GameRoom } from './room';
-export { PlayerDirectory } from './player-directory';
+export { GameRoom as MathopolyGameRoom } from './room';
+export { PlayerDirectory as MathopolyPlayerDirectory } from './player-directory';
 
 /** Gives auth operations the Durable Object CPU budget, including bcrypt cost 10. */
-export class ApiService {
+export class MathopolyApi {
   constructor(_ctx: DurableObjectState, private readonly env: WorkerEnv) {}
   fetch(request: Request): Promise<Response> { return handleApiRequest(request, this.env); }
 }

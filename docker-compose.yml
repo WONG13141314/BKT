@@ -3,14 +3,14 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: math-monopoly-db
+    container_name: mathopoly-db
     restart: unless-stopped
     ports:
       - '5432:5432'
     environment:
-      POSTGRES_USER: mathmonopoly
-      POSTGRES_PASSWORD: mathmonopoly_dev
-      POSTGRES_DB: math_monopoly
+      POSTGRES_USER: ${MATHOPOLY_DB_USER:-mathopoly}
+      POSTGRES_PASSWORD: ${MATHOPOLY_DB_PASSWORD:-mathopoly_dev}
+      POSTGRES_DB: ${MATHOPOLY_DB_NAME:-mathopoly}
     volumes:
       - pgdata:/var/lib/postgresql/data
 

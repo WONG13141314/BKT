@@ -1,5 +1,5 @@
 // ============================================
-// Game Engine — MathOpoly Redesign
+// Game Engine — Mathopoly
 // New turn state machine, 20-tile board, no houses/hotels
 // Level Up system, challenge cards, RM currency
 // ============================================

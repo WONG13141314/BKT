@@ -15,7 +15,7 @@ function withSeededRandom<T>(seed: number, action: () => T): T {
   }
 }
 
-describe('Question Generator — Redesigned Math Monopoly', () => {
+describe('Question Generator — Mathopoly', () => {
   describe('generateQuestion', () => {
     const skills = ['Addition', 'Subtraction', 'Multiplication', 'Division'];
     const difficulties: (1 | 2 | 3)[] = [1, 2, 3];
