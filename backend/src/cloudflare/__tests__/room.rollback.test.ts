@@ -1,5 +1,8 @@
 import { GameRoom } from '../room';
 import { PlayerDirectory } from '../player-directory';
+import { CloudflarePersistence } from '../database';
+import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
+import type { GameState } from '../../features/game/game.types';
 import type { RoomSnapshot } from '../room';
 import type { ConnectionAttachment, WorkerEnv } from '../types';
 
@@ -22,10 +25,12 @@ class SyntheticWebSocket {
   close(): void { this.readyState = 3; }
 }
 
-function harness() {
+function harness(saved?: RoomSnapshot) {
   const socket = new SyntheticWebSocket();
   const values = new Map<string, unknown>();
+  if (saved) values.set('room', structuredClone(saved));
   const initialization: Promise<unknown>[] = [];
+  const backgroundTasks: Promise<unknown>[] = [];
   let rejectNextCommit = false;
   const storage = {
     async get(key: string | string[]) {
@@ -36,6 +41,11 @@ function harness() {
     async transaction(operation: (transaction: DurableObjectTransaction) => Promise<unknown>) {
       const draft = structuredClone(values);
       const transaction = {
+        async get(key: string | string[]) {
+          return Array.isArray(key)
+            ? new Map(key.filter((item) => draft.has(item)).map((item) => [item, structuredClone(draft.get(item))]))
+            : structuredClone(draft.get(key));
+        },
         async put(key: string, value: unknown) { draft.set(key, structuredClone(value)); },
         async delete(keys: string[]) { for (const key of keys) draft.delete(key); },
         async setAlarm(_time: number) {},
@@ -60,7 +70,7 @@ function harness() {
     },
     getWebSockets: () => [socket],
     setWebSocketAutoResponse: jest.fn(),
-    waitUntil: jest.fn(),
+    waitUntil: jest.fn((task: Promise<unknown>) => { backgroundTasks.push(task); }),
   } as unknown as DurableObjectState;
   let membership: { code: string | null; version: number } | undefined;
   const directory = new PlayerDirectory({ storage: {
@@ -74,7 +84,12 @@ function harness() {
       membership = draft;
       return result;
     },
-  } } as unknown as DurableObjectState, {});
+  } } as unknown as DurableObjectState, {
+    ROOMS: {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: async () => new Response(JSON.stringify({ synchronized: true })) }),
+    },
+  } as unknown as WorkerEnv);
   const directoryFetch = jest.fn((input: string | Request, init?: RequestInit) =>
     directory.fetch(input instanceof Request ? input : new Request(input, init)));
   const room = new GameRoom(state, {
@@ -88,8 +103,42 @@ function harness() {
   return {
     room, socket, values, directory, directoryFetch,
     ready: () => Promise.all(initialization),
+    background: () => Promise.all(backgroundTasks),
     failNextCommit: () => { rejectNextCommit = true; },
   };
+}
+
+function researchSnapshot(game?: GameState): RoomSnapshot {
+  const state = makeGameState();
+  return {
+    version: 1, code: 'ABC234',
+    rooms: { botCounter: 1, rooms: [{
+      code: 'ABC234', hostId: 'synthetic-player-1', maxPlayers: 4,
+      status: game ? 'playing' : 'waiting',
+      players: [
+        { id: 'synthetic-player-1', name: 'Aina', avatar: 'car', isReady: true, isBot: false },
+        { id: 'synthetic-bot-1', name: 'Bot Ali', avatar: 'ship', isReady: true, isBot: true, botDifficulty: 'medium' },
+      ],
+    }] },
+    games: game ? [game] : [],
+    gameHandlers: { botActions: [], botDuels: [], cleanup: [], movements: [] },
+    lobbyHandlers: { pendingRemovals: [] }, timers: [], receipts: [],
+    retryAt: 0, retryDelay: 1_000,
+    outbox: [{ kind: 'attempt', value: {
+      id: 'synthetic-existing-attempt', answeredAt: new Date().toISOString(),
+      record: {
+        player: state.players[0], dbGameId: state.dbGameId,
+        challenge: makePrivateChallenge(), selectedIndex: 1, timeMs: 4_000,
+        previousMastery: 0.4, newMastery: 0.55, isCorrect: true,
+      },
+    } }],
+  };
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
 describe('room command recovery after a failed durable commit', () => {
@@ -106,6 +155,7 @@ describe('room command recovery after a failed durable commit', () => {
     if (originalAutoResponse) Object.defineProperty(globalThis, 'WebSocketRequestResponsePair', originalAutoResponse);
     else Reflect.deleteProperty(globalThis, 'WebSocketRequestResponsePair');
   });
+  afterEach(() => jest.restoreAllMocks());
 
   it('dispatches the next queued command against the rebuilt lobby rather than the failed facade', async () => {
     const { room, socket, values, ready, failNextCommit } = harness();
@@ -178,7 +228,7 @@ describe('room command recovery after a failed durable commit', () => {
     const { room, socket, values, directory, directoryFetch, ready, failNextCommit } = harness();
     await ready();
     await directory.fetch(new Request('https://directory/claim', {
-      method: 'POST', body: JSON.stringify({ code: 'DEF567' }),
+      method: 'POST', body: JSON.stringify({ code: 'DEF567', playerId: 'synthetic-player-1' }),
     }));
     await room.fetch(new Request('https://room/internal/reserve', {
       method: 'POST', body: JSON.stringify({ code: 'ABC234', player: socket.deserializeAttachment().player }),
@@ -207,5 +257,178 @@ describe('room command recovery after a failed durable commit', () => {
     })]);
     expect(socket.sent.filter((frame) => frame.event === 'room:update')).toHaveLength(0);
     expect(socket.sent.filter((frame) => frame.event === 'game:error')).toHaveLength(1);
+  });
+
+  it('grades an answer and durably queues its evidence while an earlier research write is pending', async () => {
+    const game = makeGameState({
+      id: 'game_ABC234', turnPhase: 'CARD_MATH_CHALLENGE',
+      currentChallenge: makePrivateChallenge({ startedAt: Date.now() }),
+    });
+    game.players[0].playerId = 'synthetic-player-1';
+    const gate = deferred();
+    const started = deferred();
+    const write = jest.spyOn(CloudflarePersistence.prototype, 'persistAttempt').mockImplementation(async (event) => {
+      if (event.id === 'synthetic-existing-attempt') {
+        started.resolve();
+        await gate.promise;
+      }
+    });
+    const { room, socket, values, ready, background } = harness(researchSnapshot(game));
+    await ready();
+    const alarm = room.alarm();
+    await started.promise;
+    let completed = false;
+    const answer = room.webSocketMessage(socket as unknown as WebSocket, JSON.stringify({
+      event: 'game:card-answer', data: { gameId: game.id, selectedIndex: 1 }, actionId: 'synthetic-answer-during-sync',
+    })).then(() => { completed = true; });
+    try {
+      // All fixture operations resolve in microtasks; a pending SQL promise must not hold this action.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).toBe(true);
+      expect(socket.sent.find((frame) => frame.event === 'game:answer-result')?.data).toMatchObject({
+        result: { isCorrect: true, timedOut: false },
+      });
+      const stored = values.get('room') as StoredRoom;
+      expect(stored.games[0].players[0].totalCorrect).toBe(1);
+      expect(stored.outboxIds).toHaveLength(2);
+      expect(stored.outboxIds[0]).toBe('synthetic-existing-attempt');
+    } finally {
+      gate.resolve();
+      await Promise.all([alarm, answer, background()]);
+    }
+    expect(write).toHaveBeenCalledTimes(2);
+    expect((values.get('room') as StoredRoom).outboxIds).toEqual([]);
+  });
+
+  it('commits a later gameplay deadline while the detached research request remains pending', async () => {
+    const initialTime = Date.now();
+    const game = makeGameState({
+      id: 'game_ABC234', turnPhase: 'CARD_MATH_CHALLENGE',
+      currentChallenge: makePrivateChallenge({ startedAt: initialTime, timeLimit: 20 }),
+    });
+    game.players[0].playerId = 'synthetic-player-1';
+    const gate = deferred();
+    const started = deferred();
+    jest.spyOn(CloudflarePersistence.prototype, 'persistAttempt').mockImplementation(async (event) => {
+      if (event.id === 'synthetic-existing-attempt') { started.resolve(); await gate.promise; }
+    });
+    const { room, socket, values, ready, background } = harness(researchSnapshot(game));
+    await ready();
+    let firstAlarmCompleted = false;
+    const firstAlarm = room.alarm().then(() => { firstAlarmCompleted = true; });
+    await started.promise;
+    const now = jest.spyOn(Date, 'now').mockReturnValue(initialTime + 25_000);
+    try {
+      expect(firstAlarmCompleted).toBe(true);
+      await room.alarm();
+      expect(socket.sent.find((frame) => frame.event === 'game:answer-result')?.data).toMatchObject({
+        result: { isCorrect: false, timedOut: true },
+      });
+      expect((values.get('room') as StoredRoom).games[0].currentChallenge).toBeNull();
+      expect((values.get('room') as StoredRoom).outboxIds).toHaveLength(2);
+    } finally {
+      now.mockRestore();
+      gate.resolve();
+      await Promise.all([firstAlarm, background()]);
+    }
+  });
+
+  it('retains a confirmed SQL event when retiring it fails to commit and retries the same identity', async () => {
+    const saved = researchSnapshot();
+    const gate = deferred();
+    const started = deferred();
+    const write = jest.spyOn(CloudflarePersistence.prototype, 'persistAttempt')
+      .mockImplementationOnce(async () => { started.resolve(); await gate.promise; })
+      .mockResolvedValue(undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { room, values, ready, failNextCommit, background } = harness(saved);
+    await ready();
+    const alarm = room.alarm();
+    await started.promise;
+    failNextCommit();
+    gate.resolve();
+    await alarm;
+    await background();
+    const stored = values.get('room') as StoredRoom;
+    expect(stored.outboxIds).toEqual(['synthetic-existing-attempt']);
+    expect(values.get('outbox:synthetic-existing-attempt')).toEqual(saved.outbox[0]);
+    expect(stored.retryDelay).toBe(2_000);
+    const now = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
+    try { await room.alarm(); await background(); }
+    finally { now.mockRestore(); }
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[0][0]).toEqual(write.mock.calls[1][0]);
+    expect((values.get('room') as StoredRoom).outboxIds).toEqual([]);
+  });
+
+  it('shares a pending SQL request with the required new-game prior barrier without deadlocking', async () => {
+    const gate = deferred();
+    const started = deferred();
+    const write = jest.spyOn(CloudflarePersistence.prototype, 'persistAttempt').mockImplementation(async () => {
+      started.resolve();
+      await gate.promise;
+    });
+    const priors = jest.spyOn(CloudflarePersistence.prototype, 'loadPriors').mockResolvedValue(new Map([
+      ['synthetic-player-1', { mastery: { Addition: 0.82 }, attempts: { Addition: 6 } }],
+    ]));
+    const { room, socket, values, ready, background } = harness(researchSnapshot());
+    await ready();
+    const alarm = room.alarm();
+    await started.promise;
+    const starting = room.webSocketMessage(socket as unknown as WebSocket, JSON.stringify({
+      event: 'room:start', actionId: 'synthetic-start-during-sync',
+    }));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(priors).not.toHaveBeenCalled();
+    gate.resolve();
+    await Promise.all([alarm, starting, background()]);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(priors).toHaveBeenCalledWith(['synthetic-player-1']);
+    const stored = values.get('room') as StoredRoom;
+    expect(stored.outboxIds).toEqual([]);
+    expect(stored.games[0].players[0]).toMatchObject({
+      masteryStates: { Addition: 0.82 }, skillAttempts: { Addition: 6 },
+    });
+    expect(socket.sent.some((frame) => frame.event === 'game:start')).toBe(true);
+  });
+
+  it('synchronizes only committed evidence for the requested profile without waiting for the room action queue', async () => {
+    const saved = researchSnapshot();
+    const first = saved.outbox[0];
+    if (first.kind !== 'attempt') throw new Error('Expected fixture attempt');
+    const other = structuredClone(first);
+    other.value.id = 'synthetic-other-player-attempt';
+    other.value.record.player.playerId = 'synthetic-other-player';
+    saved.outbox.push(other);
+    const write = jest.spyOn(CloudflarePersistence.prototype, 'persistAttempt').mockResolvedValue(undefined);
+    const gate = deferred<Map<string, { mastery: Record<string, number>; attempts: Record<string, number> }>>();
+    const started = deferred();
+    jest.spyOn(CloudflarePersistence.prototype, 'loadPriors').mockImplementation(async () => {
+      started.resolve();
+      return gate.promise;
+    });
+    const { room, socket, values, ready } = harness(saved);
+    await ready();
+    const starting = room.webSocketMessage(socket as unknown as WebSocket, JSON.stringify({
+      event: 'room:start', actionId: 'synthetic-held-prior-read',
+    }));
+    await started.promise;
+    write.mockClear();
+    let completed = false;
+    const synchronization = room.fetch(new Request('https://room/internal/synchronize-player', {
+      method: 'POST', body: JSON.stringify({ playerId: first.value.record.player.playerId }),
+    })).then((response) => { completed = true; return response; });
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).toBe(true);
+      expect((await synchronization).status).toBe(200);
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenCalledWith(first.value);
+      // The action has not committed its in-memory retirement. The durable source still owns both events.
+      expect(values.get('room')).toEqual(saved);
+    } finally {
+      gate.resolve(new Map());
+      await Promise.all([starting, synchronization]);
+    }
   });
 });

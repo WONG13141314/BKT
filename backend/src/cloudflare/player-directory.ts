@@ -1,3 +1,5 @@
+import type { WorkerEnv } from './types';
+
 interface Membership {
   code: string | null;
   version: number;
@@ -16,7 +18,7 @@ function json(value: unknown, status = 200): Response {
 
 /** Internal per-player directory. Room objects perform any later eviction. */
 export class PlayerDirectory {
-  constructor(private readonly ctx: DurableObjectState, _env: unknown) {}
+  constructor(private readonly ctx: DurableObjectState, private readonly env: Pick<WorkerEnv, 'ROOMS'>) {}
 
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
@@ -29,20 +31,36 @@ export class PlayerDirectory {
       let input: unknown;
       try { input = await request.json(); }
       catch { return json({ message: 'Invalid JSON' }, 400); }
-      const code = input && typeof input === 'object' && !Array.isArray(input)
-        ? (input as Record<string, unknown>).code : undefined;
-      if (!validRoomCode(code)) {
+      const fields = input && typeof input === 'object' && !Array.isArray(input)
+        ? input as Record<string, unknown> : {};
+      const { code, playerId } = fields;
+      if (!validRoomCode(code) || !validRoomCode(playerId)) {
         return json({ message: 'Invalid room code' }, 400);
       }
 
-      const claim = await this.ctx.storage.transaction(async (storage) => {
-        const previous = await storage.get<Membership>('membership');
-        const version = (previous?.version ?? 0) + 1;
-        if (!Number.isSafeInteger(version)) throw new Error('Membership version limit reached');
-        await storage.put('membership', { code, version } satisfies Membership);
-        return { code, previousCode: previous?.code ?? null, version };
-      });
-      return json(claim);
+      try {
+        const claim = await this.ctx.storage.transaction(async (storage) => {
+          const previous = await storage.get<Membership>('membership');
+          if (previous?.code && previous.code !== code) {
+            // Publish a new membership only after the preceding room's committed
+            // learner evidence reaches Postgres. Competing devices share this barrier.
+            const room = this.env.ROOMS.get(this.env.ROOMS.idFromName(`room:${previous.code}`));
+            const response = await room.fetch('https://room/internal/synchronize-player', {
+              method: 'POST', body: JSON.stringify({ playerId }),
+            });
+            if (!response.ok || (await response.json() as { synchronized?: boolean }).synchronized !== true) {
+              throw new Error('Player progress synchronization failed');
+            }
+          }
+          const version = (previous?.version ?? 0) + 1;
+          if (!Number.isSafeInteger(version)) throw new Error('Membership version limit reached');
+          await storage.put('membership', { code, version } satisfies Membership);
+          return { code, previousCode: previous?.code ?? null, version };
+        });
+        return json(claim);
+      } catch {
+        return json({ message: 'Unable to synchronize player progress' }, 503);
+      }
     }
 
     if (path === '/restore' && request.method === 'POST') {

@@ -63,6 +63,28 @@ describe('native game event transport', () => {
     expect(commands[0]).not.toHaveProperty('id');
   });
 
+  it('sends distinct UUID actions on local HTTP devices without randomUUID or reconnecting', () => {
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    const disconnected = vi.fn();
+    client.on('disconnect', disconnected);
+    const socket = TestWebSocket.instances[0];
+    socket.receive({ event: 'connect', data: { id: 'local-device' } });
+
+    client.emit('room:create');
+    client.emit('game:roll', { gameId: 'game_LOCAL' });
+
+    const commands = socket.sent.map((message) => JSON.parse(message));
+    expect(commands.map((command) => command.event)).toEqual(['room:create', 'game:roll']);
+    for (const command of commands) {
+      expect(command.actionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(commands[1].actionId).not.toBe(commands[0].actionId);
+    expect(client.connected).toBe(true);
+    expect(disconnected).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(500);
+    expect(TestWebSocket.instances).toHaveLength(1);
+  });
+
   it('moves from the learner gateway to the room without restarting lobby listeners', () => {
     const connected = vi.fn();
     const disconnected = vi.fn();

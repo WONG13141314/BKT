@@ -120,6 +120,12 @@ export class TestGameRoom extends GameRoom {
     if (path === '/__test/flush' && request.method === 'POST') {
       this.retryAt = 0;
       await this.alarm();
+      await this.backgroundFlush;
+      return new Response(JSON.stringify(this.snapshot()), { headers: { 'content-type': 'application/json' } });
+    }
+    if (path === '/__test/start-flush' && request.method === 'POST') {
+      this.retryAt = 0;
+      await this.alarm();
       return new Response(JSON.stringify(this.snapshot()), { headers: { 'content-type': 'application/json' } });
     }
     if (path === '/__test/requeue' && request.method === 'POST') {
@@ -196,6 +202,7 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
   let code;
   let gameId;
   let moving;
+  let completedAttempt;
 
   try {
     await t.test('HTTP health, guest/profile, claim and sign-in use isolated PostgreSQL', async () => {
@@ -394,6 +401,7 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       const queued = await roomTest(code, 'snapshot');
       assert.equal(queued.outbox.length, 1);
       const event = queued.outbox[0];
+      completedAttempt = event;
       assert.equal(event.kind, 'attempt');
       assert.equal(event.value.record.challenge.id, challenge.id);
       assert.equal(event.value.record.player.playerId, hostIdentity.player.id);
@@ -448,6 +456,61 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       assert.equal((await roomTest(code, 'snapshot')).outbox.length, 0);
     });
     fixture.setDatabaseUnavailable(false);
+
+    await t.test('slow SQL leaves answers and phase alarms responsive while device handover waits for evidence', async () => {
+      await roomTest(code, 'requeue', completedAttempt);
+      const paused = fixture.pauseNextDatabaseRequest();
+      try {
+        await roomTest(code, 'start-flush', {});
+        await paused.started;
+        await roomTest(code, 'patch', { gameId, activePosition: 1, patch: {
+          turnPhase: 'BUY_DECISION', currentPlayerIndex: 0, currentChallenge: null, duelState: null,
+          phaseDeadline: null, phaseDeadlineFor: null,
+          pendingTileEvent: { type: 'PROPERTY', tileIndex: 1, tileName: 'Tambah Alley', propertyPrice: 80, propertyOwner: null },
+        } });
+        const questionMark = host.mark();
+        host.send('game:smart-buy', { gameId });
+        const { challenge } = await host.wait('game:challenge', () => true, questionMark, 2_000);
+        const serverQuestion = (await roomTest(code, 'snapshot')).games[0].currentChallenge;
+        const answerMark = host.mark();
+        host.send('game:smart-buy-answer', { gameId, selectedIndex: serverQuestion.correctIndex });
+        const answer = await host.wait('game:answer-result', (data) => data.challengeId === challenge.id, answerMark, 2_000);
+        assert.equal(answer.result.isCorrect, true, 'Pending SQL must not turn an on-time answer into a timeout');
+        const queued = await roomTest(code, 'snapshot');
+        const newAttempt = queued.outbox.find((event) => event.value.id !== completedAttempt.value.id);
+        assert.ok(newAttempt, 'The new answer must commit to the durable outbox while SQL is pending');
+
+        const deadlineMark = second.mark();
+        await roomTest(code, 'patch', { gameId, patch: {
+          turnPhase: 'END_TURN', phaseDeadline: Date.now() + 150, phaseDeadlineFor: 'END_TURN',
+        } });
+        await second.wait('game:state', (data) => data.state.currentPlayerIndex === 1, deadlineMark, 5_000);
+
+        const recovered = await connect(hostIdentity);
+        const createMark = recovered.mark();
+        recovered.send('room:create');
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.equal(recovered.frames.slice(createMark).some((frame) => frame.event === 'room:created'), false,
+          'Another device must wait for the previous room evidence before claiming its next room');
+        paused.release();
+        const nextRoom = await recovered.wait('room:created', () => true, createMark);
+        await recovered.wait('room:update', (room) => room.code === nextRoom.code, createMark);
+        assert.equal((await fixture.postgres.query('SELECT COUNT(*)::int AS count FROM question_attempts WHERE id = $1',
+          [newAttempt.value.id])).rows[0].count, 1);
+        const botMark = recovered.mark();
+        recovered.send('room:add-bot', { difficulty: 'easy' });
+        await recovered.wait('room:update', (room) => room.players.some((player) => player.isBot), botMark);
+        const startMark = recovered.mark();
+        recovered.send('room:start');
+        await recovered.wait('game:start', () => true, startMark);
+        await recovered.wait('game:state', (data) => data.state.id === `game_${nextRoom.code}`, startMark);
+        const nextPlayer = (await roomTest(nextRoom.code, 'snapshot')).games[0].players.find((player) => player.playerId === hostIdentity.player.id);
+        assert.ok(Math.abs(nextPlayer.masteryStates[serverQuestion.skillName] - newAttempt.value.record.newMastery) < 1e-6,
+          'The next game must load the synchronized mastery from the previous device');
+      } finally {
+        paused.release();
+      }
+    });
 
     await t.test('HTTP-created UUID games route from the gateway to their durable room', async () => {
       const first = await guest('API First');

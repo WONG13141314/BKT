@@ -58,9 +58,9 @@ grant additional question time.
 
 ## Hosting limits
 
-On the `migration` branch, Cloudflare hosts the website, API and live game.
-Each `GameRoom` Durable Object saves match state, absolute deadlines and pending
-research writes in durable SQLite-backed storage. WebSocket hibernation lets
+On the `main` branch, Cloudflare hosts the website, API and live game.
+Each `MathopolyGameRoom` Durable Object saves match state, absolute deadlines and
+pending research writes in durable SQLite-backed storage. WebSocket hibernation lets
 idle rooms sleep; waking a room restores its state and remaining deadlines.
 Persisted alarms continue deadline processing and retry evidence synchronization
 with Neon. Player identity and long-term learning records remain in PostgreSQL.
@@ -76,7 +76,7 @@ have finite request, compute and storage allowances; recovery does not establish
 a simultaneous-player capacity. Use the
 [Mathopoly Cloudflare setup and evaluation guide](CLOUDFLARE_SETUP.md) to check usage
 and rehearse the intended school-network workload. The original Render
-implementation remains on `main`.
+implementation is preserved on `codex/render-backup-2026-10-13`.
 
 ## Historical verification on 6 October 2026
 

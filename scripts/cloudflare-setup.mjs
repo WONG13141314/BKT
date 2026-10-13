@@ -115,7 +115,9 @@ async function preparePublicHostname() {
 async function main() {
   if (!existsSync(wrangler)) throw new Error('Dependencies are missing. Run npm ci first.');
   const branch = await run('git', ['branch', '--show-current'], { display: false });
-  if (branch.output.trim() !== 'migration') throw new Error('Switch to the migration branch before running this setup.');
+  if (!['main', 'migration'].includes(branch.output.trim())) {
+    throw new Error('Switch to the main or migration branch before running this Cloudflare setup.');
+  }
   if (!secrets.DATABASE_URL || !/^postgres(?:ql)?:\/\//.test(secrets.DATABASE_URL)) {
     throw new Error('Put your existing Neon DATABASE_URL in backend/.env or .dev.vars before setup.');
   }
@@ -148,7 +150,7 @@ async function main() {
   }
   if (!healthy) throw new Error(`Published at ${url}, but the health check is not ready yet. Check this link again shortly.`);
   console.log(`Game is online: ${url}`);
-  console.log('This Worker uses the existing Neon database. Main and the Render deployment are unchanged.');
+  console.log('This Worker uses the existing Neon database. The Render backup is on codex/render-backup-2026-10-13.');
 }
 
 main().catch((error) => {

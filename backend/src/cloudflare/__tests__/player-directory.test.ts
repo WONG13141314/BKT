@@ -1,4 +1,5 @@
 import { PlayerDirectory } from '../player-directory';
+import type { WorkerEnv } from '../types';
 
 interface Membership { code: string | null; version: number }
 
@@ -22,16 +23,20 @@ function harness() {
       return run;
     }),
   };
-  const directory = new PlayerDirectory({ storage } as unknown as DurableObjectState, {});
+  const synchronize = jest.fn(async () => new Response(JSON.stringify({ synchronized: true })));
+  const roomName = jest.fn((name: string) => name);
+  const directory = new PlayerDirectory({ storage } as unknown as DurableObjectState, {
+    ROOMS: { idFromName: roomName, get: () => ({ fetch: synchronize }) },
+  } as unknown as WorkerEnv);
   const current = async () => (await directory.fetch(new Request('https://directory/current'))).json();
   const claim = async (code: string) => (await directory.fetch(new Request('https://directory/claim', {
-    method: 'POST', body: JSON.stringify({ code }),
+    method: 'POST', body: JSON.stringify({ code, playerId: 'synthetic-profile-1' }),
   }))).json() as Promise<{ code: string; previousCode: string | null; version: number }>;
   const restore = async (input: { code: string; previousCode: string | null; version: number }) =>
     (await directory.fetch(new Request('https://directory/restore', {
       method: 'POST', body: JSON.stringify(input),
     }))).json();
-  return { directory, storage, current, claim, restore };
+  return { directory, storage, current, claim, restore, synchronize, roomName };
 }
 
 describe('per-player room directory', () => {
@@ -54,6 +59,46 @@ describe('per-player room directory', () => {
     expect(results[1].previousCode).toBe(results[0].code);
     expect(results[2].previousCode).toBe(results[1].code);
     expect(await current()).toEqual({ code: results[2].code, version: 3 });
+  });
+
+  test('keeps competing devices behind the previous room progress barrier before publishing membership', async () => {
+    const { current, claim, synchronize, roomName } = harness();
+    await claim('ABC234');
+    let release!: () => void;
+    let began!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { began = resolve; });
+    synchronize.mockImplementationOnce(async () => {
+      began();
+      await gate;
+      return new Response(JSON.stringify({ synchronized: true }));
+    });
+    const first = claim('DEF567');
+    await started;
+    const second = claim('GHI789');
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(await current()).toEqual({ code: 'ABC234', version: 1 });
+      expect(synchronize).toHaveBeenCalledTimes(1);
+    } finally { release(); }
+    expect(await first).toEqual({ code: 'DEF567', previousCode: 'ABC234', version: 2 });
+    expect(await second).toEqual({ code: 'GHI789', previousCode: 'DEF567', version: 3 });
+    expect(roomName.mock.calls).toEqual([['room:ABC234'], ['room:DEF567']]);
+    for (const call of synchronize.mock.calls as unknown as Array<[string, RequestInit]>) {
+      expect(call[0]).toBe('https://room/internal/synchronize-player');
+      expect(JSON.parse(call[1].body as string)).toEqual({ playerId: 'synthetic-profile-1' });
+    }
+  });
+
+  test.each([503, 200])('keeps the old membership when progress synchronization is not confirmed (%s)', async (status) => {
+    const { directory, current, claim, synchronize } = harness();
+    await claim('ABC234');
+    synchronize.mockResolvedValueOnce(new Response(JSON.stringify({ synchronized: false }), { status }));
+    const response = await directory.fetch(new Request('https://directory/claim', {
+      method: 'POST', body: JSON.stringify({ code: 'DEF567', playerId: 'synthetic-profile-1' }),
+    }));
+    expect(response.status).toBe(503);
+    expect(await current()).toEqual({ code: 'ABC234', version: 1 });
   });
 
   test.each(['{', '{}', '[]', '{"code":""}', '{"code":123}', JSON.stringify({ code: 'A'.repeat(101) })])(

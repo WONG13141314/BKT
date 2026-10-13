@@ -1,6 +1,6 @@
 # Mathopoly: Cloudflare setup and evaluation checks
 
-The **`migration` branch is the Cloudflare implementation**. Its website, API and live game deploy together as **`mathopoly`**, with your existing Neon PostgreSQL database. The original Render implementation stays on **`main`** as a separate backup.
+The **`main` branch is the Cloudflare implementation**. Its website, API and live game deploy together as **`mathopoly`**, with your existing Neon PostgreSQL database. The existing `migration` branch is retained. The original Render implementation is preserved on **`codex/render-backup-2026-10-13`** as a separate backup.
 
 The current public deployment is **[open Mathopoly](https://mathopoly.mathopoly.workers.dev)**. Local and deployed checks are recorded in [the Mathopoly validation document](CLOUDFLARE_VALIDATION.md). The setup steps below are for a fresh computer/account; use the exact URL printed by Wrangler for that account. After setup, later updates use `npm run deploy`.
 
@@ -14,7 +14,7 @@ The current public deployment is **[open Mathopoly](https://mathopoly.mathopoly.
    npm ci
    ```
 
-   The branch should be `migration`.
+   The branch should be `main`. Setup also accepts the retained `migration` branch.
 
 2. Run the automatic setup:
 
@@ -240,13 +240,15 @@ Neon scales idle compute to zero, so the first database request after inactivity
 
 **The proposal's 120 pupils are a total study sample, not a verified simultaneous capacity.** Rehearse the real number of pupils playing at once, the solo/multiplayer split, school Wi-Fi/devices, and one-hour evaluation schedule. Observe room latency, reconnects, missing writes and account usage. Schedule manageable groups based on that evidence; the Cloudflare implementation does not establish that 120 simultaneous pupils fit the free quotas.
 
-## 8. The `main` backup and branch deletion
+## 8. The Render backup and branch deletion
 
-The original Render code and its deployment instructions remain on **`main`**. Keep the existing Render services tied to that branch. This branch contains only the Cloudflare application; returning to the old implementation means using the existing `main` deployment or checking out `main`, not deploying `migration` to Render. Each deployment uses its own complete website/server pair.
+The original Render code and its deployment instructions are preserved on **`codex/render-backup-2026-10-13`**. Existing Render services must track that backup branch to keep using the original implementation after `main` moves to Cloudflare. Updating a Git branch does not change the service's configured tracking branch. `main` contains the Cloudflare application; returning to the old implementation means checking out the backup branch or using a Render deployment built from it. Each deployment uses its own complete website/server pair.
+
+While Render services still track `main`, include **`[skip render]`** in a Cloudflare promotion commit message to prevent that push from triggering a Render auto-deploy. This protects the existing deployment for that commit; later ordinary commits still require retargeting Render to the backup branch or disabling its auto-deploys. [Render auto-deploy controls](https://render.com/docs/deploys#skipping-an-auto-deploy)
 
 **Git branches, deployed applications and database data have separate lifetimes.** Deleting `migration` on GitHub would remove that Git branch reference. It would not delete `mathopoly` from Cloudflare, remove its Durable Object storage, stop the existing Render deployment, or undo synchronized Neon writes. Retiring a Worker requires a separate Cloudflare action.
 
-**A code rollback does not undo database writes.** With the shared Neon database, successfully synchronized player profiles, mastery and question evidence remain available under the existing schema. Live Cloudflare rooms and their pending evidence remain in Durable Objects; unfinished matches do not transfer to the `main` implementation. Check synchronization before retiring the Cloudflare deployment.
+**A code rollback does not undo database writes.** With the shared Neon database, successfully synchronized player profiles, mastery and question evidence remain available under the existing schema. Live Cloudflare rooms and their pending evidence remain in Durable Objects; unfinished matches do not transfer to the Render implementation. Check synchronization before retiring the Cloudflare deployment.
 
 ## 9. Optional automatic deploys from GitHub
 
@@ -255,11 +257,11 @@ The first playable link does not require GitHub integration. Later, you can conn
 | Setting | Value |
 | --- | --- |
 | Repository root | The monorepo root |
-| Production branch | `migration` |
+| Production branch | `main` |
 | Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 | Other-branch preview builds | Disabled initially |
 
-Cloudflare defaults to the repository's default branch, so explicitly select `migration` for this Worker. Pushing to that selected branch then runs the configured build/deploy commands. Keep database/JWT settings as Worker runtime secrets; they are not frontend build variables. [Workers build configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [build branch selection](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/)
+Select `main` for this Worker. If it previously tracked `migration`, update that setting in Workers Builds; changing Git branches alone does not update the configured production branch. Pushing to the selected branch then runs the configured build/deploy commands. Keep database/JWT settings as Worker runtime secrets; they are not frontend build variables. [Workers build configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [build branch selection](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/)
 
 Workers Builds Free currently includes **3,000 build minutes/month**, **one concurrent build**, and a **20-minute build timeout**. Local `npm run deploy` does not use this hosted build allowance. [Build limits and pricing](https://developers.cloudflare.com/workers/ci-cd/builds/limits-and-pricing/)

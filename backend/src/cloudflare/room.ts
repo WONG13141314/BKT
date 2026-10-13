@@ -14,6 +14,9 @@ import { HibernatingSocket, RoomSocketServer } from './transport';
 import type { ClientFrame, ConnectionAttachment, WorkerEnv } from './types';
 
 type OutboxEvent = { kind: 'attempt'; value: DurableAttemptEvent } | { kind: 'result'; value: DurableGameResultEvent };
+function outboxEventId(event: OutboxEvent): string {
+  return event.kind === 'attempt' ? event.value.id : `result:${event.value.state.dbGameId}`;
+}
 interface Receipt { key: string; ack?: unknown }
 type StoredRoom = Omit<RoomSnapshot, 'outbox'> & { outboxIds: string[] };
 export interface RoomSnapshot {
@@ -33,6 +36,7 @@ export interface RoomSnapshot {
 const ROOM_CODE = /^[A-Z2-9]{6}$/;
 const FRAME_LIMIT = 64 * 1024;
 const OUTBOX_LIMIT = 2_000;
+const OUTBOX_REQUEST_LEASE_MS = 30_000;
 
 /** One room owns its complete rules, storage, sockets, deadlines and research outbox. */
 export class GameRoom {
@@ -52,6 +56,8 @@ export class GameRoom {
   private serial: Promise<unknown> = Promise.resolve();
   private readonly database: CloudflarePersistence;
   private storedOutboxIds = new Set<string>();
+  private readonly persistenceRequests = new Map<string, Promise<void>>();
+  private backgroundFlush?: Promise<void>;
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: WorkerEnv) {
     this.database = new CloudflarePersistence(env.DATABASE_URL);
@@ -153,12 +159,11 @@ export class GameRoom {
   private async save(): Promise<void> {
     const next = Math.min(this.scheduler.next() ?? Infinity, this.outbox.length ? this.retryAt ?? Date.now() + 1_000 : Infinity);
     const { outbox, ...state } = this.snapshot();
-    const eventId = (event: OutboxEvent) => event.kind === 'attempt' ? event.value.id : `result:${event.value.state.dbGameId}`;
-    const ids = outbox.map(eventId);
+    const ids = outbox.map(outboxEventId);
     await this.ctx.storage.transaction(async (storage) => {
       // Individual outbox records keep a backlog below the per-value storage limit.
       for (const event of outbox) {
-        const id = eventId(event);
+        const id = outboxEventId(event);
         if (!this.storedOutboxIds.has(id)) await storage.put(`outbox:${id}`, event);
       }
       const removed = [...this.storedOutboxIds].filter((id) => !ids.includes(id));
@@ -200,14 +205,27 @@ export class GameRoom {
     return run;
   }
 
-  /** The head stays durable until Neon confirms its idempotent transaction. */
+  /** Network-only promises can be shared with a required read barrier safely. */
+  private persistOutboxEvent(event: OutboxEvent): Promise<void> {
+    const id = outboxEventId(event);
+    const existing = this.persistenceRequests.get(id);
+    if (existing) return existing;
+    const pending = Promise.resolve().then(() => event.kind === 'attempt'
+      ? this.database.persistAttempt(event.value)
+      : this.database.persistGameResult(event.value)).finally(() => {
+      if (this.persistenceRequests.get(id) === pending) this.persistenceRequests.delete(id);
+    });
+    this.persistenceRequests.set(id, pending);
+    return pending;
+  }
+
+  /** Required barriers run in an existing room transaction, before reading priors or leaving. */
   private async flushOutbox(required = false): Promise<void> {
     const limit = required ? OUTBOX_LIMIT : 10;
     try {
       for (let n = 0; this.outbox.length && n < limit; n++) {
         const event = this.outbox[0];
-        if (event.kind === 'attempt') await this.database.persistAttempt(event.value);
-        else await this.database.persistGameResult(event.value);
+        await this.persistOutboxEvent(event);
         this.outbox.shift();
       }
       this.retryDelay = 1_000;
@@ -220,15 +238,95 @@ export class GameRoom {
     }
   }
 
-  async alarm(): Promise<void> {
-    await this.transact(async () => {
-      this.scheduler.runDue();
-      if (this.outbox.length && (this.retryAt ?? 0) <= Date.now()) await this.flushOutbox();
+  /** Keep slow research writes outside the queue that accepts and grades player actions. */
+  private flushOutboxInBackground(): Promise<void> {
+    if (this.backgroundFlush) return this.backgroundFlush;
+    const pending = this.drainOutboxInBackground().finally(() => {
+      if (this.backgroundFlush === pending) this.backgroundFlush = undefined;
     });
+    this.backgroundFlush = pending;
+    return pending;
+  }
+
+  private async drainOutboxInBackground(): Promise<void> {
+    for (let n = 0; n < 10; n++) {
+      const event = await this.transact(() => {
+        if (!this.outbox.length) return null;
+        // Only committed events are selected; an action may append more while SQL is pending.
+        this.retryAt = Date.now() + OUTBOX_REQUEST_LEASE_MS;
+        return structuredClone(this.outbox[0]);
+      });
+      if (!event) return;
+      const id = outboxEventId(event);
+      try {
+        await this.persistOutboxEvent(event);
+        await this.transact(() => {
+          const index = this.outbox.findIndex((current) => outboxEventId(current) === id);
+          // A required read barrier may have already retired this exact event.
+          if (index < 0) return;
+          this.outbox.splice(index, 1);
+          this.retryDelay = 1_000;
+          this.retryAt = this.outbox.length ? Date.now() + 1_000 : null;
+        });
+      } catch (error) {
+        await this.transact(() => {
+          if (!this.outbox.some((current) => outboxEventId(current) === id)) return;
+          this.retryAt = Date.now() + this.retryDelay;
+          this.retryDelay = Math.min(60_000, this.retryDelay * 2);
+        });
+        console.error('[room] Research synchronization deferred:', error instanceof Error ? error.name : 'Unknown error');
+        return;
+      }
+    }
+  }
+
+  async alarm(): Promise<void> {
+    const synchronize = await this.transact(() => {
+      this.scheduler.runDue();
+      if (!this.outbox.length || (this.retryAt ?? 0) > Date.now()) return false;
+      // A durable lease retries after a restart without spinning alarms during a slow write.
+      this.retryAt = Date.now() + OUTBOX_REQUEST_LEASE_MS;
+      return !this.backgroundFlush;
+    });
+    if (synchronize) this.ctx.waitUntil(this.flushOutboxInBackground());
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/internal/synchronize-player' && request.method === 'POST') {
+      try {
+        const { playerId } = await request.json() as { playerId?: unknown };
+        if (typeof playerId !== 'string' || !/^[\w-]{1,100}$/.test(playerId)) {
+          return jsonResponse({ message: 'Invalid player identity' }, 400);
+        }
+        // Membership handovers must never wait on another room's command queue.
+        // Capture committed evidence atomically, then release storage before SQL.
+        const events = await this.ctx.storage.transaction(async (storage) => {
+          const stored = await storage.get<RoomSnapshot | StoredRoom>('room');
+          if (!stored) return [];
+          let outbox: OutboxEvent[];
+          if ('outboxIds' in stored) {
+            outbox = [];
+            for (let n = 0; n < stored.outboxIds.length; n += 128) {
+              const ids = stored.outboxIds.slice(n, n + 128);
+              const values = await storage.get<OutboxEvent>(ids.map((id) => `outbox:${id}`));
+              for (const id of ids) {
+                const event = values.get(`outbox:${id}`);
+                if (!event) throw new Error('Incomplete durable research outbox');
+                outbox.push(event);
+              }
+            }
+          } else outbox = stored.outbox;
+          return outbox.filter((event) => event.kind === 'attempt' && event.value.record.player.playerId === playerId);
+        });
+        for (const event of events) await this.persistOutboxEvent(event);
+        // Retirement remains with the normal durable outbox drain. Replays are idempotent.
+        return jsonResponse({ synchronized: true });
+      } catch (error) {
+        console.error('[room] Player synchronization deferred:', error instanceof Error ? error.name : 'Unknown error');
+        return jsonResponse({ message: 'Unable to synchronize player progress' }, 503);
+      }
+    }
     if (url.pathname === '/internal/remove-player' && request.method === 'POST') {
       const { playerId, version } = await request.json() as { playerId: string; version: number };
       return this.transact(async () => {
@@ -410,7 +508,7 @@ export class GameRoom {
           && this.rooms.getRoomForPlayer(socket.data.player.id)?.code === this.code) {
           const directory = this.env.PLAYERS.get(this.env.PLAYERS.idFromName(socket.data.player.id));
           const response = await directory.fetch('https://player/claim', {
-            method: 'POST', body: JSON.stringify({ code: this.code }),
+            method: 'POST', body: JSON.stringify({ code: this.code, playerId: socket.data.player.id }),
           });
           if (!response.ok) throw new Error('Unable to synchronize room membership');
           const claim = await response.json() as { code: string; previousCode: string | null; version: number };

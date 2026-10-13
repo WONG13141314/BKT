@@ -14,7 +14,8 @@ export default defineConfig({
   webServer: remoteBaseUrl ? undefined : {
     command: 'npm --prefix .. run dev:cloudflare:test',
     url: 'http://127.0.0.1:8787/api/health',
-    reuseExistingServer: true,
+    // Never reuse a Wrangler session that could be connected to learner data.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],

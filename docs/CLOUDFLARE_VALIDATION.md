@@ -1,9 +1,81 @@
 # Mathopoly: Cloudflare application validation
 
-Checks recorded on 10 October 2026 with Node 24.15.0. The implementation is on
-`migration`, whose default `dev`, `build` and `deploy` commands now use Cloudflare.
-The original Render implementation remains on `main`. Local and deployed checks
-are recorded below.
+## Main promotion checks — 13 October 2026
+
+Compared the original Render `main` at `1b38c39` with Cloudflare `migration` at
+`3a07333`, then checked the promotion fixes with Node 24.15.0. The original Render
+commit is preserved on `codex/render-backup-2026-10-13`. Promotion advances `main`
+through its existing history; it does not replace or rewrite that history.
+
+| Check | Result |
+| --- | --- |
+| `npm run verify`: lint and TypeScript | Passed |
+| Frontend Vitest | 61 passed across 13 files |
+| Backend Jest | 369 passed across 38 suites |
+| PostgreSQL evidence contracts, invoked by Jest | 13 isolated SQL cases passed |
+| Real Cloudflare/workerd integration | 11 passed, including its parent test |
+| Chromium E2E, with synthetic matches completed | 8 passed |
+| Frontend production build and Wrangler deployment dry run | Passed |
+| Source and whitespace review | Passed |
+
+The frontend pages, game components, styles, audio and public assets are unchanged
+from the original `main`. The game-engine implementation and BKT logic are
+preserved; their differences are branding comments or test descriptions. Existing
+engine/socket tests cover purchases, building, rent duels, cards, jail,
+bankruptcy, scoring, adaptive questions, hints, deadlines and feedback privacy.
+The Neon schema and initialization SQL are unchanged apart from comments.
+
+Review identified and fixed three migration regressions before promotion:
+
+- Slow Neon writes no longer hold the room command queue or its alarm handler.
+  Gameplay commits first; research writes run separately with durable retry
+  deadlines. Tests hold a SQL request open while a correct answer is graded and
+  an automatic phase deadline advances the turn. Failed outbox retirement and
+  shared required-prior reads also have regression coverage.
+- Changing rooms on another device synchronizes that profile's already committed
+  previous-room evidence before publishing its new membership. Concurrent claims
+  and failed synchronization are covered. A real-runtime check starts the next
+  game and verifies it loads the synchronized mastery. Existing live-game seat
+  authorization remains unchanged; this barrier covers committed evidence at
+  handover rather than preventing simultaneous active games for one profile.
+- Local HTTP devices without `crypto.randomUUID()` can still send distinct game
+  action IDs using `crypto.getRandomValues()`, without reconnecting repeatedly.
+
+Setup now accepts `main` and `migration`. Playwright always starts its isolated
+test server instead of reusing a possibly real-database development server.
+Browser checks exercise claimed-profile recovery on another browser, rejection
+of an incorrect PIN, multiplayer turns and reconnection, solo bot add/remove and
+progression, direct game reload, full-match scores and private four-skill learning
+reports. Landing checks cover phone/tablet/desktop layouts, keyboard focus and
+persisted sound settings. Captured landing and solo/multiplayer board screenshots
+were visually inspected.
+
+These checks used temporary PostgreSQL/PGlite and synthetic credentials. The
+runtime fixture blocks external outbound requests. No deployment, production
+database write, schema reset or learner-data cleanup was performed for this
+promotion. Windows Jest/workerd checks ran with the process access they require
+after sandbox filesystem errors prevented the initial runs from completing.
+The successful final runs are the results listed above.
+
+The promotion commit uses `[skip render]` to suppress Render's automatic deploy
+for this push. Existing Render services still tracking `main` must be moved to
+the backup branch or have automatic deployment disabled before subsequent
+ordinary pushes. Cloudflare Workers Builds must track `main` if automatic
+Cloudflare deployment is desired; a Git branch update does not change hosting
+settings. See [the setup guide](CLOUDFLARE_SETUP.md#8-the-render-backup-and-branch-deletion).
+
+No feature regression was found in these checks. They do not certify production
+hosting settings, every browser/device or school-scale simultaneous capacity.
+The existing Vite warning about large optional 3D/physics chunks remains.
+
+## Previous validation — 10 October 2026
+
+Checks recorded on 10 October 2026 with Node 24.15.0. At the time of these checks,
+the Cloudflare implementation was on `migration` and the Render implementation
+was on `main`. Cloudflare is now the implementation on `main`, with the original
+Render code preserved on `codex/render-backup-2026-10-13`. The existing `migration`
+branch is retained. The counts and deployed observations below describe the
+10 October checks, not a new run after promotion.
 
 ## Passing local checks
 

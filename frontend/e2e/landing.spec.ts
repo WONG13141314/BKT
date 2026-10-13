@@ -7,7 +7,7 @@ const viewports = [
 ];
 
 for (const viewport of viewports) {
-  test(`landing page is usable on ${viewport.name}`, async ({ page }) => {
+  test(`landing page is usable on ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.goto('/');
 
@@ -28,6 +28,7 @@ for (const viewport of viewports) {
 
     expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth);
     expect(Math.min(...layout.controls)).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: testInfo.outputPath('landing.png'), fullPage: true });
   });
 }
 

@@ -11,6 +11,45 @@ const expect = baseExpect.configure({ timeout: 15_000 });
 test.describe('Cloudflare game transport', () => {
   test.setTimeout(finishSyntheticGames ? 360_000 : 120_000);
 
+  test('a claimed profile signs in on another device without changing identity', async ({ page, browser, baseURL }, testInfo) => {
+    const manifest = await createSmokeManifest(testInfo, baseURL);
+    const name = `${manifest.label}Saved`;
+    const username = manifest.label.toLowerCase();
+    await createPlayer(page, name, manifest);
+    const originalId = manifest.profileIds()[0];
+    await page.getByRole('button', { name: 'Save my progress', exact: true }).click();
+    await page.getByLabel('Username', { exact: true }).fill(username);
+    await page.getByLabel('6-Digit PIN', { exact: true }).fill('123456');
+    await page.getByRole('button', { name: 'Save Progress', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Host a Game/ })).toBeVisible();
+
+    const recoveredContext = await browser.newContext({ baseURL });
+    try {
+      const recovered = await recoveredContext.newPage();
+      await recovered.goto('/');
+      await recovered.getByRole('button', { name: 'I have a username', exact: true }).click();
+      await recovered.getByLabel('Username', { exact: true }).fill(username);
+      await recovered.getByLabel('6-Digit PIN', { exact: true }).fill('000000');
+      const rejected = recovered.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/signin');
+      await recovered.getByRole('button', { name: 'Sign In', exact: true }).click();
+      expect((await rejected).status()).toBe(401);
+      await expect(recovered.getByRole('button', { name: /Host a Game/ })).toHaveCount(0);
+
+      await recovered.getByLabel('6-Digit PIN', { exact: true }).fill('123456');
+      const signedIn = recovered.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/signin');
+      await recovered.getByRole('button', { name: 'Sign In', exact: true }).click();
+      const result = await (await signedIn).json() as { player: { id: string; displayName: string; isClaimed: boolean } };
+      expect(result.player).toMatchObject({ id: originalId, displayName: name, isClaimed: true });
+      await expect(recovered.getByRole('button', { name: /Host a Game/ })).toBeVisible();
+      await recovered.reload();
+      await expect(recovered.getByRole('button', { name: /Host a Game/ })).toBeVisible();
+      await expect(recovered.locator('.player-chip__text')).toContainText(name);
+    } finally {
+      await recoveredContext.close();
+      await manifest.attach();
+    }
+  });
+
   test('two separate players share a room, recover their seats, and take consecutive turns', async ({ browser, baseURL }, testInfo) => {
     const manifest = await createSmokeManifest(testInfo, baseURL);
     const hostName = `${manifest.label}Host`;
@@ -50,6 +89,7 @@ test.describe('Cloudflare game transport', () => {
       await expect(guest.locator('.turn-banner')).toContainText(`${hostName}'s Turn`);
 
       const firstState = hostProbe.state!;
+      await host.screenshot({ path: testInfo.outputPath('multiplayer-board.png'), fullPage: true });
       await manifest.recordRoom(roomCode, firstState);
       expect(firstState.players.map((player) => player.name)).toEqual([hostName, guestName]);
       expect(firstState.players[0].playerId).not.toBe(firstState.players[1].playerId);
@@ -116,6 +156,7 @@ test.describe('Cloudflare game transport', () => {
       await page.getByRole('button', { name: 'Start Game' }).click();
       await expect(page.getByRole('button', { name: 'Roll Dice', exact: true })).toBeVisible();
       await expect(page.locator('.panel-player__bot-tag')).toHaveText(' (Bot)');
+      await page.screenshot({ path: testInfo.outputPath('solo-board.png'), fullPage: true });
       await manifest.recordRoom(roomCode, probe.state!);
 
       await page.getByRole('button', { name: 'Roll Dice', exact: true }).click();
@@ -346,6 +387,15 @@ async function finishSyntheticMatch(
     return false;
   }, { timeout: 180_000, intervals: [200], message: 'The synthetic match should finish through normal gameplay' }).toBe(true);
   for (const actor of actors) expect(actor.probe.errors, 'Normal synthetic gameplay should not produce server errors').toEqual([]);
+
+  for (const actor of actors) {
+    await expect(actor.page.getByRole('heading', { name: 'Game Over', exact: true })).toBeVisible();
+    await expect(actor.page.locator('.score-table tbody tr')).toHaveCount(actor.probe.state!.players.length);
+    const report = actor.page.getByRole('region', { name: 'My Learning Report' });
+    await expect(report).toBeVisible();
+    await expect(report.locator('.learning-skill')).toHaveCount(4);
+    await expect(report).toContainText(actor.probe.state!.players.find((player) => player.playerId === actor.playerId)!.name);
+  }
 
   // Starting a fresh lobby uses the existing room transition's required outbox
   // flush. Its update is delivered only after the finished room's writes drain.

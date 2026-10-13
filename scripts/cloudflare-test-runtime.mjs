@@ -15,6 +15,7 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
     await postgres.query('INSERT INTO skills (id, name) VALUES ($1, $2)', [`skill-${skill}`, skill]);
   }
   let unavailable = false;
+  let pausedRequest;
   let queryQueue = Promise.resolve();
   const failures = [];
 
@@ -62,6 +63,12 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
         || !request.headers.get('neon-connection-string')?.includes('@ep-local-test.neon.tech/')) {
         throw new Error('External network is disabled in Cloudflare integration tests');
       }
+      const pause = pausedRequest;
+      if (pause) {
+        pausedRequest = undefined;
+        pause.start();
+        await pause.released;
+      }
       if (unavailable) return new Response(JSON.stringify({ message: 'Synthetic database outage' }), { status: 503 });
       const body = await request.json();
       const run = queryQueue.then(async () => {
@@ -90,6 +97,15 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
   return {
     runtime, postgres, url: url.origin, failures,
     setDatabaseUnavailable(value) { unavailable = value; },
+    pauseNextDatabaseRequest() {
+      if (pausedRequest) throw new Error('A database request is already scheduled to pause');
+      let start;
+      let release;
+      const started = new Promise((resolve) => { start = resolve; });
+      const released = new Promise((resolve) => { release = resolve; });
+      pausedRequest = { start, released };
+      return { started, release };
+    },
     async close() { await runtime.dispose(); await postgres.close(); },
   };
 }

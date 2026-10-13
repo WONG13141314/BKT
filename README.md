@@ -9,14 +9,15 @@ Future updates from this computer use `npm run deploy`. Optional automatic
 deploys from GitHub are explained in the
 [Mathopoly setup guide](docs/CLOUDFLARE_SETUP.md#9-optional-automatic-deploys-from-github).
 
-The **`migration` branch runs the website and game server on Cloudflare**, with
+The **`main` branch runs the website and game server on Cloudflare**, with
 the existing Neon PostgreSQL database. Its default development, build and deploy
-commands use Cloudflare. **`main` is the separate Render backup.**
+commands use Cloudflare. The existing `migration` branch is retained. The original
+Render implementation is preserved on **`codex/render-backup-2026-10-13`**.
 
 ## Fresh setup on another computer or account
 
 1. Install Node.js **24**, open PowerShell in `D:\Documents\BKT` on the
-   `migration` branch, and run `npm ci`.
+   `main` branch, and run `npm ci`.
 2. Run `npm run setup:cloudflare`. If a browser opens, sign in to your Cloudflare
    account and authorize Wrangler. The script uses the existing database and JWT
    settings, builds the game, prepares a free public hostname, uploads the two
@@ -108,10 +109,12 @@ enter a test database connection string and JWT secret, then run `npm run dev`.
 The detailed guide explains this option. Real database settings allow real
 database writes; the isolated test command keeps its data temporary.
 
-Only the `main` branch contains the original Render setup. Deleting the GitHub
-`migration` branch would not delete a deployed Cloudflare Worker or undo database
-writes. Saved Cloudflare rooms belong to their Worker and do not transfer between
-hosting platforms.
+The `codex/render-backup-2026-10-13` branch contains the original Render setup.
+Existing Render services must track that backup branch to keep using the original
+implementation after `main` moves to Cloudflare. GitHub branches and deployed
+applications have separate lifetimes; deleting `migration` would not delete a
+deployed Cloudflare Worker or undo database writes. Saved Cloudflare rooms belong
+to their Worker and do not transfer between hosting platforms.
 
 ## Tests
 
