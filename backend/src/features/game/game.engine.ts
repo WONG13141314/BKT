@@ -1345,23 +1345,22 @@ function checkBankruptcy(state: GameState): GameState {
     if (p.money < 0 && p.properties.length === 0) {
       return { ...p, isBankrupt: true };
     }
-    // Auto-sell cheapest property if negative money
-    if (p.money < 0 && p.properties.length > 0) {
-      const sortedProps = [...p.properties].sort((a, b) => {
-        const tileA = BOARD_TILES[a];
-        const tileB = BOARD_TILES[b];
-        return (tileA?.price ?? 0) - (tileB?.price ?? 0);
-      });
-      const sellIdx = sortedProps[0];
-      const sellTile = BOARD_TILES[sellIdx];
-      const sellPrice = Math.floor((sellTile?.price ?? 0) * 0.5);
-      return {
-        ...p,
-        money: p.money + sellPrice,
-        properties: p.properties.filter((idx) => idx !== sellIdx),
-      };
+    if (p.money >= 0) return p;
+
+    // Auto-sell the cheapest properties until the debt is cleared. Selling only
+    // one per turn used to leave a player in debt and still playing for turns.
+    const cheapestFirst = [...p.properties].sort(
+      (a, b) => (BOARD_TILES[a]?.price ?? 0) - (BOARD_TILES[b]?.price ?? 0)
+    );
+    let money = p.money;
+    const sold = new Set<number>();
+    for (const tileIndex of cheapestFirst) {
+      if (money >= 0) break;
+      money += Math.floor((BOARD_TILES[tileIndex]?.price ?? 0) * 0.5);
+      sold.add(tileIndex);
     }
-    return p;
+    const properties = p.properties.filter((idx) => !sold.has(idx));
+    return { ...p, money, properties, isBankrupt: money < 0 && properties.length === 0 };
   });
 
   // Update property ownership for sold properties

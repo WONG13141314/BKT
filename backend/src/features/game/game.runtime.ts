@@ -446,6 +446,8 @@ export function createGameService(options: GameRuntimeOptions) {
       if (!state || state.turnPhase !== 'JAIL_DECISION') return null;
 
       const newState = payBail(state);
+      // The engine leaves the state unchanged when bail is unaffordable.
+      if (newState === state) return null;
       activeGames.set(gameId, newState);
       return newState;
     },

@@ -638,6 +638,7 @@ export function GamePage() {
           myPlayerId={myPlayerId}
           round={gameState.round}
           maxRounds={gameState.maxRounds}
+          isFinalRound={gameState.isFinalRound}
         />
 
         {/* Center: Board */}

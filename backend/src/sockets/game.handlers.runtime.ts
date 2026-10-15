@@ -311,6 +311,11 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     });
   }
 
+  /** Identifies one occurrence of a turn phase, so disconnect grace is granted once. */
+  function disconnectGraceKey(state: GameState): string {
+    return [state.dbGameId, state.round, state.currentPlayerIndex, state.turnPhase, state.diceRollId].join('|');
+  }
+
   function savePhaseDeadline(
     gameId: string,
     state: GameState,
@@ -351,9 +356,11 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     }
 
     const savedDeadline = state.phaseDeadlineFor === state.turnPhase ? state.phaseDeadline : null;
+    const normalDeadline = savedDeadline ?? getPhaseDeadline(state, now, { canBuild: canBuildOnEndTurn(state) });
+    // An override only ever extends the phase; it never cuts remaining time short.
     const phaseDeadline = overrideMs === undefined
-      ? savedDeadline ?? getPhaseDeadline(state, now, { canBuild: canBuildOnEndTurn(state) })
-      : now + overrideMs;
+      ? normalDeadline
+      : Math.max(now + overrideMs, normalDeadline ?? 0);
 
     if (phaseDeadline !== null) {
       savePhaseDeadline(gameId, state, phaseDeadline);
@@ -675,14 +682,10 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
         return;
       }
 
-      const activePlayer = state.players[state.currentPlayerIndex];
-      const isActivePlayer = activePlayer?.playerId === playerId;
-
-      // The player is back — replace disconnect grace with this phase's normal
-      // deadline before publishing their restored snapshot. MOVING already has
-      // a shorter presentation fallback, so reconnecting must not extend it.
-      if (isActivePlayer && state.turnPhase !== 'MOVING') {
-        savePhaseDeadline(data.gameId, state, null);
+      // Make sure the phase has a live timer, but keep its existing absolute
+      // deadline. Restarting it here let a page refresh grant a fresh decision
+      // window indefinitely. MOVING keeps its presentation fallback untouched.
+      if (getCurrentPlayer(state).playerId === playerId && state.turnPhase !== 'MOVING') {
         armPhaseTimer(io, data.gameId);
       }
 
@@ -878,7 +881,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
       const state = gameService.payBail(d.gameId);
       if (!state) {
-        socket.emit('game:error', { message: 'Cannot pay bail' });
+        socket.emit('game:error', { message: 'You do not have enough money to pay bail.' });
         return;
       }
 
@@ -916,16 +919,15 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       const activePlayer = state.players[state.currentPlayerIndex];
       const wasActivePlayer = activePlayer?.playerId === playerId;
 
-      // Everyone else is blocked on this player. Give them the reconnect grace window to come
-      // back, then move the game on without them.
-      if (wasActivePlayer) {
-        // Movement already has a shorter presentation fallback. Replacing it
-        // with reconnect grace would let a vanished animation stall the table.
-        armPhaseTimer(
-          io,
-          gameId,
-          state.turnPhase === 'MOVING' ? undefined : PHASE_TIMEOUTS.disconnectGrace
-        );
+      // Everyone else is blocked on this player. Give a decision phase one
+      // reconnect grace window, then move the game on without them. Movement
+      // keeps its presentation fallback, and a question cannot accept answers
+      // after its own expiry, so neither is extended.
+      const graceKey = disconnectGraceKey(state);
+      if (wasActivePlayer && !['MOVING', 'MATH_DUEL'].includes(state.turnPhase) && !state.currentChallenge &&
+          state.disconnectGraceFor !== graceKey) {
+        gameService.replaceState(gameId, { ...state, disconnectGraceFor: graceKey });
+        armPhaseTimer(io, gameId, PHASE_TIMEOUTS.disconnectGrace);
       }
     });
   };

@@ -213,17 +213,68 @@ describe('movement acknowledgement', () => {
     );
   });
 
-  it('restores the normal deadline when the active player reconnects', async () => {
+  it('keeps the existing deadline when the active player reconnects', async () => {
     const socket = makeSocket({ player: { id: 'db-player-1' }, gameId });
     const io = makeServer([socket], gameId);
     registerGameHandlers(io, socket);
 
     await socket.trigger('disconnect');
-    expect(gameService.getGameSync(gameId)!.phaseDeadline! - Date.now()).toBe(60_000);
+    const graceDeadline = gameService.getGameSync(gameId)!.phaseDeadline;
+    expect(graceDeadline! - Date.now()).toBe(60_000);
 
+    jest.advanceTimersByTime(20_000);
     await socket.trigger('game:request-state', { gameId });
 
-    expect(gameService.getGameSync(gameId)!.phaseDeadline! - Date.now()).toBe(45_000);
+    expect(gameService.getGameSync(gameId)!.phaseDeadline).toBe(graceDeadline);
+  });
+
+  it('grants disconnect grace only once per phase, so refreshing cannot stall the table', async () => {
+    const socket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('disconnect');
+    const graceDeadline = gameService.getGameSync(gameId)!.phaseDeadline;
+    jest.advanceTimersByTime(50_000);
+    await socket.trigger('game:request-state', { gameId });
+    await socket.trigger('disconnect');
+
+    expect(gameService.getGameSync(gameId)!.phaseDeadline).toBe(graceDeadline);
+    jest.advanceTimersByTime(10_000);
+    expect(gameService.getGameSync(gameId)!.turnPhase).not.toBe('ROLL_PHASE');
+  });
+
+  it('never shortens a longer remaining deadline when the active player disconnects', async () => {
+    const state = makeGameState({
+      id: gameId, turnPhase: 'BUY_DECISION', phaseDeadline: Date.now() + 80_000, phaseDeadlineFor: 'BUY_DECISION',
+    });
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('disconnect');
+
+    expect(gameService.getGameSync(gameId)!.phaseDeadline! - Date.now()).toBe(80_000);
+  });
+
+  it('does not extend a question past its own expiry when the active player disconnects', async () => {
+    const challenge = makePrivateChallenge({ context: 'CHALLENGE_CARD', startedAt: Date.now() });
+    const state = makeGameState({
+      id: gameId,
+      turnPhase: 'CARD_MATH_CHALLENGE',
+      currentChallenge: challenge,
+      phaseDeadline: challenge.startedAt + challenge.timeLimit * 1_000 + 3_000,
+      phaseDeadlineFor: 'CARD_MATH_CHALLENGE',
+    });
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' }, gameId });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('disconnect');
+
+    expect(gameService.getGameSync(gameId)!.phaseDeadline).toBe(state.phaseDeadline);
   });
 
   it('keeps the movement fallback when the active player disconnects mid-animation', async () => {

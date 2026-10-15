@@ -190,6 +190,38 @@ describe('Game Engine — Mathopoly', () => {
 
       expect(newState.phase).toBe('FINISHED');
     });
+
+    it('sells cheapest properties until a debt is cleared in one turn end', () => {
+      const owned = [17, 4, 1, 2];
+      gameState.players[0] = { ...gameState.players[0], money: -100, properties: owned };
+      gameState.properties = gameState.properties.map((property) =>
+        owned.includes(property.tileIndex) ? { ...property, ownerId: 'p1' } : property
+      );
+      gameState.turnPhase = 'END_TURN';
+
+      const next = endTurn(gameState);
+      const debtor = next.players[0];
+
+      // 80 + 80 + 120 at half price clears RM100 of debt; the RM240 tile is kept.
+      expect(debtor.money).toBe(40);
+      expect(debtor.properties).toEqual([17]);
+      expect(debtor.isBankrupt).toBe(false);
+      expect(next.properties.filter((property) => property.ownerId === 'p1').map((property) => property.tileIndex))
+        .toEqual([17]);
+    });
+
+    it('declares bankruptcy when selling every property cannot clear the debt', () => {
+      gameState.players[1] = { ...gameState.players[1], money: -500, properties: [1, 2] };
+      gameState.properties = gameState.properties.map((property) =>
+        [1, 2].includes(property.tileIndex) ? { ...property, ownerId: 'p2' } : property
+      );
+      gameState.turnPhase = 'END_TURN';
+
+      const debtor = endTurn(gameState).players[1];
+
+      expect(debtor.isBankrupt).toBe(true);
+      expect(debtor.properties).toEqual([]);
+    });
   });
 
   describe('payBail & Jail Auto-Release', () => {
@@ -204,6 +236,20 @@ describe('Game Engine — Mathopoly', () => {
       expect(player.isInJail).toBe(false);
       expect(player.jailTurns).toBe(0);
       expect(player.money).toBe(STARTING_MONEY - BAIL_COST);
+    });
+
+    it('rejects bail through the game service when the player cannot afford it', () => {
+      gameState.id = 'game_BROKE_BAIL';
+      gameState.players[0] = { ...gameState.players[0], isInJail: true, money: BAIL_COST - 1 };
+      gameState.turnPhase = 'JAIL_DECISION';
+      gameService.replaceState(gameState.id, gameState);
+
+      try {
+        expect(gameService.payBail(gameState.id)).toBeNull();
+        expect(gameService.getGameSync(gameState.id)!.turnPhase).toBe('JAIL_DECISION');
+      } finally {
+        gameService.removeGame(gameState.id);
+      }
     });
 
     it('should auto-release player from jail when startRollPhase sees jailTurns >= MAX_JAIL_TURNS', () => {

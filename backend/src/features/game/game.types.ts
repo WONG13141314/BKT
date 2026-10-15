@@ -448,6 +448,8 @@ export interface GameState {
   phaseDeadline?: number | null;
   /** Server-only phase marker that prevents an expiry from leaking into a new phase. */
   phaseDeadlineFor?: TurnPhase | null;
+  /** Server-only identity of the phase that already received disconnect grace. */
+  disconnectGraceFor?: string | null;
 
 }
 

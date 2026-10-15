@@ -15,6 +15,17 @@
   font-size: 0.8rem;
 }
 
+/* Countdown to the server's default action for an unanswered decision. */
+.game-action-dock__deadline {
+  justify-self: center;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-action-dock__deadline--urgent { color: #c1121f; }
+
 @media (max-width: 900px) {
   .game-action-dock {
     position: fixed;
@@ -29,13 +40,15 @@
     box-shadow: 0 -5px 0 rgba(0, 0, 0, 0.2);
   }
 
-  .game-action-dock__label { grid-column: 1 / -1; }
+  .game-action-dock__label,
+  .game-action-dock__deadline { grid-column: 1 / -1; }
   .game-action-dock .action-btn { min-height: 48px; padding: 0.55rem 0.7rem; }
 }
 
 @media (max-width: 620px) {
   .game-action-dock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .game-action-dock > :only-child { grid-column: 1 / -1; }
+  .game-action-dock > :only-child,
+  .game-action-dock > button:only-of-type { grid-column: 1 / -1; }
   .game-action-dock .action-btn { font-size: 0.78rem; }
 }
 

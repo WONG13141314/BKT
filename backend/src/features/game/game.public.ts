@@ -34,6 +34,8 @@ export interface PublicGameState {
   gameStartTime: number;
   isFinalRound: boolean;
   phaseDeadline: number | null;
+  /** Server clock at publication, so clients can show deadlines despite clock skew. */
+  serverNow: number;
 }
 
 function toPublicPlayerState(player: PlayerState): PublicPlayerState {
@@ -83,5 +85,6 @@ export function toPublicGameState(state: GameState): PublicGameState {
     gameStartTime: state.gameStartTime,
     isFinalRound: state.isFinalRound,
     phaseDeadline: state.phaseDeadline ?? null,
+    serverNow: Date.now(),
   };
 }

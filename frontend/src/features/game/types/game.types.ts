@@ -284,6 +284,8 @@ export interface GameState {
   gameStartTime: number;
   isFinalRound: boolean;
   phaseDeadline: number | null;
+  /** Server clock when this snapshot was published; absent in older payloads. */
+  serverNow?: number;
 }
 
 // ---- Math Duel ----

@@ -1,6 +1,7 @@
 import { ArrowRight, Banknote, DollarSign, House, Hourglass, Lock, Zap } from 'lucide-react';
 import type { GameState, Player } from '../types/game.types';
-import { formatRM } from '../types/game.types';
+import { formatRM, GAME_CONSTANTS } from '../types/game.types';
+import { usePhaseCountdown } from '../hooks/usePhaseCountdown';
 import './GameActionDock.css';
 
 export interface GameActionDockProps {
@@ -38,6 +39,7 @@ export function GameActionDock({
   onBuild,
   onEndTurn,
 }: GameActionDockProps) {
+  const secondsLeft = usePhaseCountdown(state);
   if (!isMyTurn || isBoardAnimating) return null;
 
   const phase = state.turnPhase;
@@ -62,6 +64,7 @@ export function GameActionDock({
     return (
       <div className="game-action-dock" id="game-actions" aria-label="Game actions">
         <button className="action-btn action-btn--primary" onClick={onRoll}>Roll Dice</button>
+        <DeadlineNote seconds={secondsLeft} action="Rolls automatically" />
       </div>
     );
   }
@@ -85,6 +88,7 @@ export function GameActionDock({
           {pending.bankOfferApproved ? 'Accept Offer' : 'Buy Property'} · {formatRM(price)}
         </button>
         <button className="action-btn action-btn--ghost" onClick={onSkipBuy}>Skip Purchase</button>
+        <DeadlineNote seconds={secondsLeft} action="Skips the purchase" />
       </div>
     );
   }
@@ -94,12 +98,17 @@ export function GameActionDock({
       <div className="game-action-dock game-action-dock--decision" id="game-actions" aria-label="Jail actions">
         <span className="game-action-dock__label"><Lock size={16} aria-hidden="true" /> Choose an escape</span>
         <button className="action-btn action-btn--primary" onClick={onJailMath}>Math Escape</button>
-        <button className="action-btn action-btn--secondary" onClick={onJailBail}>
-          <Banknote size={17} aria-hidden="true" /> Pay Bail ({formatRM(50)})
+        <button
+          className="action-btn action-btn--secondary"
+          onClick={onJailBail}
+          disabled={(currentPlayer?.money ?? 0) < GAME_CONSTANTS.BAIL_COST}
+        >
+          <Banknote size={17} aria-hidden="true" /> Pay Bail ({formatRM(GAME_CONSTANTS.BAIL_COST)})
         </button>
         <button className="action-btn action-btn--ghost" onClick={onJailWait}>
           <Hourglass size={17} aria-hidden="true" /> Wait
         </button>
+        <DeadlineNote seconds={secondsLeft} action="Waits in jail" />
       </div>
     );
   }
@@ -116,9 +125,23 @@ export function GameActionDock({
         <button className="action-btn action-btn--end" onClick={onEndTurn} disabled={isHoldingDuelResult}>
           {isHoldingDuelResult ? 'Showing Result…' : 'End Turn'} <ArrowRight size={17} aria-hidden="true" />
         </button>
+        <DeadlineNote seconds={secondsLeft} action="Turn ends" />
       </div>
     );
   }
 
   return null;
+}
+
+/** Tells the player what the server will do for them when the phase expires. */
+function DeadlineNote({ seconds, action }: { seconds: number | null; action: string }) {
+  if (seconds === null) return null;
+  return (
+    <span
+      className={`game-action-dock__deadline${seconds <= 5 ? ' game-action-dock__deadline--urgent' : ''}`}
+      role="timer"
+    >
+      {action} in {seconds}s
+    </span>
+  );
 }

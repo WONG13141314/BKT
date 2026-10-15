@@ -169,6 +169,31 @@ describe('authoritative game recovery', () => {
 
     expect(gameService.getGameSync(game.id)?.phaseDeadline).toBe(NOW + 4_000);
   });
+
+  it('does not restart a decision deadline when the active player refreshes', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    const game = makeGameState({
+      id: 'game_RECONNECT_BUY',
+      turnPhase: 'BUY_DECISION',
+      phaseDeadline: NOW + 3_000,
+      phaseDeadlineFor: 'BUY_DECISION',
+    });
+    gameIds.push(game.id);
+    gameService.replaceState(game.id, game);
+
+    const socket = makeSocket({ player: { id: game.players[0].playerId } });
+    const io = makeServer([socket], game.id);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:request-state', { gameId: game.id });
+    await socket.trigger('game:request-state', { gameId: game.id });
+
+    expect(gameService.getGameSync(game.id)?.phaseDeadline).toBe(NOW + 3_000);
+    expect(socket.emit).toHaveBeenCalledWith('game:state', {
+      state: expect.objectContaining({ phaseDeadline: NOW + 3_000, serverNow: NOW }),
+    });
+  });
 });
 
 describe('lobby recovery', () => {

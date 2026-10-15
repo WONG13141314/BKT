@@ -8,6 +8,8 @@ interface PlayerPanelProps {
   myPlayerId: string;
   round: number;
   maxRounds: number;
+  /** The clock cap has been reached; the game ends when this lap completes. */
+  isFinalRound?: boolean;
 }
 
 export function PlayerPanel({
@@ -16,6 +18,7 @@ export function PlayerPanel({
   myPlayerId,
   round,
   maxRounds,
+  isFinalRound = false,
 }: PlayerPanelProps) {
   return (
     <aside className="player-panel">
@@ -23,6 +26,9 @@ export function PlayerPanel({
       <div className="panel-round">
         <span className="panel-round__label">Round</span>
         <span className="panel-round__value">{round} / {maxRounds}</span>
+        {isFinalRound && (
+          <span className="panel-round__final" role="status">Final round — time is up after this lap</span>
+        )}
         <div className="panel-round__bar">
           <div
             className="panel-round__fill"
