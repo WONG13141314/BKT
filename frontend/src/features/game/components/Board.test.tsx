@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameState, Player } from '../types/game.types';
 import { Board } from './Board';
-import { DICE_ROLL_LIMIT_MS, TOKEN_STEP_MS } from './board.animation';
+import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, TOKEN_STEP_MS } from './board.animation';
 
 const dice = vi.hoisted(() => ({ onRollingChange: undefined as ((rolling: boolean) => void) | undefined, fail: false }));
 const rendering = vi.hoisted(() => ({ supported: true }));
@@ -18,7 +18,10 @@ vi.mock('./PhysicsDice', () => ({
   },
 }));
 vi.mock('./BoardPiecesScene', () => ({
-  BoardPiecesScene: ({ players }: { players: Player[] }) => <div data-testid="token-position">{players[0].position}</div>,
+  BoardPiecesScene: ({ players }: { players: Player[] }) => <>
+    <div data-testid="token-position">{players[0].position}</div>
+    {players.map((player) => <div key={player.id} data-testid={`token-${player.id}`}>{player.position}</div>)}
+  </>,
 }));
 
 function makeState(position = 0, rollId = 0, turnPhase: GameState['turnPhase'] = 'ROLL_PHASE'): GameState {
@@ -39,6 +42,20 @@ async function mountBoard() {
   await act(async () => { await Promise.resolve(); });
   if (rendering.supported && !dice.fail) expect(screen.getByTestId('dice')).toBeInTheDocument();
   return { ...view, callbacks, update: (state: GameState) => view.rerender(<Board gameState={state} {...props} />) };
+}
+
+function makeTableState(
+  seats: { position: number; isInJail?: boolean }[],
+  currentPlayerIndex: number,
+  rollId: number,
+  turnPhase: GameState['turnPhase'],
+): GameState {
+  return {
+    ...makeState(0, rollId, turnPhase),
+    currentPlayerIndex,
+    players: seats.map((seat, index) => ({ id: `bot-${index}`, name: `Bot ${index}`, money: 800, isInJail: false, ...seat })),
+    tiles: Array.from({ length: 20 }, (_, index) => ({ index, type: index === 5 ? 'JAIL' : index === 15 ? 'GO_TO_JAIL' : 'GO', name: 'Go' })),
+  } as unknown as GameState;
 }
 
 describe('board playback ordering', () => {
@@ -108,6 +125,36 @@ describe('board playback ordering', () => {
     act(() => { dice.onRollingChange?.(false); });
     act(() => vi.advanceTimersByTime(0));
     expect(callbacks.onMovementStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('jumps a jailed token from Ke Penjara to Penjara instead of walking through Mula', async () => {
+    const { update, callbacks } = await mountBoard();
+    update(makeTableState([{ position: 15 }, { position: 2 }], 0, 0, 'END_TURN'));
+    act(() => vi.advanceTimersByTime(TOKEN_STEP_MS * 2));
+    callbacks.onMovementStep.mockClear();
+
+    update(makeTableState([{ position: 5, isInJail: true }, { position: 2 }], 0, 0, 'END_TURN'));
+    act(() => vi.advanceTimersByTime(JAIL_TRANSFER_HOLD_MS - 1));
+    expect(screen.getByTestId('token-bot-0')).toHaveTextContent('15');
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByTestId('token-bot-0')).toHaveTextContent('5');
+    expect(callbacks.onMovementStep).not.toHaveBeenCalled();
+  });
+
+  it('settles an earlier token when the next player rolls instead of pausing it mid-walk', async () => {
+    const { update } = await mountBoard();
+    update(makeTableState([{ position: 0 }, { position: 10 }], 0, 0, 'END_TURN'));
+    act(() => vi.advanceTimersByTime(TOKEN_STEP_MS * 2));
+    // Bot 0 is still walking 0 -> 4 when bot 1 rolls.
+    update(makeTableState([{ position: 4 }, { position: 10 }], 0, 0, 'END_TURN'));
+    act(() => vi.advanceTimersByTime(TOKEN_STEP_MS));
+    expect(screen.getByTestId('token-bot-0')).not.toHaveTextContent('4');
+
+    update(makeTableState([{ position: 4 }, { position: 13 }], 1, 1, 'MOVING'));
+    act(() => vi.advanceTimersByTime(0));
+    expect(screen.getByTestId('token-bot-0')).toHaveTextContent('4');
+    // The roller waits for its dice before walking.
+    expect(screen.getByTestId('token-bot-1')).toHaveTextContent('10');
   });
 
   it('allocates no idle movement polling timers', async () => {

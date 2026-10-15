@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
-import { DICE_ROLL_LIMIT_MS, TOKEN_STEP_MS } from './board.animation';
-import { BasicBoardTokens, BasicDice, BoardSceneBoundary, hasWebGL2 } from './BoardRendering';
+import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
+import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWebGL2 } from './BoardRendering';
+import { loadBoardPiecesScene, loadPhysicsDice } from './board.preload';
 import './Board.css';
 
-const BoardPiecesScene = lazy(() => import('./BoardPiecesScene').then((module) => ({ default: module.BoardPiecesScene })));
-const PhysicsDice = lazy(() => import('./PhysicsDice').then((module) => ({ default: module.PhysicsDice })));
+const BoardPiecesScene = lazy(() => loadBoardPiecesScene().then((module) => ({ default: module.BoardPiecesScene })));
+const PhysicsDice = lazy(() => loadPhysicsDice().then((module) => ({ default: module.PhysicsDice })));
 
 interface Props {
   gameState: GameState;
@@ -56,6 +57,9 @@ export function Board({
   // Money and status broadcasts must not restart the current hop's timer.
   const targetPositionsJson = JSON.stringify(Object.fromEntries(players.map((player) => [player.id, player.position])));
   const targetPositions = useMemo<Record<string, number>>(() => JSON.parse(targetPositionsJson), [targetPositionsJson]);
+  const jailIndex = gameState.tiles.findIndex((tile) => tile.type === 'JAIL');
+  const jailedPlayerIds = players.filter((player) => player.isInJail).map((player) => player.id).join(',');
+  const rollerId = players[gameState.currentPlayerIndex]?.id;
 
   useEffect(() => {
     const board = boardElement.current;
@@ -92,6 +96,15 @@ export function Board({
 
   useEffect(() => {
     if (diceAnimating) {
+      // A new roll must never freeze an earlier token mid-walk and resume it
+      // alongside the roller. Settle everyone except the roller immediately.
+      const current = visualPositionsRef.current;
+      const settled = Object.fromEntries(Object.entries(targetPositions).map(([id, target]) =>
+        [id, id === rollerId ? current[id] ?? target : target]));
+      if (rollerId !== undefined && Object.entries(settled).some(([id, position]) => current[id] !== position)) {
+        visualPositionsRef.current = settled;
+        setVisualPositions(settled);
+      }
       if (wasMoving.current) callbacks.current.onMovementChange?.(false);
       wasMoving.current = false;
       return;
@@ -101,6 +114,10 @@ export function Board({
     const targets = targetPositions;
     const isMovementPhase = gameState.turnPhase === 'MOVING';
     const rollId = gameState.diceRollId;
+    const jailed = new Set(jailedPlayerIds.split(','));
+    // "Go to jail" is a direct transfer, not a walk forward through Mula.
+    const isJailTransfer = (id: string, target: number) =>
+      jailIndex >= 0 && target === jailIndex && jailed.has(id) && visualPositionsRef.current[id] !== target;
 
     const step = () => {
       const current = visualPositionsRef.current;
@@ -116,7 +133,7 @@ export function Board({
         }
         if (position === target) continue;
         const forward = (target - position + gameState.tiles.length) % gameState.tiles.length;
-        const isWalkingMove = forward <= 12;
+        const isWalkingMove = forward <= 12 && !isJailTransfer(id, target);
         next[id] = isWalkingMove ? (position + 1) % gameState.tiles.length : target;
         if (isWalkingMove) callbacks.current.onMovementStep?.(next[id], id);
         changed = true;
@@ -144,10 +161,12 @@ export function Board({
 
     // Idle boards allocate no polling interval or animation timer.
     if (wasMoving.current || isMovementPhase || Object.entries(targets).some(([id, position]) => visualPositionsRef.current[id] !== position)) {
-      timer = setTimeout(step, 0);
+      // Let the token rest on "Ke Penjara" briefly so the jump reads as a jail transfer.
+      const holdOnJailTile = Object.entries(targets).some(([id, target]) => isJailTransfer(id, target));
+      timer = setTimeout(step, holdOnJailTile ? JAIL_TRANSFER_HOLD_MS : 0);
     }
     return () => clearTimeout(timer);
-  }, [diceAnimating, gameState.diceRollId, gameState.tiles.length, gameState.turnPhase, targetPositions]);
+  }, [diceAnimating, gameState.diceRollId, gameState.tiles.length, gameState.turnPhase, jailIndex, jailedPlayerIds, rollerId, targetPositions]);
 
   const visualPlayers = useMemo(() => players.map((player) => ({
     ...player,
@@ -202,7 +221,7 @@ export function Board({
       <div className="board-center">
         <div className="board-brand"><strong>MATHOPOLY</strong><span>ROLL • SOLVE • OWN</span></div>
         {canRender3D ? <BoardSceneBoundary fallback={basicDice}>
-          <Suspense fallback={basicDice}>
+          <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS} placeholder={<div className="physics-dice" aria-hidden="true" />}>{basicDice}</DelayedFallback>}>
             <PhysicsDice
               values={gameState.diceValues}
               rollId={gameState.diceRollId}
@@ -215,7 +234,7 @@ export function Board({
       </div>
 
       {canRender3D ? <BoardSceneBoundary fallback={basicTokens}>
-        <Suspense fallback={basicTokens}><BoardPiecesScene players={visualPlayers} /></Suspense>
+        <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicTokens}</DelayedFallback>}><BoardPiecesScene players={visualPlayers} /></Suspense>
       </BoardSceneBoundary> : basicTokens}
     </div>
   );

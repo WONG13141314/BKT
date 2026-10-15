@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { getGridPosition } from '../config/board.presentation';
 import type { Player } from '../types/game.types';
 
@@ -24,6 +24,16 @@ export class BoardSceneBoundary extends Component<{ children: ReactNode; fallbac
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
+}
+
+/** Show the basic fallback only if a lazy 3D scene is still loading after `delayMs`. */
+export function DelayedFallback({ delayMs, placeholder = null, children }: { delayMs: number; placeholder?: ReactNode; children: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [delayMs]);
+  return <>{visible ? children : placeholder}</>;
 }
 
 const PIP_POSITIONS: Record<number, number[]> = {

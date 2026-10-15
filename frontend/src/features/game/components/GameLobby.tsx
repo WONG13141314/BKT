@@ -5,6 +5,7 @@ import { usePlayer } from '../../auth/PlayerContext';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
 import { useAudio, useAudioScene } from '../../../shared/audio/AudioContext';
+import { preloadBoardScenes } from './board.preload';
 import './GameLobby.css';
 
 interface LobbyPlayer {
@@ -49,6 +50,9 @@ export function GameLobby() {
   const { player } = usePlayer();
   const myId = player?.id ?? null;
   const isHost = myId !== null && myId === room?.hostId;
+
+  // Download the 3D dice and tokens while players wait, so the board opens in 3D.
+  useEffect(() => { preloadBoardScenes(); }, []);
 
   useEffect(() => {
     if (terminalRecoveryRef.current) return;
