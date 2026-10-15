@@ -10,7 +10,13 @@ import {
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Quaternion, Vector3 } from 'three';
 import { DICE_ROLL_LIMIT_MS, DICE_SETTLE_HOLD_MS } from './board.animation';
+import { SceneReady } from './BoardRendering';
 import { buildThrowPlan, PlannedDie, restingRotation, ThrowPlan } from './dice.throw';
+
+/** Compile Rapier's WebAssembly ahead of time; `Physics` then reuses the ready module. */
+export function warmUpPhysics(): Promise<void> {
+  return import('@dimforge/rapier3d-compat').then((rapier) => rapier.init());
+}
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[0, 0]],
@@ -40,9 +46,11 @@ interface Props {
   /** The board can finish a roll even while this lazy-loaded scene is loading. */
   animate?: boolean;
   onRollingChange?: (rolling: boolean) => void;
+  /** Called once the physics world has loaded and the dice are drawn. */
+  onReady?: () => void;
 }
 
-export function PhysicsDice({ values, rollId, animate = true, onRollingChange }: Props) {
+export function PhysicsDice({ values, rollId, animate = true, onRollingChange, onReady }: Props) {
   const [firstValue, secondValue] = values;
   const activeValues = useMemo(
     () => [firstValue, secondValue].filter((value) => value >= 1 && value <= 6),
@@ -134,6 +142,7 @@ export function PhysicsDice({ values, rollId, animate = true, onRollingChange }:
           <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
             <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} />
           </Physics>
+          <SceneReady onReady={onReady} />
         </Suspense>
       </Canvas>
     </div>

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, Group, MathUtils, Mesh, MeshBasicMaterial, OrthographicCamera, Vector3 } from 'three';
 import { Player } from '../types/game.types';
 import { TOKEN_HOP_SECONDS } from './board.animation';
+import { SceneReady } from './BoardRendering';
 
 const BOARD_WORLD_SIZE = 10.05;
 
@@ -67,7 +68,7 @@ function ResponsiveBoardCamera() {
   return null;
 }
 
-export function BoardPiecesScene({ players }: { players: Player[] }) {
+export function BoardPiecesScene({ players, onReady }: { players: Player[]; onReady?: () => void }) {
   return (
     <div className="board-piece-layer" aria-label="Three-dimensional player tokens">
       <Canvas
@@ -91,6 +92,7 @@ export function BoardPiecesScene({ players }: { players: Player[] }) {
         {players.map((player, index) => !player.isBankrupt && (
           <MovingToken key={player.id} player={player} playerIndex={index} />
         ))}
+        <SceneReady onReady={onReady} />
       </Canvas>
     </div>
   );

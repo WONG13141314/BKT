@@ -48,6 +48,22 @@ export function LoginPage() {
     setStep(player ? 'welcome' : 'newPlayer');
   }, [isRestoring, player]);
 
+  // A known player is about to host or join: fetch the 3D board while this page is idle.
+  useEffect(() => {
+    if (!player) return;
+    const preload = () => {
+      void import('../../game/components/board.preload')
+        .then((module) => module.preloadBoardScenes())
+        .catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(preload, { timeout: 2000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = window.setTimeout(preload, 500);
+    return () => window.clearTimeout(timer);
+  }, [player]);
+
   const clearMessages = () => {
     setError('');
     setNotice('');

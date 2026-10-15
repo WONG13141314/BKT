@@ -41,6 +41,13 @@ export function Board({
   const { players, properties } = gameState;
   const boardElement = useRef<HTMLDivElement>(null);
   const [canRender3D, setCanRender3D] = useState(hasWebGL2);
+  const [diceSceneReady, setDiceSceneReady] = useState(false);
+  const [tokenSceneReady, setTokenSceneReady] = useState(false);
+  const [revealTimedOut, setRevealTimedOut] = useState(false);
+  const handleDiceSceneReady = useCallback(() => setDiceSceneReady(true), []);
+  const handleTokenSceneReady = useCallback(() => setTokenSceneReady(true), []);
+  // Cover the board until the dice and tokens have both drawn, so it opens complete.
+  const scenesVisible = !canRender3D || revealTimedOut || (diceSceneReady && tokenSceneReady);
   const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map((player) => [player.id, player.position]))
   );
@@ -73,6 +80,12 @@ export function Board({
       board.removeEventListener('webglcontextcreationerror', useBasicBoard, true);
     };
   }, [canRender3D]);
+
+  useEffect(() => {
+    if (scenesVisible) return;
+    const timer = setTimeout(() => setRevealTimedOut(true), SCENE_FALLBACK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [scenesVisible]);
 
   const handleDiceRollingChange = useCallback((rolling: boolean) => {
     const rollId = gameState.diceRollId;
@@ -177,7 +190,7 @@ export function Board({
   const basicTokens = <BasicBoardTokens players={visualPlayers} />;
 
   return (
-    <div className="board-grid" ref={boardElement}>
+    <div className={`board-grid${scenesVisible ? '' : ' board-grid--scenes-pending'}`} ref={boardElement}>
       {gameState.tiles.map((tile) => {
         const position = getGridPosition(tile.index);
         const groupColor = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] : null;
@@ -227,14 +240,21 @@ export function Board({
               rollId={gameState.diceRollId}
               animate={diceAnimating}
               onRollingChange={handleDiceRollingChange}
+              onReady={handleDiceSceneReady}
             />
           </Suspense>
         </BoardSceneBoundary> : basicDice}
         <div className="dice-roll-btn" aria-live="polite">{centerStatus}</div>
       </div>
 
+      {!scenesVisible && (
+        <div className="board-scene-loading" role="status" aria-live="polite">
+          <span className="board-scene-loading-card">Setting up the board…</span>
+        </div>
+      )}
+
       {canRender3D ? <BoardSceneBoundary fallback={basicTokens}>
-        <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicTokens}</DelayedFallback>}><BoardPiecesScene players={visualPlayers} /></Suspense>
+        <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicTokens}</DelayedFallback>}><BoardPiecesScene players={visualPlayers} onReady={handleTokenSceneReady} /></Suspense>
       </BoardSceneBoundary> : basicTokens}
     </div>
   );

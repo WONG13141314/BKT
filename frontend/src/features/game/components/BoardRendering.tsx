@@ -36,6 +36,15 @@ export function DelayedFallback({ delayMs, placeholder = null, children }: { del
   return <>{visible ? children : placeholder}</>;
 }
 
+/** Rendered inside a 3D canvas: reports once its scene has drawn a frame. */
+export function SceneReady({ onReady }: { onReady?: () => void }) {
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => onReady?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onReady]);
+  return null;
+}
+
 const PIP_POSITIONS: Record<number, number[]> = {
   1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8],
   5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],

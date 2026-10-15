@@ -3,10 +3,20 @@ import { hasWebGL2 } from './BoardRendering';
 export const loadBoardPiecesScene = () => import('./BoardPiecesScene');
 export const loadPhysicsDice = () => import('./PhysicsDice');
 
-/** Fetch the 3D chunks before the board mounts, e.g. while the lobby is open. */
+let preloading: Promise<unknown> | null = null;
+
+/**
+ * Download the game page and 3D scenes, and compile the dice physics engine,
+ * before the board mounts so it opens with 3D dice and tokens already in place.
+ */
 export function preloadBoardScenes(): void {
-  if (!hasWebGL2()) return;
-  // A failed prefetch is retried by React.lazy when the board actually mounts.
-  void loadPhysicsDice().catch(() => undefined);
-  void loadBoardPiecesScene().catch(() => undefined);
+  if (preloading || !hasWebGL2()) return;
+  preloading = Promise.all([
+    import('../pages/GamePage'),
+    loadPhysicsDice().then((module) => module.warmUpPhysics()),
+    loadBoardPiecesScene(),
+  ]).catch(() => {
+    // React.lazy retries a failed download when the board actually mounts.
+    preloading = null;
+  });
 }

@@ -422,3 +422,48 @@
 
 
 }
+
+/* Covers the board for the brief moment the 3D canvases need to draw. */
+.board-scene-loading {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(220, 237, 200, .92);
+}
+
+.board-scene-loading-card {
+  padding: .6rem 1rem;
+  border: 2px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 #000;
+  color: #000;
+  font: 800 .75rem 'Courier New', monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  animation: board-scene-loading-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes board-scene-loading-pulse {
+  from { opacity: .55; }
+  to { opacity: 1; }
+}
+
+/* The dice and token canvases fade in together once both scenes have drawn. */
+.board-grid .physics-dice,
+.board-grid .board-piece-layer {
+  transition: opacity .2s ease-out;
+}
+
+.board-grid--scenes-pending .physics-dice:not(.basic-dice),
+.board-grid--scenes-pending .board-piece-layer:not(.basic-token-layer) {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-grid .physics-dice,
+  .board-grid .board-piece-layer { transition: none; }
+  .board-scene-loading-card { animation: none; }
+}

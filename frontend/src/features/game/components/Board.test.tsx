@@ -1,27 +1,32 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameState, Player } from '../types/game.types';
 import { Board } from './Board';
-import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, TOKEN_STEP_MS } from './board.animation';
+import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
 
 const dice = vi.hoisted(() => ({ onRollingChange: undefined as ((rolling: boolean) => void) | undefined, fail: false }));
-const rendering = vi.hoisted(() => ({ supported: true }));
+const rendering = vi.hoisted(() => ({ supported: true, tokensDrawn: true }));
 vi.mock('./BoardRendering', async (importOriginal) => ({
   ...await importOriginal<typeof import('./BoardRendering')>(),
   hasWebGL2: () => rendering.supported,
 }));
 vi.mock('./PhysicsDice', () => ({
-  PhysicsDice: ({ onRollingChange }: { onRollingChange: (rolling: boolean) => void }) => {
+  PhysicsDice: function MockDice({ onRollingChange, onReady }: { onRollingChange: (rolling: boolean) => void; onReady?: () => void }) {
+    useEffect(() => { onReady?.(); }, [onReady]);
     if (dice.fail) throw new Error('Scene failed to load');
     dice.onRollingChange = onRollingChange;
     return <div data-testid="dice" />;
   },
 }));
 vi.mock('./BoardPiecesScene', () => ({
-  BoardPiecesScene: ({ players }: { players: Player[] }) => <>
+  BoardPiecesScene: function MockTokens({ players, onReady }: { players: Player[]; onReady?: () => void }) {
+    useEffect(() => { if (rendering.tokensDrawn) onReady?.(); }, [onReady]);
+    return <>
     <div data-testid="token-position">{players[0].position}</div>
     {players.map((player) => <div key={player.id} data-testid={`token-${player.id}`}>{player.position}</div>)}
-  </>,
+    </>;
+  },
 }));
 
 function makeState(position = 0, rollId = 0, turnPhase: GameState['turnPhase'] = 'ROLL_PHASE'): GameState {
@@ -60,7 +65,7 @@ function makeTableState(
 
 describe('board playback ordering', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); dice.onRollingChange = undefined; dice.fail = false; rendering.supported = true;
+    vi.useFakeTimers(); dice.onRollingChange = undefined; dice.fail = false; rendering.supported = true; rendering.tokensDrawn = true;
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -155,6 +160,22 @@ describe('board playback ordering', () => {
     expect(screen.getByTestId('token-bot-0')).toHaveTextContent('4');
     // The roller waits for its dice before walking.
     expect(screen.getByTestId('token-bot-1')).toHaveTextContent('10');
+  });
+
+  it('reveals the 3D dice and tokens together once both scenes have drawn', async () => {
+    const { container } = await mountBoard();
+    expect(container.querySelector('.board-grid')).not.toHaveClass('board-grid--scenes-pending');
+    expect(screen.queryByText('Setting up the board…')).not.toBeInTheDocument();
+  });
+
+  it('keeps the dice hidden while the token scene is still loading, up to the fallback limit', async () => {
+    rendering.tokensDrawn = false;
+    const { container } = await mountBoard();
+    expect(container.querySelector('.board-grid')).toHaveClass('board-grid--scenes-pending');
+    expect(screen.getByRole('status')).toHaveTextContent('Setting up the board');
+    act(() => vi.advanceTimersByTime(SCENE_FALLBACK_DELAY_MS));
+    expect(container.querySelector('.board-grid')).not.toHaveClass('board-grid--scenes-pending');
+    expect(screen.queryByText('Setting up the board…')).not.toBeInTheDocument();
   });
 
   it('allocates no idle movement polling timers', async () => {
