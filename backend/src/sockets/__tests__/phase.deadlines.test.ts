@@ -312,6 +312,27 @@ describe('movement acknowledgement', () => {
     expect(gameService.getGameSync(gameId)).toBe(advanced);
   });
 
+  it('lets a learner read a correct Math Escape result before the roll movement fallback starts', async () => {
+    const state = makeGameState({
+      id: gameId,
+      turnPhase: 'JAIL_CHALLENGE',
+      currentChallenge: makePrivateChallenge({ context: 'JAIL_ESCAPE', startedAt: Date.now() }),
+    });
+    state.players[0] = { ...state.players[0], isInJail: true };
+    gameService.replaceState(gameId, state);
+    const socket = makeSocket({ player: { id: 'db-player-1' } });
+    const io = makeServer([socket], gameId);
+    registerGameHandlers(io, socket);
+
+    await socket.trigger('game:jail-answer', { gameId, selectedIndex: 1 });
+
+    const moving = gameService.getGameSync(gameId)!;
+    expect(moving.turnPhase).toBe('MOVING');
+    expect(moving.phaseDeadline! - Date.now()).toBe(PHASE_TIMEOUTS.answerReview + PHASE_TIMEOUTS.movementFallback);
+    jest.advanceTimersByTime(PHASE_TIMEOUTS.movementFallback + 1_000);
+    expect(gameService.getGameSync(gameId)!.turnPhase).toBe('MOVING');
+  });
+
   it('keeps a successful jail escape roll in MOVING until one matching acknowledgement', async () => {
     const state = makeGameState({
       id: gameId,

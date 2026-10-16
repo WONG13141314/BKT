@@ -326,6 +326,16 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     return [state.dbGameId, state.round, state.currentPlayerIndex, state.turnPhase, state.diceRollId].join('|');
   }
 
+  /**
+   * A correct Math Escape (or a final jail-turn release) rolls in the same step
+   * that grades the answer. The learner reads the answer card before the board
+   * presents that roll, so its movement fallback starts after the card's hold.
+   */
+  function allowAnswerReviewBeforeMovement(gameId: string, state: GameState): void {
+    if (state.turnPhase !== 'MOVING' || isBotControlled(getCurrentPlayer(state))) return;
+    savePhaseDeadline(gameId, state, Date.now() + PHASE_TIMEOUTS.answerReview + PHASE_TIMEOUTS.movementFallback);
+  }
+
   function savePhaseDeadline(
     gameId: string,
     state: GameState,
@@ -405,6 +415,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
     if (outcome.result) {
       emitAnswerResult(io, socketRoom, outcome.state, outcome.result, before?.currentChallenge?.id);
+      allowAnswerReviewBeforeMovement(gameId, outcome.state);
     }
 
     // A duel forced to settle reveals its result like a normal one.
@@ -728,6 +739,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
       const socketRoom = getSocketRoom(gameId);
       emitAnswerResult(io, socketRoom, outcome.state, outcome.result, challengeId);
+      allowAnswerReviewBeforeMovement(gameId, outcome.state);
       publishTransition(io, gameId, socketRoom, outcome.state);
 
       if (opts.autoEnd === true) void handleEndTurnFlow(io, gameId);

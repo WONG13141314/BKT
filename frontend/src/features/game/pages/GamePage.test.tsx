@@ -10,8 +10,11 @@ vi.mock('../../../shared/contexts/SocketContext', () => ({
 }));
 vi.mock('../../auth/PlayerContext', () => ({ usePlayer: () => ({ player: { id: 'account-one' }, setPlayer: vi.fn() }) }));
 vi.mock('../hooks/useGameAudio', () => ({ useGameAudio: () => ({ play: vi.fn(), playMovementStep: vi.fn() }) }));
-vi.mock('../components/Board', () => ({ Board: ({ onMovementComplete }: { onMovementComplete: () => void }) =>
-  <button onClick={onMovementComplete}>Finish board movement</button> }));
+vi.mock('../components/Board', () => ({ Board: ({ gameState, onMovementComplete }: {
+  gameState: GameState; onMovementComplete: () => void;
+}) => <button data-phase={gameState.turnPhase} data-roll={gameState.diceRollId} onClick={onMovementComplete}>
+  Finish board movement
+</button> }));
 vi.mock('../components/PlayerPanel', () => ({ PlayerPanel: () => null }));
 vi.mock('../components/SpaceDetailsPanel', () => ({ SpaceDetailsPanel: () => null }));
 vi.mock('../components/TurnIndicator', () => ({ TurnIndicator: () => null }));
@@ -77,6 +80,28 @@ describe('live game question feedback', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.queryByRole('heading', { name: 'Correct' })).not.toBeInTheDocument();
+  });
+
+  it('waits for Continue on a correct Math Escape before presenting its roll', () => {
+    mount();
+    receive('game:state', { state: makeState('JAIL_CHALLENGE') });
+    receive('game:challenge', { playerId: 'seat-one', challenge: makeQuestion('escape-1', 'JAIL_ESCAPE') });
+    receive('game:answer-result', { playerId: 'seat-one', challengeId: 'escape-1', result: {
+      ...answer, reward: { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' },
+    } });
+    receive('game:state', { state: { ...makeState('MOVING'), diceRollId: 2, diceValues: [4, 5] } });
+
+    const board = screen.getByRole('button', { name: 'Finish board movement' });
+    expect(screen.getByRole('heading', { name: 'Correct' })).toBeVisible();
+    expect(board).toHaveAttribute('data-roll', '1');
+    expect(board).toHaveAttribute('data-phase', 'JAIL_CHALLENGE');
+    // The token has not moved, so no movement acknowledgement can be sent yet.
+    fireEvent.click(board);
+    expect(socket.emit).not.toHaveBeenCalledWith('game:movement-complete', expect.anything());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(board).toHaveAttribute('data-roll', '2');
+    expect(board).toHaveAttribute('data-phase', 'MOVING');
   });
 
   it('keeps private duel maths hidden until resolution and never lets an older result close the next duel', () => {

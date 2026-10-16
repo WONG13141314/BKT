@@ -126,6 +126,12 @@ export function GamePage() {
   const [isDiceRolling, setIsDiceRolling] = useState(false);
   const [isPawnMoving, setIsPawnMoving] = useState(false);
   const diceWasRollingRef = useRef(false);
+  // The dice last shown on the board, so a roll that arrives while the learner
+  // is still reading an answer card can wait until they continue.
+  const [shownDice, setShownDice] = useState<{ rollId: number; values: [number, number] } | null>(null);
+  // A correct Math Escape (or a final-turn release) rolls on the server at once.
+  // Present that roll only after the answer card is dismissed.
+  const holdRollForAnswer = gameState?.turnPhase === 'MOVING' && !!answerResult;
 
   const switchToGameSeat = useCallback(async (profile: StoredProfile) => {
     if (seatRecoveryRef.current) return;
@@ -361,12 +367,12 @@ export function GamePage() {
 
   const handleMovementComplete = useCallback(() => {
     setIsPawnMoving(false);
-    if (!gameState || gameState.turnPhase !== 'MOVING') return;
+    if (!gameState || gameState.turnPhase !== 'MOVING' || holdRollForAnswer) return;
     if (acknowledgedMovementRollRef.current === gameState.diceRollId) return;
 
     acknowledgedMovementRollRef.current = gameState.diceRollId;
     emitMovementComplete(gameState.diceRollId);
-  }, [emitMovementComplete, gameState]);
+  }, [emitMovementComplete, gameState, holdRollForAnswer]);
 
   const handleDiceRollingChange = useCallback((rolling: boolean) => {
     if (!rolling && diceWasRollingRef.current) playSound('diceLand');
@@ -395,6 +401,13 @@ export function GamePage() {
 
     prevPlayerIdxRef.current = gameState.currentPlayerIndex;
   }, [gameState]);
+
+  useEffect(() => {
+    if (!gameState || holdRollForAnswer) return;
+    setShownDice((shown) => shown?.rollId === gameState.diceRollId
+      ? shown
+      : { rollId: gameState.diceRollId, values: gameState.diceValues });
+  }, [gameState, holdRollForAnswer]);
 
   useEffect(() => {
     if (!rollRequested) return;
@@ -589,7 +602,15 @@ export function GamePage() {
   // during MOVING. Give the board the deterministic dice destination as a
   // presentation-only target so its existing pawn animation can complete
   // before this client acknowledges the authoritative transition.
-  const presentationGameState = renderPhase === 'MOVING'
+  const presentationGameState = holdRollForAnswer
+    ? {
+        // Keep the earlier dice and no movement target behind the answer card.
+        ...gameState,
+        turnPhase: 'JAIL_CHALLENGE' as const,
+        diceRollId: shownDice?.rollId ?? gameState.diceRollId - 1,
+        diceValues: shownDice?.values ?? gameState.diceValues,
+      }
+    : renderPhase === 'MOVING'
     ? {
         ...gameState,
         players: gameState.players.map((seat, index) => index === gameState.currentPlayerIndex

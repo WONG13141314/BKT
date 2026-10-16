@@ -8,6 +8,8 @@ export const PHASE_TIMEOUTS = {
   build: 30_000,
   endTurn: 10_000,
   movementFallback: 12_000,
+  /** Answer card shown before a roll that follows a graded answer (Math Escape). */
+  answerReview: 6_000,
   disconnectGrace: 60_000,
 } as const;
 
