@@ -2,6 +2,7 @@ import { selectChallenge } from '../../../bkt/bkt.selector';
 import { initializeGameState } from '../game.engine';
 import { gameService } from '../../../test/game.service';
 import type { AnswerResult, GameState, TurnPhase } from '../game.types';
+import { ANSWER_NETWORK_GRACE_MS } from '../game.constants';
 
 const PLAYERS = [
   { id: 'p1', playerId: 'db-alice', name: 'Alice', color: '#6366f1', order: 0 },
@@ -55,13 +56,15 @@ const CASES: SoloCase[] = [
 describe('server-authoritative solo challenge deadlines', () => {
   afterEach(() => gameService.removeGame('game_TIMEOUT'));
 
-  it.each(CASES)('turns an otherwise-correct $name answer received at the exact deadline into a timeout', ({ phase, context, submit }) => {
+  it.each(CASES)('turns an otherwise-correct $name answer received after the network grace into a timeout', ({ phase, context, submit }) => {
     const state = openChallenge(phase, context);
     const challenge = state.currentChallenge!;
     const before = state.players[0];
     gameService.replaceState(state.id, state);
 
-    const outcome = submit(state.id, challenge.correctIndex, challenge.startedAt + challenge.timeLimit * 1_000);
+    const outcome = submit(
+      state.id, challenge.correctIndex, challenge.startedAt + challenge.timeLimit * 1_000 + ANSWER_NETWORK_GRACE_MS
+    );
 
     expect(outcome?.result.timedOut).toBe(true);
     expect(outcome?.result.isCorrect).toBe(false);
@@ -76,15 +79,16 @@ describe('server-authoritative solo challenge deadlines', () => {
     expect(outcome?.state.players[0].totalQuestions).toBe(before.totalQuestions + 1);
   });
 
-  it('accepts an answer received one millisecond before the exclusive deadline', () => {
+  it('accepts an answer delayed in transit until one millisecond before the grace ends', () => {
     const state = openChallenge('CARD_MATH_CHALLENGE', 'CHALLENGE_CARD');
     const challenge = state.currentChallenge!;
     gameService.replaceState(state.id, state);
+    const expiresAt = challenge.startedAt + challenge.timeLimit * 1_000;
 
     const outcome = gameService.submitCardAnswer(
       state.id,
       challenge.correctIndex,
-      challenge.startedAt + challenge.timeLimit * 1_000 - 1
+      expiresAt + ANSWER_NETWORK_GRACE_MS - 1
     );
 
     expect(outcome?.result.timedOut).toBe(false);

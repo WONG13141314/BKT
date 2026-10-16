@@ -5,6 +5,11 @@ export interface WorkerEnv {
   JWT_SECRET: string;
   JWT_EXPIRES_IN?: string;
   CORS_ORIGIN?: string;
+  /**
+   * Test runtimes only. Real games start through the lobby, which builds every
+   * seat on the server; this HTTP route trusts a client-supplied seat list.
+   */
+  ENABLE_HTTP_GAME_CREATION?: string;
   ROOMS: DurableObjectNamespace;
   API: DurableObjectNamespace;
   PLAYERS: DurableObjectNamespace;

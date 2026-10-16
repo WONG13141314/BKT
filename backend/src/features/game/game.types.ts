@@ -90,6 +90,12 @@ export interface PlayerState {
   // Bot-specific
   isBot: boolean;
   botDifficulty?: 'easy' | 'medium' | 'hard';
+  /**
+   * A human seat whose learner has been away past the reconnect grace. A bot
+   * plays it so the table keeps moving; its answers are never the learner's
+   * evidence. Cleared as soon as the learner reconnects.
+   */
+  autopilot?: boolean;
 }
 
 // ---- Turn Flow (State Machine) ----
@@ -255,6 +261,8 @@ export interface PublicMathChallenge {
   context: ChallengeContext;
   timeLimit: number;            // Seconds
   expiresAt: number;            // Unix ms — client drives its countdown from this
+  /** Server clock when sent, so clients can count down despite device clock skew. */
+  serverNow: number;
   /** Available privately only after the learner has requested it. */
   hint?: QuestionHint | null;
 }
@@ -431,7 +439,7 @@ export interface GameState {
   maxRounds: number;
   diceValues: [number, number];
   diceRollId: number;
-  /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
+  /** Always 2 now. 1 appears only in snapshots saved under the removed one-die roll rule. */
   diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
   duelState: DuelState | null;

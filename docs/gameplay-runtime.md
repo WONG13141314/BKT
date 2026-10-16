@@ -10,8 +10,10 @@ bot plan, and questions are created when the landing event actually begins.
 All connected, non-bankrupt human accounts seated in the game acknowledge a roll after the
 dice settle and the last token hop completes, including viewers of a bot turn.
 Signals carry the roll ID; stale or duplicate signals cannot advance another
-roll. Disconnecting viewers leave the required set. The existing 12-second
-movement deadline remains the fallback for missing signals and hidden tabs.
+roll. Disconnecting viewers leave the required set. Once the leading viewer
+(the rolling learner, or any viewer of a bot-played turn) has acknowledged,
+slower screens get 1.5 seconds to catch up before the table continues. The
+existing 12-second movement deadline remains the fallback for missing signals.
 
 The visual dice roll is bounded at 4.5 seconds. Once both dice show the intended
 upper face and remain nearly motionless for 200 milliseconds, token movement
@@ -54,7 +56,18 @@ dismissals, so an older dismissal cannot close a new question or duel.
 Disconnected clients show a recovery status and do not queue gameplay actions for
 later replay. Reconnection requests the authoritative match state. Deadlines
 continue on the server during a connection interruption; reconnecting does not
-grant additional question time.
+grant additional question or decision time. Roll, buy, jail and end-turn
+decisions show a countdown to the server's default action.
+
+A disconnected active learner's decision receives one 60-second reconnect grace
+per phase; questions and duels keep their own expiry. A learner offline for 60
+seconds, or who leaves for another room, is put on **autopilot**: a bot plays
+the seat so the table keeps moving. Autopilot answers never update that
+learner's mastery and are not written as research attempts. Reconnecting hands
+the seat straight back.
+
+Five minutes after a match ends, its lobby is released, and a room with no
+lobby, match, research backlog or deadline removes its stored record.
 
 ## Hosting limits
 

@@ -190,7 +190,9 @@ describe('movement acknowledgement', () => {
 
     expect(gameService.getGameSync(gameId)!.turnPhase).toBe('ROLL_PHASE');
 
-    jest.advanceTimersByTime(50_000);
+    // After grace a bot plays the absent seat and the table moves on.
+    jest.advanceTimersByTime(50_001);
+    expect(gameService.getGameSync(gameId)!.players[0].autopilot).toBe(true);
     expect(gameService.getGameSync(gameId)!.turnPhase).not.toBe('ROLL_PHASE');
   });
 

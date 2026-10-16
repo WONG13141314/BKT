@@ -28,6 +28,13 @@ same policy. A duel participant receives the window for their own question's
 tier. Asking for help or reconnecting preserves the original expiry; no speed
 reward or hint fee is introduced.
 
+The browser stops accepting answers at the visible expiry. The server then
+allows a further **2 seconds** (`ANSWER_NETWORK_GRACE_MS`) for an answer already
+chosen to arrive over a slow network, so transit delay is not recorded as a
+timeout. This is not extra thinking time, and `timeMs` records the true elapsed
+time. Each question also carries the server clock, so a device with a wrong
+clock still shows the correct time remaining.
+
 The 18-minute game clock remains a **soft target**: the game completes the lap
 after reaching it. Longer question windows can increase the overrun. Rehearse
 both modes before claiming that two games and questionnaires fit the proposal's

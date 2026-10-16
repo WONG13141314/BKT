@@ -12,7 +12,7 @@ export type PublicPlayerState = Pick<PlayerState,
   | 'id' | 'playerId' | 'name' | 'position' | 'money' | 'color' | 'tokenType'
   | 'properties' | 'isInJail' | 'jailTurns' | 'isBankrupt' | 'streak'
   | 'totalCorrect' | 'totalQuestions' | 'hasLevelUpToken' | 'hasRentShield'
-  | 'hasDiscountToken' | 'isBot' | 'botDifficulty'
+  | 'hasDiscountToken' | 'isBot' | 'botDifficulty' | 'autopilot'
 >;
 
 /** The exhaustive allow-list for the room-wide game-state event. */
@@ -59,6 +59,7 @@ function toPublicPlayerState(player: PlayerState): PublicPlayerState {
     hasDiscountToken: player.hasDiscountToken,
     isBot: player.isBot,
     botDifficulty: player.botDifficulty,
+    autopilot: player.autopilot === true,
   };
 }
 

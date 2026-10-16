@@ -21,8 +21,9 @@ function predictPCorrect(pMastery: number, difficulty: 1 | 2 | 3): number {
 }
 
 
+/** Bots and autopilot turns are not learner evidence. */
 export function isRecordablePlayer(player: PlayerState): boolean {
-  return !player.isBot;
+  return !player.isBot && player.autopilot !== true;
 }
 
 

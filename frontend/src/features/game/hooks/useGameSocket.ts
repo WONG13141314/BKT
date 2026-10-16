@@ -12,6 +12,14 @@ import {
   PublicDuelState,
   DuelResolution,
 } from '../types/game.types';
+import { toDeviceClock } from '../utils/serverClock';
+
+/**
+ * A second identical command this soon after the first is a double-click. The
+ * server would reject it anyway, but only after showing the learner an error
+ * such as "Cannot buy right now".
+ */
+const DUPLICATE_COMMAND_WINDOW_MS = 500;
 
 interface GameSocketEvents {
   onStateUpdate: (state: GameState) => void;
@@ -33,15 +41,19 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   const { socket } = useSocket();
   const eventsRef = useRef(events);
   eventsRef.current = events;
+  const lastCommandRef = useRef<{ key: string; at: number } | null>(null);
 
   useEffect(() => {
     if (!socket || !gameId) return;
 
     const handleState = (data: { state: GameState }) => eventsRef.current.onStateUpdate(data.state);
-    const handleChallenge = (data: { challenge: MathChallenge; playerId: string }) => eventsRef.current.onChallenge(data);
+    // Question expiries arrive in server time; convert once on receipt.
+    const handleChallenge = (data: { challenge: MathChallenge; playerId: string }) =>
+      eventsRef.current.onChallenge({ ...data, challenge: toDeviceClock(data.challenge) });
     const handleChallengeStarted = (data: { playerId: string; context: string }) => eventsRef.current.onChallengeStarted(data);
     const handleAnswerResult = (data: { result: AnswerResult; playerId: string; challengeId: string }) => eventsRef.current.onAnswerResult(data);
-    const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) => eventsRef.current.onDuel(data);
+    const handleDuel = (data: { duel: PublicDuelState; myChallenge: MathChallenge | null }) =>
+      eventsRef.current.onDuel({ ...data, myChallenge: data.myChallenge && toDeviceClock(data.myChallenge) });
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
     const handleDuelDismissed = (data: { duelId: string }) => eventsRef.current.onDuelDismissed(data);
     const handleFinished = (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => eventsRef.current.onGameFinished(data);
@@ -94,7 +106,13 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     // Replaying an offline roll or answer after recovery could apply it to a
     // different turn or question.
     if (!socket?.connected || !gameId) return false;
-    socket.emit(event, { gameId, ...data });
+    const payload = { gameId, ...data };
+    const key = `${event}:${JSON.stringify(payload)}`;
+    const now = Date.now();
+    const last = lastCommandRef.current;
+    if (last?.key === key && now - last.at < DUPLICATE_COMMAND_WINDOW_MS) return true;
+    lastCommandRef.current = { key, at: now };
+    socket.emit(event, payload);
     return true;
   }, [socket, gameId]);
 

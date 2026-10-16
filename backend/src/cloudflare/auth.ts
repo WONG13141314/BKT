@@ -39,6 +39,25 @@ export function readBearerToken(authorization: string | null): string | null {
   return authorization?.startsWith('Bearer ') ? authorization.slice(7) : null;
 }
 
+/** Browsers cannot set headers on a WebSocket, so the token rides as a subprotocol. */
+export const SOCKET_PROTOCOL = 'mathopoly';
+
+/**
+ * Reads the learner token for `/ws`. Current clients offer `mathopoly, <token>`
+ * as WebSocket subprotocols, which keeps the token out of URLs and request
+ * logs. The `?token=` query remains accepted for pages loaded before this.
+ */
+export function readSocketToken(request: Request): { token: string | null; viaProtocol: boolean } {
+  const offered = (request.headers.get('sec-websocket-protocol') ?? '').split(',').map((value) => value.trim());
+  if (offered[0] === SOCKET_PROTOCOL && offered[1]) return { token: offered[1], viaProtocol: true };
+  return { token: new URL(request.url).searchParams.get('token'), viaProtocol: false };
+}
+
+/** A browser closes the socket unless the server selects one offered subprotocol. */
+export function socketProtocolHeaders(viaProtocol: boolean): HeadersInit | undefined {
+  return viaProtocol ? { 'sec-websocket-protocol': SOCKET_PROTOCOL } : undefined;
+}
+
 /** Verifies the same HS256 playerId tokens already issued by the Render backend. */
 export async function authenticateToken(
   token: string | null | undefined, env: WorkerEnv,

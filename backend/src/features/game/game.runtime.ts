@@ -29,6 +29,7 @@ import {
   calculateFinalScores,
   generateMasteryReport,
   requestChallengeHint,
+  answerAcceptedUntil,
 } from './game.engine';
 import type { GamePlayerSeed } from './game.engine';
 import {
@@ -40,7 +41,7 @@ import {
   DuelState,
   DuelResolution,
 } from './game.types';
-import { executeBotStep, submitBotDuelAnswers, type BotStep } from './bot.engine';
+import { executeBotStep, isBotControlled, submitBotDuelAnswers, type BotStep } from './bot.engine';
 import type { GamePersistencePort, GameStateStore } from './game.persistence.types';
 import { RECENT_SKILL_HISTORY_LIMIT } from '../../bkt/bkt.selector';
 import { SKILL_NAMES, type SkillName } from './game.constants';
@@ -117,9 +118,7 @@ export function createGameService(options: GameRuntimeOptions) {
     // Captured before grading — the engine clears the challenge as it resolves.
     const challenge = state.currentChallenge;
     const player = state.players[state.currentPlayerIndex];
-    const acceptedIndex = receivedAt >= challenge.startedAt + challenge.timeLimit * 1_000
-      ? null
-      : selectedIndex;
+    const acceptedIndex = receivedAt >= answerAcceptedUntil(challenge) ? null : selectedIndex;
 
     const { newState, result } = process(state, acceptedIndex, receivedAt);
     activeGames.set(gameId, newState);
@@ -212,6 +211,22 @@ export function createGameService(options: GameRuntimeOptions) {
       if (!outcome) return null;
       activeGames.set(gameId, outcome.newState);
       return { state: outcome.newState, challenge: outcome.challenge };
+    },
+
+    /**
+     * Hand a human seat to a bot while its learner is away, or give it back.
+     * Returns null when nothing changes, so callers publish only real changes.
+     */
+    setAutopilot: (gameId: string, accountId: string, enabled: boolean): GameState | null => {
+      const state = activeGames.get(gameId);
+      if (!state || state.phase !== 'PLAYING') return null;
+      const index = state.players.findIndex((seat) => seat.playerId === accountId && !seat.isBot);
+      const seat = state.players[index];
+      if (!seat || seat.isBankrupt || (seat.autopilot === true) === enabled) return null;
+      const players = state.players.map((candidate, i) => i === index ? { ...candidate, autopilot: enabled } : candidate);
+      const next = { ...state, players };
+      activeGames.set(gameId, next);
+      return next;
     },
 
     removeGame: (gameId: string): void => {
@@ -479,7 +494,7 @@ export function createGameService(options: GameRuntimeOptions) {
       if (!state) return null;
 
       const player = getCurrentPlayer(state);
-      if (!player.isBot) return null;
+      if (!isBotControlled(player)) return null;
 
       const step = executeBotStep(state);
       if (step) activeGames.set(gameId, step.state);

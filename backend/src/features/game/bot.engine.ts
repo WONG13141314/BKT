@@ -8,6 +8,11 @@ import {
 } from './game.engine';
 import { BAIL_COST } from './game.constants';
 
+/** Bots, and human seats temporarily played by a bot while their learner is away. */
+export function isBotControlled(player: PlayerState | undefined): boolean {
+  return player?.isBot === true || player?.autopilot === true;
+}
+
 const BOT_CORRECT_PROBABILITY: Record<string, number> = { easy: 0.30, medium: 0.50, hard: 0.70 };
 
 function answerAs(player: PlayerState, challenge: MathChallenge): number {
@@ -24,7 +29,7 @@ export function submitBotDuelAnswers(state: GameState): GameState {
   for (const side of [duel.challenger, duel.owner]) {
     if (side.selectedIndex !== null || side.timedOut) continue;
     const player = next.players.find((candidate) => candidate.id === side.playerId);
-    if (player?.isBot) next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge));
+    if (player && isBotControlled(player)) next = submitDuelAnswer(next, side.playerId, answerAs(player, side.challenge));
   }
   return next;
 }
@@ -36,7 +41,7 @@ function botJailDecision(player: PlayerState): 'math' | 'bail' | 'wait' {
 
 /** Presentation delays precede exactly one action. Movement waits for viewers. */
 export function getBotActionDelay(state: GameState): number | null {
-  if (state.phase !== 'PLAYING' || !getCurrentPlayer(state).isBot) return null;
+  if (state.phase !== 'PLAYING' || !isBotControlled(getCurrentPlayer(state))) return null;
   switch (state.turnPhase) {
     case 'ROLL_PHASE': return 800;
     case 'BUY_DECISION': return 500;

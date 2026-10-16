@@ -6,7 +6,7 @@ import { RoomManager, type RoomManagerSnapshot } from '../sockets/lobby.manager'
 import { SocketPresence } from '../sockets/presence.manager';
 import { createGameHandlersRuntime, type GameHandlersRuntime, type GameHandlersSnapshot } from '../sockets/game.handlers.runtime';
 import { createLobbyHandlersRuntime, type LobbyHandlersRuntime, type LobbyHandlersSnapshot } from '../sockets/lobby.handlers.runtime';
-import { ApiError, authenticateToken, readBearerToken } from './auth';
+import { ApiError, authenticateToken, readBearerToken, readSocketToken, socketProtocolHeaders } from './auth';
 import { CloudflarePersistence, type DurableAttemptEvent, type DurableGameResultEvent } from './database';
 import { jsonResponse } from './http';
 import { AlarmScheduler, type ScheduledDeadline } from './scheduler';
@@ -99,7 +99,7 @@ export class GameRoom {
         return this.database.loadPriors(ids);
       },
       recordAttempt: (record) => {
-        if (record.player.isBot) return;
+        if (record.player.isBot || record.player.autopilot) return;
         if (this.outbox.length >= OUTBOX_LIMIT) throw new Error('Research synchronization backlog is full');
         this.outbox.push({ kind: 'attempt', value: {
           id: crypto.randomUUID(), record: structuredClone(record), answeredAt: new Date().toISOString(),
@@ -168,7 +168,11 @@ export class GameRoom {
       }
       const removed = [...this.storedOutboxIds].filter((id) => !ids.includes(id));
       for (let n = 0; n < removed.length; n += 128) await storage.delete(removed.slice(n, n + 128).map((id) => `outbox:${id}`));
-      await storage.put('room', { ...state, outboxIds: ids } satisfies StoredRoom);
+      // A room with no lobby, match, research backlog or deadline has nothing
+      // to recover, so its record is removed instead of kept forever.
+      const empty = !state.rooms.rooms.length && !state.games.length && !outbox.length && !state.timers.length;
+      if (empty) await storage.delete(['room']);
+      else await storage.put('room', { ...state, outboxIds: ids } satisfies StoredRoom);
       if (Number.isFinite(next)) await storage.setAlarm(Math.max(Date.now() + 1, next));
       else await storage.deleteAlarm();
     });
@@ -362,8 +366,9 @@ export class GameRoom {
         return jsonResponse({ room: this.rooms.serializeRoom(room) }, 201);
       });
     }
+    const socketToken = url.pathname === '/ws' ? readSocketToken(request) : null;
     try {
-      const token = url.pathname === '/ws' ? url.searchParams.get('token') : readBearerToken(request.headers.get('authorization'));
+      const token = socketToken ? socketToken.token : readBearerToken(request.headers.get('authorization'));
       const player = await authenticateToken(token, this.env);
       if (url.pathname.startsWith('/api/games')) return await this.gameHttp(request, player);
       if (url.pathname !== '/ws' || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
@@ -379,7 +384,7 @@ export class GameRoom {
         const socket = this.attach(server);
         this.pending.push({ socket, frame: { event: 'connect', data: { id: socket.id } } });
       });
-      return new Response(null, { status: 101, webSocket: client });
+      return new Response(null, { status: 101, webSocket: client, headers: socketProtocolHeaders(socketToken!.viaProtocol) });
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.status === 401 && url.pathname === '/ws' && request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
@@ -387,7 +392,7 @@ export class GameRoom {
           server.accept();
           server.send(JSON.stringify({ event: 'connect_error', data: { message: error.message } }));
           server.close(4401, 'Authentication required');
-          return new Response(null, { status: 101, webSocket: client });
+          return new Response(null, { status: 101, webSocket: client, headers: socketProtocolHeaders(!!socketToken?.viaProtocol) });
         }
         return jsonResponse({ message: error.message }, error.status);
       }
@@ -400,6 +405,9 @@ export class GameRoom {
     return this.transact(async () => {
       const url = new URL(request.url);
       if (request.method === 'POST' && url.pathname === '/api/games') {
+        // A client-built roster could seat other learners' accounts and write
+        // their timeouts into the research record, so production disables it.
+        if (this.env.ENABLE_HTTP_GAME_CREATION !== 'true') return jsonResponse({ message: 'Not found' }, 404);
         const { players } = await request.json() as { players: Parameters<GameService['createGame']>[1] };
         if (!Array.isArray(players) || players.length < 2 || players.length > 4) return jsonResponse({ error: '2 to 4 players required' }, 400);
         if (!players.some((seat) => seat.playerId === player.id)) return jsonResponse({ error: 'You must be a player in the new game' }, 403);

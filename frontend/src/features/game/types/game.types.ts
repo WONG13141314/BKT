@@ -95,6 +95,8 @@ export interface Player {
   hasDiscountToken: boolean;
   isBot: boolean;
   botDifficulty?: 'easy' | 'medium' | 'hard';
+  /** A bot is playing this human seat while the learner is away. */
+  autopilot?: boolean;
 }
 
 // ---- Turn Flow ----
@@ -183,6 +185,8 @@ export interface MathChallenge {
   timeLimit: number;
   /** Unix ms. The countdown is driven by this, not by a client-side start time. */
   expiresAt: number;
+  /** Server clock when this question was sent; absent in older payloads. */
+  serverNow?: number;
   /** Sent privately only after this player requests help. */
   hint?: ChallengeHint | null;
 }
@@ -275,7 +279,7 @@ export interface GameState {
   maxRounds: number;
   diceValues: [number, number];
   diceRollId: number;
-  /** 1 after a failed Roll Challenge, 2 otherwise. `diceValues[1]` is 0 when 1. */
+  /** Always 2 now. 1 appears only in snapshots saved under the removed one-die roll rule. */
   diceCount: 1 | 2;
   currentChallenge: MathChallenge | null;
   pendingTileEvent: TileEvent | null;

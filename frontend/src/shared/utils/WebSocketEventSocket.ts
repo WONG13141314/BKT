@@ -112,10 +112,11 @@ export class WebSocketEventSocket implements RealtimeSocket {
     if (this.closed) return;
     const generation = ++this.generation;
     const url = new URL(this.endpoint);
-    url.searchParams.set('token', this.token);
     let socket: WebSocket;
     try {
-      socket = new WebSocket(url);
+      // The token travels as a subprotocol, never in the URL, so it stays out
+      // of request logs. The server selects 'mathopoly' to accept it.
+      socket = new WebSocket(url, ['mathopoly', this.token]);
     } catch {
       this.notify('connect_error', new Error('Could not connect to the game.'));
       this.scheduleReconnect();
@@ -223,6 +224,8 @@ export class WebSocketEventSocket implements RealtimeSocket {
       }, timeout);
       this.acknowledgements.set(id, { callback, errorFirst, timer });
     }
+    // `actionId` names this one send, so a replayed frame is applied at most once.
+    // A double-click is two sends; useGameSocket drops those before they get here.
     try { this.socket.send(JSON.stringify({ event, data, actionId: newActionId(), ...(id ? { id } : {}) })); }
     catch { this.loseConnection('could not send'); }
     return this;

@@ -6,7 +6,7 @@ import type { GameState } from '../../features/game/game.types';
 import { makeGameState, makePrivateChallenge } from '../../test/game.fixtures';
 
 /** Real room HTTP handlers with isolated storage and no database connections. */
-async function harness(game?: GameState) {
+async function harness(game?: GameState, options: { httpGameCreation?: boolean } = { httpGameCreation: true }) {
   const values = new Map<string, unknown>();
   if (game) {
     values.set('room', {
@@ -40,6 +40,7 @@ async function harness(game?: GameState) {
   const room = new GameRoom(state, {
     DATABASE_URL: 'postgresql://synthetic:synthetic@ep-synthetic.neon.tech/synthetic',
     JWT_SECRET: 'synthetic-secret-for-isolated-http-game-tests',
+    ...(options.httpGameCreation ? { ENABLE_HTTP_GAME_CREATION: 'true' } : {}),
   } as WorkerEnv);
   await Promise.all(initialization);
   return { room, values };
@@ -105,6 +106,22 @@ describe('Cloudflare game HTTP access and public data', () => {
     expect((await room.fetch(request('/api/games/game_TEST'))).status).toBe(403);
   });
 
+  it('does not expose client-built game creation in production', async () => {
+    signedInAs('db-player-1');
+    const loadPriors = jest.spyOn(CloudflarePersistence.prototype, 'loadPriors');
+    const { room, values } = await harness(undefined, { httpGameCreation: false });
+    const response = await room.fetch(request('/api/games?room=TEST', 'POST', {
+      players: [
+        { id: 'seat-1', playerId: 'db-player-1', name: 'Aina', color: '#6366f1', order: 0 },
+        { id: 'seat-2', playerId: 'db-classmate', name: 'Ben', color: '#f59e0b', order: 1 },
+      ],
+    }));
+    expect(response.status).toBe(404);
+    expect(loadPriors).not.toHaveBeenCalled();
+    // Nothing was created, so no room record is stored.
+    expect(values.get('room')).toBeUndefined();
+  });
+
   it('does not create a game when the account matches only a submitted seat id', async () => {
     signedInAs('alice');
     const loadPriors = jest.spyOn(CloudflarePersistence.prototype, 'loadPriors');
@@ -115,7 +132,8 @@ describe('Cloudflare game HTTP access and public data', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'You must be a player in the new game' });
     expect(loadPriors).not.toHaveBeenCalled();
-    expect((values.get('room') as RoomSnapshot).games).toEqual([]);
+    // Nothing was created, so no room record is stored.
+    expect(values.get('room')).toBeUndefined();
   });
 
   it('creates and persists a public game when an authenticated database identity owns a seat', async () => {

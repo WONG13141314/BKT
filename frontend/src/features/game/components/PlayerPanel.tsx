@@ -60,6 +60,7 @@ export function PlayerPanel({
                   <span className="panel-player__name">
                     {player.name}
                     {player.isBot && <span className="panel-player__bot-tag"> (Bot)</span>}
+                    {player.autopilot && <span className="panel-player__bot-tag"> (Away · bot playing)</span>}
                     {isMe && <span className="panel-player__you"> (You)</span>}
                   </span>
                   <span className={`panel-player__money ${player.money < 0 ? 'money--negative' : ''}`}>

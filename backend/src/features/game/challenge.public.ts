@@ -211,6 +211,7 @@ export function toPublicChallenge(challenge: MathChallenge): PublicMathChallenge
     context: challenge.context,
     timeLimit: challenge.timeLimit,
     expiresAt: challenge.startedAt + challenge.timeLimit * 1000,
+    serverNow: Date.now(),
     ...(challenge.hintRequestedAt === undefined ? {} : {
       hint: buildQuestionHint(challenge.questionData, questionData),
     }),

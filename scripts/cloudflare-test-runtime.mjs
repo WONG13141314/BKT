@@ -44,6 +44,8 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
       DATABASE_URL: 'postgresql://synthetic:synthetic@ep-local-test.neon.tech/synthetic?sslmode=require',
       JWT_SECRET: 'isolated-cloudflare-test-secret-at-least-32-characters',
       JWT_EXPIRES_IN: '90d',
+      // Isolated runtime only: lets integration checks create a game over HTTP.
+      ENABLE_HTTP_GAME_CREATION: 'true',
     },
     durableObjects: {
       ROOMS: { className: roomClassName, useSQLite: true },

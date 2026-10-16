@@ -22,7 +22,7 @@ const PLAYERS = [
   { id: 'p2', playerId: 'u2', name: 'Bob', color: '#f59e0b', order: 1 },
 ];
 
-/** Put the current player in jail with a failed Roll Challenge behind them. */
+/** Put the current player in jail with a one-die state left by an older snapshot. */
 function jailedAfterFailedRoll(): GameState {
   const base = initializeGameState('game_JAIL', PLAYERS);
   return {
@@ -36,12 +36,12 @@ function jailedAfterFailedRoll(): GameState {
 }
 
 describe('Leaving jail resets the dice count', () => {
-  // The three jail exits rolled two dice but left `diceCount` at whatever the
-  // last Roll Challenge set it to. The board then showed one die and a crossed
+  // The three jail exits rolled two dice but left `diceCount` at whatever an
+  // older snapshot had saved. The board then showed one die and a crossed
   // out slot while the token moved the distance of two.
 
   it('after escaping with a correct answer', () => {
-    // A jailed player is offered the escape question, not a Roll Challenge.
+    // A jailed player is offered the escape question before any roll.
     const offered = startJailMathEscape(jailedAfterFailedRoll());
     expect(offered.turnPhase).toBe('JAIL_CHALLENGE');
 

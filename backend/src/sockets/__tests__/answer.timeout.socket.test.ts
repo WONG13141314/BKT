@@ -12,7 +12,8 @@ describe('expired socket answer inputs', () => {
   });
 
   it('uses server receipt time to timeout a correct card payload after the deadline', async () => {
-    jest.spyOn(Date, 'now').mockReturnValue(21_000);
+    // Expiry is 21_000; the 2-second network grace ends at 23_000.
+    jest.spyOn(Date, 'now').mockReturnValue(23_000);
     const challenge = makePrivateChallenge({
       context: 'CHALLENGE_CARD', startedAt: 1_000, timeLimit: 20, correctIndex: 1,
     });

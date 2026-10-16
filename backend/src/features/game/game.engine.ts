@@ -47,6 +47,7 @@ import {
   DUEL_DRAW_RENT_RATIO,
   LUCKY_BREAK_CASH_OPTIONS,
   LUCKY_BREAK_TOKEN_CHANCE,
+  ANSWER_NETWORK_GRACE_MS,
   formatRM,
 } from './game.constants';
 import { createShuffledDeck, drawCard, getCardById } from './card.deck';
@@ -210,13 +211,11 @@ export function requestChallengeHint(
 // ---- A. ROLL PHASE ----
 
 /**
- * Open the turn. Jailed players go to the jail decision; everyone else faces the
- * Roll Challenge — the question is the toll for the turn.
- *
- * Before Phase 4 the dice were thrown here and a question appeared only 1 turn
- * in 3, so a whole session produced roughly seven observations across four
- * skills. BKT cannot converge on that. Now every turn contributes one
- * BKT-selected question, and the dice follow the answer.
+ * Open the turn. Jailed players go to the jail decision; everyone else rolls
+ * two dice straight away. There is no question before the roll: questions come
+ * from the landing (Bank Offer, rent duel, challenge card) and from Math Escape.
+ * An earlier "Roll Challenge" asked a question before every roll; it was
+ * removed, and `diceCount` survives only for older saved snapshots.
  */
 export function startRollPhase(state: GameState): GameState {
   const player = getCurrentPlayer(state);
@@ -486,8 +485,13 @@ function isDuelSideComplete(side: DuelSide): boolean {
   return side.selectedIndex !== null || side.timedOut === true;
 }
 
+/** Last moment an answer to this challenge is accepted: expiry plus network grace. */
+export function answerAcceptedUntil(challenge: Pick<MathChallenge, 'startedAt' | 'timeLimit'>): number {
+  return challenge.startedAt + challenge.timeLimit * 1_000 + ANSWER_NETWORK_GRACE_MS;
+}
+
 export function duelSideExpiresAt(side: DuelSide): number {
-  return side.challenge.startedAt + side.challenge.timeLimit * 1_000;
+  return answerAcceptedUntil(side.challenge);
 }
 
 /** The next authoritative duel deadline is the earliest unanswered side. */
@@ -1137,9 +1141,9 @@ export function processJailEscapeAnswer(
       ? { type: 'JAIL_BREAK', value: 0, description: 'You escaped jail! Take your turn!' }
       : { type: 'NONE', value: 0, description: 'Max jail turns reached! Released from jail!' };
 
-    // Leaving jail is its own roll, and it is always a full two dice — the
-    // Roll Challenge does not apply on the turn you get out. `diceCount` must be
-    // reset with it, or the board keeps showing last turn's forfeited die.
+    // Leaving jail is its own roll, and it is always a full two dice. `diceCount`
+    // must be reset with it, or a snapshot from the removed one-die rule keeps
+    // showing a forfeited die.
     return {
       newState: {
         ...state,
@@ -1516,7 +1520,9 @@ function updatePlayerMastery(
 ): { newMastery: number; previousMastery: number } {
   const previousMastery = player.masteryStates[skill] ?? INITIAL_MASTERY;
   const params = getAdjustedParams(difficulty);
-  const newMastery = timedOut || assisted ? previousMastery : updateMastery(previousMastery, isCorrect, params);
+  // An autopilot answer is the bot's, not the learner's.
+  const noEvidence = timedOut || assisted || player.autopilot === true;
+  const newMastery = noEvidence ? previousMastery : updateMastery(previousMastery, isCorrect, params);
   return { newMastery, previousMastery };
 }
 
@@ -1535,6 +1541,7 @@ function applyAnswerToPlayer(
   timedOut: boolean = false,
   assisted: boolean = false
 ): Partial<PlayerState> {
+  const noEvidence = timedOut || assisted || player.autopilot === true;
   return {
     totalQuestions: player.totalQuestions + 1,
     totalCorrect: isCorrect ? player.totalCorrect + 1 : player.totalCorrect,
@@ -1542,11 +1549,11 @@ function applyAnswerToPlayer(
     masteryStates: { ...player.masteryStates, [skillName]: newMastery },
     skillAttempts: {
       ...player.skillAttempts,
-      [skillName]: (player.skillAttempts[skillName] ?? 0) + (timedOut || assisted ? 0 : 1),
+      [skillName]: (player.skillAttempts[skillName] ?? 0) + (noEvidence ? 0 : 1),
     },
     consecutiveFailures: {
       ...player.consecutiveFailures,
-      [skillName]: timedOut || assisted
+      [skillName]: noEvidence
         ? (player.consecutiveFailures[skillName] ?? 0)
         : isCorrect ? 0 : (player.consecutiveFailures[skillName] ?? 0) + 1,
     },
@@ -1595,9 +1602,9 @@ function answerEvidence(
   selectedIndex: number | null,
   receivedAt: number
 ): { isCorrect: boolean; timedOut: boolean; timeMs: number } {
-  // The answer window is [startedAt, expiresAt): an answer received exactly at
-  // expiresAt is too late, regardless of presentation grace or timer callback.
-  const timedOut = selectedIndex === null || receivedAt >= challenge.startedAt + challenge.timeLimit * 1_000;
+  // The accepted window is [startedAt, expiresAt + network grace): an answer
+  // received exactly at the end of that window is too late.
+  const timedOut = selectedIndex === null || receivedAt >= answerAcceptedUntil(challenge);
   return {
     isCorrect: !timedOut && selectedIndex === challenge.correctIndex,
     timedOut,

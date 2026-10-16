@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGameSocket } from './useGameSocket';
 import type { MathChallenge } from '../types/game.types';
 
@@ -72,5 +72,40 @@ describe('private hint requests', () => {
     const { result } = renderHook(() => useGameSocket('game_one', events()));
     expect(result.current.emitDuelContinue('duel_one')).toBe(false);
     expect(socket.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('gameplay commands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    socket.connected = true;
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('sends a double-clicked command once, but allows a deliberate repeat later', () => {
+    const { result } = renderHook(() => useGameSocket('game_one', events()));
+    act(() => { result.current.emitBuyFull(); result.current.emitBuyFull(); });
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'game:buy-full')).toHaveLength(1);
+
+    act(() => { vi.advanceTimersByTime(600); result.current.emitBuyFull(); });
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'game:buy-full')).toHaveLength(2);
+  });
+
+  it('does not treat a different answer as a duplicate', () => {
+    const { result } = renderHook(() => useGameSocket('game_one', events()));
+    act(() => { result.current.emitCardAnswer(1); result.current.emitCardAnswer(2); });
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'game:card-answer')).toHaveLength(2);
+  });
+
+  it('converts a question expiry from server time to this device clock', () => {
+    vi.setSystemTime(1_000_000);
+    const handlers = events();
+    renderHook(() => useGameSocket('game_one', handlers));
+    // The server clock is five minutes ahead of this device.
+    const challenge = { id: 'q1', context: 'CHALLENGE_CARD', expiresAt: 1_330_000, serverNow: 1_300_000 } as unknown as MathChallenge;
+    const receive = socket.on.mock.calls.find(([event]) => event === 'game:challenge')![1];
+    act(() => { receive({ challenge, playerId: 'seat_one' }); });
+    expect(handlers.onChallenge.mock.calls[0][0].challenge.expiresAt).toBe(1_030_000);
   });
 });

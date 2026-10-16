@@ -54,6 +54,14 @@ export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
   3: 60,
 };
 
+/**
+ * Network allowance after a question's visible expiry. The browser disables
+ * answers at expiry, so an answer arriving within this window was chosen in
+ * time and only delayed in transit (e.g. school wifi). It is not extra
+ * thinking time, and the recorded `timeMs` remains the true elapsed time.
+ */
+export const ANSWER_NETWORK_GRACE_MS = 2_000;
+
 /** Recorded with each attempt so timing changes remain distinguishable. */
 export const QUESTION_TIMING_POLICY_VERSION = 'reasoning-30-45-60-v1';
 

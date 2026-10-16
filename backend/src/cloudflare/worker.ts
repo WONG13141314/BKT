@@ -1,5 +1,6 @@
 import { handleApiRequest, jsonResponse } from './http';
 import { allowedOrigin } from './origins';
+import { readSocketToken } from './auth';
 import type { WorkerEnv } from './types';
 export { GameRoom as MathopolyGameRoom } from './room';
 export { PlayerDirectory as MathopolyPlayerDirectory } from './player-directory';
@@ -32,7 +33,7 @@ export default {
       if (url.pathname === '/ws') {
         const room = url.searchParams.get('room');
         if (room && !/^[\w-]{1,100}$/.test(room)) return jsonResponse({ message: 'Invalid room code' }, 400);
-        const token = url.searchParams.get('token');
+        const { token } = readSocketToken(request);
         if (!token || token.length > 4096) return jsonResponse({ message: 'Authentication required' }, 401);
         const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
         const session = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');

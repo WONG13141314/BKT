@@ -1,6 +1,6 @@
 // ============================================
 // Game Socket Handlers
-// Turn flow: Roll Challenge → Move → Resolve → Buy/Duel/Card/Jail → Level Up → End
+// Turn flow: Roll (or jail choice) → Move → Resolve → Buy/Duel/Card → Build → End
 //
 // Two invariants this layer is responsible for:
 //   1. No answer ever reaches a client. State broadcasts drop `currentChallenge`
@@ -16,7 +16,7 @@ import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler'
 import type { AnswerResult, FinalScore, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
 import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
-import { getBotActionDelay } from '../features/game/bot.engine';
+import { getBotActionDelay, isBotControlled } from '../features/game/bot.engine';
 import { buildWorkedFeedback } from '../bkt/feedback';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
@@ -44,6 +44,8 @@ export interface GameHandlersSnapshot {
   botDuels: Array<{ gameId: string; duelId: string; deadline: number }>;
   cleanup: Array<{ gameId: string; deadline: number }>;
   movements: Array<{ gameId: string; matchId: string; diceRollId: number; acknowledged: string[] }>;
+  /** Learners offline past reconnect grace are handed to a bot. Absent in older snapshots. */
+  away?: Array<{ gameId: string; playerId: string; deadline: number }>;
 }
 
 export interface GameHandlersRuntimeOptions {
@@ -64,6 +66,8 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
   const restoredBotActions = new Map<string, { key: string; deadline: number }>();
   const restoredBotDuels = new Map<string, { duelId: string; deadline: number }>();
   const restoredCleanup = new Map<string, number>();
+  const awayTimers = new Map<string, { gameId: string; playerId: string; timer: unknown; deadline: number }>();
+  const restoredAway = new Map<string, { gameId: string; playerId: string; deadline: number }>();
 
   // ---- Room / payload helpers ----
 
@@ -117,7 +121,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
     const waitingOnBot = [state.duelState!.challenger, state.duelState!.owner].some((side) => {
       if (side.selectedIndex !== null || side.timedOut) return false;
-      return state.players.find((p) => p.id === side.playerId)?.isBot === true;
+      return isBotControlled(state.players.find((p) => p.id === side.playerId));
     });
 
     if (!waitingOnBot) {
@@ -236,6 +240,12 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     const timer = scheduler.setTimeout(() => {
       gameService.removeGame(gameId);
       cleanupTimers.delete(gameId);
+      // Release the finished lobby too. It used to stay "playing" forever, so
+      // its room record was never removed from durable storage.
+      const room = options.roomManager?.getRoom(gameId.replace(/^game_/, ''));
+      for (const seat of [...(room?.players.values() ?? [])]) {
+        if (!seat.isBot) options.roomManager!.removePlayer(seat.id);
+      }
     }, Math.max(0, deadline - Date.now()), `cleanup:${gameId}`);
     cleanupTimers.set(gameId, { timer, deadline });
   }
@@ -371,7 +381,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     // Bot turns normally run to completion, but errors or edge cases can
     // leave a bot stranded. Arm a generous safety timer so `resolveStall`
     // can push the turn forward if `triggerBotTurnIfNeeded` fails.
-    if (state.players[state.currentPlayerIndex].isBot) {
+    if (isBotControlled(state.players[state.currentPlayerIndex])) {
       const deadline = now + 15_000;
       savePhaseDeadline(gameId, state, deadline);
       phaseTimers.arm(io, gameId, deadline, () => void resolveStall(io, gameId));
@@ -407,6 +417,47 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
     // Publication schedules the next bot phase; a resolved duel keeps its result
     // visible for the same pause whether it ended by submission or timeout.
+  }
+
+  // ---- Away learners ----
+  //
+  // A learner who closes the tab used to keep their seat, so every one of their
+  // turns ran its full timeouts and every timeout was saved as their answer.
+  // After the reconnect grace a bot plays the seat instead; nothing it answers
+  // is recorded as the learner's evidence, and reconnecting hands it back.
+
+  function awayKey(gameId: string, accountId: string): string {
+    return `${gameId}|${accountId}`;
+  }
+
+  function cancelAway(gameId: string, accountId: string): void {
+    const key = awayKey(gameId, accountId);
+    const pending = awayTimers.get(key);
+    if (pending) scheduler.clearTimeout(pending.timer);
+    awayTimers.delete(key);
+    restoredAway.delete(key);
+  }
+
+  function setAutopilot(io: Server, gameId: string, accountId: string, enabled: boolean): void {
+    const state = gameService.setAutopilot(gameId, accountId, enabled);
+    if (state) publishTransition(io, gameId, getSocketRoom(gameId), state);
+  }
+
+  function scheduleAway(
+    io: Server,
+    gameId: string,
+    accountId: string,
+    deadline: number = Date.now() + PHASE_TIMEOUTS.disconnectGrace,
+    presence: SocketPresence = defaultPresence
+  ): void {
+    cancelAway(gameId, accountId);
+    const key = awayKey(gameId, accountId);
+    const timer = scheduler.setTimeout(() => {
+      awayTimers.delete(key);
+      if (presence.count(accountId) > 0) return;
+      setAutopilot(io, gameId, accountId, true);
+    }, Math.max(0, deadline - Date.now()), `away:${key}`);
+    awayTimers.set(key, { gameId, playerId: accountId, timer, deadline });
   }
 
   // ---- Turn advancement ----
@@ -563,6 +614,39 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     return required;
   }
 
+  /**
+   * Once the leading viewer has seen the move finish (the rolling learner, or
+   * any viewer of a bot-played turn), slower screens get this long to catch up
+   * before the table continues. One hidden tab or slow laptop used to hold
+   * every roll until the 12-second fallback.
+   */
+  const MOVEMENT_FOLLOWER_GRACE_MS = 1_500;
+  const movementGraceTimers = new Map<string, { diceRollId: number; timer: unknown }>();
+
+  function clearMovementGrace(gameId: string): void {
+    const pending = movementGraceTimers.get(gameId);
+    if (pending) scheduler.clearTimeout(pending.timer);
+    movementGraceTimers.delete(gameId);
+  }
+
+  function startMovementGraceIfLead(io: Server, gameId: string, accountId: string): void {
+    const state = gameService.getGameSync(gameId);
+    if (!state || state.turnPhase !== 'MOVING') return;
+    const mover = getCurrentPlayer(state);
+    const isLead = isBotControlled(mover) || mover.playerId === accountId;
+    if (!isLead || movementGraceTimers.get(gameId)?.diceRollId === state.diceRollId) return;
+    clearMovementGrace(gameId);
+    const diceRollId = state.diceRollId;
+    const timer = scheduler.setTimeout(() => {
+      movementGraceTimers.delete(gameId);
+      const live = gameService.getGameSync(gameId);
+      if (!live || live.turnPhase !== 'MOVING' || live.diceRollId !== diceRollId) return;
+      movementPresentations.delete(gameId);
+      advanceServerPhases(io, gameId, getSocketRoom(gameId), true);
+    }, MOVEMENT_FOLLOWER_GRACE_MS, `movement-grace:${gameId}`);
+    movementGraceTimers.set(gameId, { diceRollId, timer });
+  }
+
   /** The existing MOVING deadline is the bounded escape if a viewer never replies. */
   function completeMovementIfReady(io: Server, gameId: string): boolean {
     const state = gameService.getGameSync(gameId);
@@ -572,6 +656,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     const required = connectedMovementViewers(io, state);
     if (required.size === 0 || [...required].some((account) => !pending.acknowledged.has(account))) return false;
     movementPresentations.delete(gameId);
+    clearMovementGrace(gameId);
     advanceServerPhases(io, gameId, getSocketRoom(gameId), true);
     return true;
   }
@@ -673,6 +758,8 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       const socketRoom = getSocketRoom(data.gameId);
       socket.join(socketRoom);
       socket.data.gameId = data.gameId;
+      cancelAway(data.gameId, playerId);
+      if (viewerSeat.autopilot) setAutopilot(io, data.gameId, playerId, false);
 
       if (state.phase === 'FINISHED') {
         publishGameRecoveryToSocket(socket, state, {
@@ -685,11 +772,12 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       // Make sure the phase has a live timer, but keep its existing absolute
       // deadline. Restarting it here let a page refresh grant a fresh decision
       // window indefinitely. MOVING keeps its presentation fallback untouched.
-      if (getCurrentPlayer(state).playerId === playerId && state.turnPhase !== 'MOVING') {
+      const live = gameService.getGameSync(data.gameId) ?? state;
+      if (getCurrentPlayer(live).playerId === playerId && live.turnPhase !== 'MOVING') {
         armPhaseTimer(io, data.gameId);
       }
 
-      publishGameRecoveryToSocket(socket, gameService.getGameSync(data.gameId) ?? state);
+      publishGameRecoveryToSocket(socket, gameService.getGameSync(data.gameId) ?? live);
     });
 
     socket.on('game:request-challenge', async (data: { gameId: string }) => {
@@ -756,7 +844,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
           state.turnPhase !== 'MOVING' || state.diceRollId !== data.diceRollId) return;
       syncMovementPresentation(state);
       movementPresentations.get(data.gameId)!.acknowledged.add(playerId);
-      completeMovementIfReady(io, data.gameId);
+      if (!completeMovementIfReady(io, data.gameId)) startMovementGraceIfLead(io, data.gameId, playerId);
     });
 
     // ---- Challenge answers ----
@@ -904,6 +992,15 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       void handleEndTurnFlow(io, d.gameId);
     });
 
+    // Moving this connection to another room means leaving this match now.
+    socket.on('room:leave', () => {
+      const gameId: string | undefined = socket.data.gameId;
+      const state = gameId ? gameService.getGameSync(gameId) : null;
+      if (!gameId || !state || state.phase !== 'PLAYING' || !findAuthenticatedSeat(state)) return;
+      cancelAway(gameId, playerId);
+      setAutopilot(io, gameId, playerId, true);
+    });
+
     // ---- Disconnect ----
 
     socket.on('disconnect', () => {
@@ -915,6 +1012,11 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
       const state = gameService.getGameSync(gameId);
       if (!state || state.phase !== 'PLAYING') return;
+
+      const seat = findAuthenticatedSeat(state);
+      if (seat && !seat.isBot && !seat.isBankrupt && !seat.autopilot) {
+        scheduleAway(io, gameId, playerId, undefined, presence);
+      }
 
       const activePlayer = state.players[state.currentPlayerIndex];
       const wasActivePlayer = activePlayer?.playerId === playerId;
@@ -937,6 +1039,14 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     register: registerGameHandlers,
     publishStart: publishGameStartTransition,
     resume(io: Server): void {
+      for (const pending of [...restoredAway.values()]) {
+        const state = gameService.getGameSync(pending.gameId);
+        if (!state || state.phase !== 'PLAYING' || defaultPresence.count(pending.playerId) > 0) {
+          cancelAway(pending.gameId, pending.playerId);
+          continue;
+        }
+        scheduleAway(io, pending.gameId, pending.playerId, pending.deadline);
+      }
       for (const state of gameService.listGames()) {
         if (state.phase === 'FINISHED') {
           scheduleCleanup(state.id);
@@ -957,6 +1067,8 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       for (const [gameId, pending] of botDuelTimers) botDuels.set(gameId, { duelId: pending.duelId, deadline: pending.deadline });
       const cleanup = new Map(restoredCleanup);
       for (const [gameId, pending] of cleanupTimers) cleanup.set(gameId, pending.deadline);
+      const away = new Map(restoredAway);
+      for (const [key, pending] of awayTimers) away.set(key, { gameId: pending.gameId, playerId: pending.playerId, deadline: pending.deadline });
       return {
         botActions: [...botActions].map(([gameId, pending]) => ({ gameId, ...pending })),
         botDuels: [...botDuels].map(([gameId, pending]) => ({ gameId, ...pending })),
@@ -965,6 +1077,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
           gameId, matchId: pending.matchId, diceRollId: pending.diceRollId,
           acknowledged: [...pending.acknowledged],
         })),
+        away: [...away.values()],
       };
     },
     restore(snapshot: GameHandlersSnapshot): void {
@@ -972,8 +1085,11 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       for (const pending of botActionTimers.values()) scheduler.clearTimeout(pending.timer);
       for (const pending of botDuelTimers.values()) scheduler.clearTimeout(pending.timer);
       for (const pending of cleanupTimers.values()) scheduler.clearTimeout(pending.timer);
-      botActionTimers.clear(); botDuelTimers.clear(); cleanupTimers.clear();
+      for (const pending of awayTimers.values()) scheduler.clearTimeout(pending.timer);
+      botActionTimers.clear(); botDuelTimers.clear(); cleanupTimers.clear(); awayTimers.clear();
       restoredBotActions.clear(); restoredBotDuels.clear(); restoredCleanup.clear(); movementPresentations.clear();
+      restoredAway.clear();
+      for (const pending of snapshot.away ?? []) restoredAway.set(awayKey(pending.gameId, pending.playerId), { ...pending });
       for (const { gameId, key, deadline } of snapshot.botActions) restoredBotActions.set(gameId, { key, deadline });
       for (const { gameId, duelId, deadline } of snapshot.botDuels) restoredBotDuels.set(gameId, { duelId, deadline });
       for (const { gameId, deadline } of snapshot.cleanup) restoredCleanup.set(gameId, deadline);

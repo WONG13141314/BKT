@@ -21,10 +21,9 @@ class GameClient {
     assert.equal(url.origin, this.origin, 'Routing must stay on the game origin');
     assert.equal(url.pathname, '/ws');
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.searchParams.set('token', this.token);
     this.endpoint = url;
     const generation = ++this.generation;
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, ['mathopoly', this.token]);
     this.ws = ws;
     this.connections.add(ws);
     ws.addEventListener('message', ({ data }) => {
@@ -318,12 +317,15 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       assert.equal(moving.diceRollId, initial.diceRollId + 1);
       assert.ok(moving.phaseDeadline > Date.now());
       assertPublicState(moving);
-      host.send('game:movement-complete', { gameId, diceRollId: moving.diceRollId });
+      // The onlooker finishes first. Only the rolling learner's acknowledgement
+      // starts the short catch-up window, so the onlooker's must be retained.
+      second.send('game:movement-complete', { gameId, diceRollId: moving.diceRollId });
+      await second.state(gameId); // A command barrier after the onlooker's acknowledgement.
       // Local forced eviction may drain pending work for about 30 seconds. Only
       // this fixture extends the deadline; normal gameplay still uses 12 seconds.
       await roomTest(code, 'patch', { gameId, patch: { phaseDeadline: Date.now() + 100_000, phaseDeadlineFor: 'MOVING' } });
-      const before = await host.state(gameId); // A command barrier after the first acknowledgement.
-      assert.equal(before.turnPhase, 'MOVING', 'The second human must also finish presenting movement');
+      const before = await host.state(gameId);
+      assert.equal(before.turnPhase, 'MOVING', 'The rolling learner must also finish presenting movement');
       const duplicateMark = host.mark();
       host.send('game:roll', { gameId }, { actionId: rollId });
       const afterDuplicate = await host.state(gameId);
@@ -339,7 +341,7 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       assert.equal(restored.gameStartTime, before.gameStartTime);
       assert.deepEqual(restored.players.map((player) => player.position), before.players.map((player) => player.position));
       const completionMark = host.mark();
-      second.send('game:movement-complete', { gameId, diceRollId: moving.diceRollId });
+      host.send('game:movement-complete', { gameId, diceRollId: moving.diceRollId });
       const resolved = (await host.wait('game:state', (data) => data.state.turnPhase !== 'MOVING', completionMark)).state;
       assert.equal(resolved.diceRollId, moving.diceRollId);
       assertPublicState(resolved);

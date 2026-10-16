@@ -247,13 +247,15 @@ describe('Duel mechanics', () => {
       },
     };
 
-    const afterHardDeadline = expireDuelSides(timed, 16_000);
+    // Each side closes at its own expiry plus the 2-second network grace.
+    expect(expireDuelSides(timed, 16_000).duelState!.owner.timedOut).not.toBe(true);
+    const afterHardDeadline = expireDuelSides(timed, 18_000);
     expect(afterHardDeadline.duelState!.challenger.timedOut).not.toBe(true);
     expect(afterHardDeadline.duelState!.owner.timedOut).toBe(true);
-    expect(nextDuelDeadline(afterHardDeadline.duelState!)).toBe(26_000);
+    expect(nextDuelDeadline(afterHardDeadline.duelState!)).toBe(28_000);
     expect(bothDuellistsAnswered(afterHardDeadline)).toBe(false);
 
-    const afterEasyDeadline = expireDuelSides(afterHardDeadline, 26_000);
+    const afterEasyDeadline = expireDuelSides(afterHardDeadline, 28_000);
     expect(afterEasyDeadline.duelState!.challenger.timedOut).toBe(true);
     expect(bothDuellistsAnswered(afterEasyDeadline)).toBe(true);
   });

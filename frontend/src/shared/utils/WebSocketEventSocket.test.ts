@@ -5,14 +5,16 @@ class TestWebSocket {
   static readonly OPEN = 1;
   static instances: TestWebSocket[] = [];
   readonly url: string;
+  readonly protocols: string[];
   readyState = TestWebSocket.OPEN;
   sent: string[] = [];
   onmessage: ((message: { data: string }) => void) | null = null;
   onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
 
-  constructor(url: URL | string) {
+  constructor(url: URL | string, protocols: string[] = []) {
     this.url = String(url);
+    this.protocols = protocols;
     TestWebSocket.instances.push(this);
   }
 
@@ -46,7 +48,8 @@ describe('native game event transport', () => {
     const connected = vi.fn();
     client.on('connect', connected);
     const socket = TestWebSocket.instances[0];
-    expect(socket.url).toBe('wss://game.example/ws?token=test-token');
+    expect(socket.url).toBe('wss://game.example/ws');
+    expect(socket.protocols).toEqual(['mathopoly', 'test-token']);
     client.emit('game:roll', { gameId: 'game_ONE' });
     expect(socket.sent).toEqual([]);
 
@@ -94,7 +97,8 @@ describe('native game event transport', () => {
     gateway.receive({ event: 'connect', data: { id: 'gateway' } });
     gateway.receive({ redirect: '/ws?room=ABCD', resume: { event: 'room:create', data: { code: 'ABCD' } } });
     const room = TestWebSocket.instances[1];
-    expect(room.url).toBe('wss://game.example/ws?room=ABCD&token=test-token');
+    expect(room.url).toBe('wss://game.example/ws?room=ABCD');
+    expect(room.protocols).toEqual(['mathopoly', 'test-token']);
     expect(client.connected).toBe(false);
     expect(disconnected).not.toHaveBeenCalled();
     room.receive({ event: 'connect', data: { id: 'room-connection' } });
