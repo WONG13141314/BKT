@@ -2,6 +2,7 @@ import { ArrowRight, Banknote, DollarSign, House, Hourglass, Lock, Zap } from 'l
 import type { GameState, Player } from '../types/game.types';
 import { formatRM, GAME_CONSTANTS } from '../types/game.types';
 import { usePhaseCountdown } from '../hooks/usePhaseCountdown';
+import { purchaseQuote } from '../utils/purchasePrice';
 import './GameActionDock.css';
 
 export interface GameActionDockProps {
@@ -70,11 +71,7 @@ export function GameActionDock({
   }
 
   if (phase === 'BUY_DECISION' && pending) {
-    // Mirrors the server: discounts never stack, so the token applies to the
-    // listed price only when it beats the price already on offer.
-    const offerPrice = pending.propertyPrice ?? 0;
-    const tokenPrice = Math.floor((state.tiles[pending.tileIndex]?.price ?? offerPrice) * 0.7);
-    const price = currentPlayer?.hasDiscountToken && tokenPrice < offerPrice ? tokenPrice : offerPrice;
+    const price = purchaseQuote(state, currentPlayer)?.price ?? pending.propertyPrice ?? 0;
     return (
       <div className="game-action-dock game-action-dock--decision" id="game-actions" aria-label="Property actions">
         {!pending.bankOfferAttempted && (

@@ -16,15 +16,24 @@
 }
 
 /* Countdown to the server's default action for an unanswered decision. */
+/* A small Monopoly-style tag: readable on the dark board and the light mobile dock. */
 .game-action-dock__deadline {
   justify-self: center;
+  padding: 0.2rem 0.6rem;
+  border: 2px solid #000;
+  border-radius: 4px;
+  background: #fff;
   color: var(--ink);
+  box-shadow: 2px 2px 0 #000;
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.game-action-dock__deadline--urgent { color: #c1121f; }
+.game-action-dock__deadline--urgent {
+  background: #ffe3e3;
+  color: #c1121f;
+}
 
 @media (max-width: 900px) {
   .game-action-dock {

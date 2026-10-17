@@ -123,6 +123,10 @@ describe('away learners', () => {
     expect(newState.players[0].masteryStates).toEqual(before.masteryStates);
     expect(newState.players[0].skillAttempts).toEqual(before.skillAttempts);
     expect(isRecordablePlayer(newState.players[0])).toBe(false);
+    // The learner's shown and saved score excludes the bot's answer.
+    expect(newState.players[0].totalQuestions).toBe(before.totalQuestions);
+    expect(newState.players[0].totalCorrect).toBe(before.totalCorrect);
+    expect(newState.players[0].streak).toBe(before.streak);
   });
 });
 

@@ -16,7 +16,7 @@ const NOW = 1_700_000_000_000;
 describe('phase deadlines', () => {
   it.each([
     ['ROLL_PHASE', false, 45_000],
-    ['BUY_DECISION', false, 20_000],
+    ['BUY_DECISION', false, 30_000],
     ['END_TURN', false, 10_000],
     ['END_TURN', true, 30_000],
     ['MOVING', false, 12_000],

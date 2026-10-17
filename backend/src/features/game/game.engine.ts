@@ -1571,11 +1571,14 @@ function applyAnswerToPlayer(
   timedOut: boolean = false,
   assisted: boolean = false
 ): Partial<PlayerState> {
-  const noEvidence = timedOut || assisted || player.autopilot === true;
+  const playedByBot = player.autopilot === true;
+  const noEvidence = timedOut || assisted || playedByBot;
+  // An away learner's score and streak are their own: the shown score and the
+  // saved game_players totals must not include answers a bot gave for them.
   return {
-    totalQuestions: player.totalQuestions + 1,
-    totalCorrect: isCorrect ? player.totalCorrect + 1 : player.totalCorrect,
-    streak: isCorrect ? player.streak + 1 : 0,
+    totalQuestions: player.totalQuestions + (playedByBot ? 0 : 1),
+    totalCorrect: isCorrect && !playedByBot ? player.totalCorrect + 1 : player.totalCorrect,
+    streak: playedByBot ? player.streak : isCorrect ? player.streak + 1 : 0,
     masteryStates: { ...player.masteryStates, [skillName]: newMastery },
     skillAttempts: {
       ...player.skillAttempts,

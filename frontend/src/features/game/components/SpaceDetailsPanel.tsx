@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION } from '../config/board.presentation';
+import { purchaseQuote } from '../utils/purchasePrice';
 import './SpaceDetailsPanel.css';
 
 const SPECIAL_COPY: Record<string, string> = {
@@ -28,10 +29,10 @@ export function SpaceDetailsPanel({ gameState, tileIndex, landed, children }: Pr
   const groupColor = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] : null;
   const currentRent = property?.isLeveledUp ? tile.leveledRent : tile.baseRent;
   const isProperty = tile.type === 'PROPERTY';
-  const liveOffer = gameState.pendingTileEvent?.tileIndex === tile.index
-    && gameState.turnPhase === 'BUY_DECISION'
-    ? gameState.pendingTileEvent.propertyPrice
-    : null;
+  // The same price the Buy button charges, so a learner never sees two prices.
+  const quote = gameState.pendingTileEvent?.tileIndex === tile.index ? purchaseQuote(gameState) : null;
+  const priceLabel = quote?.source === 'discountCard' ? 'Price with -30% card'
+    : quote?.source === 'bankOffer' ? 'Bank offer price' : 'Purchase price';
 
   return (
     <aside className={`space-details ${isProperty ? 'space-details--property' : 'space-details--event'}`}>
@@ -47,8 +48,8 @@ export function SpaceDetailsPanel({ gameState, tileIndex, landed, children }: Pr
           <>
             <dl className="space-details__facts">
               <div>
-                <dt>{liveOffer != null && liveOffer !== tile.price ? 'Current bank offer' : 'Purchase price'}</dt>
-                <dd>{formatRM(liveOffer ?? tile.price)}</dd>
+                <dt>{priceLabel}</dt>
+                <dd>{formatRM(quote?.price ?? tile.price)}</dd>
               </div>
               <div><dt>Current rent</dt><dd>{formatRM(currentRent)}</dd></div>
               <div><dt>Rent with house</dt><dd>{formatRM(tile.leveledRent)}</dd></div>

@@ -4,7 +4,8 @@ import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler'
 
 export const PHASE_TIMEOUTS = {
   roll: 45_000,
-  buy: 20_000,
+  /** Reading the deed and choosing; 20s proved tight in a playtest. */
+  buy: 30_000,
   build: 30_000,
   endTurn: 10_000,
   movementFallback: 12_000,
