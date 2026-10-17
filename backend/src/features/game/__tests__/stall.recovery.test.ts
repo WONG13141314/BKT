@@ -121,7 +121,9 @@ describe('resolveStalledTurn', () => {
     expect(outcome.newState.players[0].totalQuestions).toBe(opened.players[0].totalQuestions + 1);
     expect(outcome.newState.players[0].streak).toBe(0);
     expect(outcome.result.reward.type).toBe('NONE');
-    expect(outcome.newState.players[0].money).toBe(opened.players[0].money);
+    // A timeout earns the card's wrong-answer consolation (Bonus Besar: RM40),
+    // so an instant guess no longer beats thinking until time runs out.
+    expect(outcome.newState.players[0].money).toBe(opened.players[0].money + 40);
   });
 
   it('settles an abandoned duel at full rent', () => {

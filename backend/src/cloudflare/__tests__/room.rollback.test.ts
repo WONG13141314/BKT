@@ -386,7 +386,8 @@ describe('room command recovery after a failed durable commit', () => {
     expect(priors).toHaveBeenCalledWith(['synthetic-player-1']);
     const stored = values.get('room') as StoredRoom;
     expect(stored.outboxIds).toEqual([]);
-    expect(stored.games[0].players[0]).toMatchObject({
+    // Turn order is shuffled at start, so find the learner by account.
+    expect(stored.games[0].players.find((seat) => seat.playerId === 'synthetic-player-1')).toMatchObject({
       masteryStates: { Addition: 0.82 }, skillAttempts: { Addition: 6 },
     });
     expect(socket.sent.some((frame) => frame.event === 'game:start')).toBe(true);

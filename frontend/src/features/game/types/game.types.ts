@@ -306,6 +306,8 @@ export interface DuelResolution {
   challengerCorrect: boolean;
   ownerCorrect: boolean;
   headline: string;
+  /** Rent a challenger's Rent Shield cancelled after the duel; absent when unused. */
+  shieldBlocked?: number;
 }
 
 export interface PublicDuelSide {

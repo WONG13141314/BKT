@@ -123,6 +123,7 @@ export class GameRoom {
     this.lobbyHandlers = createLobbyHandlersRuntime({
       gameService: this.service, roomManager: this.rooms, presence: this.presence,
       scheduler: this.scheduler, publishGameStart: this.gameHandlers.publishStart,
+      fixedTurnOrder: this.env.FIXED_TURN_ORDER === 'true',
     });
     if (saved) {
       this.gameHandlers.restore(saved.gameHandlers);

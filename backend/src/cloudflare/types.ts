@@ -10,6 +10,8 @@ export interface WorkerEnv {
    * seat on the server; this HTTP route trusts a client-supplied seat list.
    */
   ENABLE_HTTP_GAME_CREATION?: string;
+  /** Test runtimes only: keep lobby join order so fixtures know who rolls first. */
+  FIXED_TURN_ORDER?: string;
   ROOMS: DurableObjectNamespace;
   API: DurableObjectNamespace;
   PLAYERS: DurableObjectNamespace;

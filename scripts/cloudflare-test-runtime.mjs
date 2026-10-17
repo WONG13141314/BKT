@@ -46,6 +46,8 @@ export async function createTestRuntime(port = 0, { extraWorkerSource = '', room
       JWT_EXPIRES_IN: '90d',
       // Isolated runtime only: lets integration checks create a game over HTTP.
       ENABLE_HTTP_GAME_CREATION: 'true',
+      // Fixtures address the host as the first seat; real games shuffle turns.
+      FIXED_TURN_ORDER: 'true',
     },
     durableObjects: {
       ROOMS: { className: roomClassName, useSQLite: true },

@@ -23,6 +23,7 @@ export const MONOPOLY_RENT_MULTIPLIER = 2; // 2× base rent when owning full set
 // ---- Math Rewards ----
 
 export const SMART_BUY_DISCOUNT = 0.20;        // Banker Offer: 20% off property price
+export const DISCOUNT_TOKEN_RATE = 0.30;       // Discount card: 30% off the listed price; never stacks
 
 // ---- Math Duel ----
 // Landing on an owned property disputes it with the owner. Both answer at once.

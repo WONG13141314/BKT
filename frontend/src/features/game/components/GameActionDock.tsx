@@ -70,8 +70,11 @@ export function GameActionDock({
   }
 
   if (phase === 'BUY_DECISION' && pending) {
-    const listedPrice = pending.propertyPrice ?? 0;
-    const price = currentPlayer?.hasDiscountToken ? Math.floor(listedPrice * 0.7) : listedPrice;
+    // Mirrors the server: discounts never stack, so the token applies to the
+    // listed price only when it beats the price already on offer.
+    const offerPrice = pending.propertyPrice ?? 0;
+    const tokenPrice = Math.floor((state.tiles[pending.tileIndex]?.price ?? offerPrice) * 0.7);
+    const price = currentPlayer?.hasDiscountToken && tokenPrice < offerPrice ? tokenPrice : offerPrice;
     return (
       <div className="game-action-dock game-action-dock--decision" id="game-actions" aria-label="Property actions">
         {!pending.bankOfferAttempted && (

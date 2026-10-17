@@ -1,5 +1,16 @@
 # Mathopoly gameplay runtime and recovery
 
+## Fairness rules
+
+Turn order is shuffled when a match starts; lobby join order used to put the
+host first, and in simulated 4-player games that seat won about 31% of games
+instead of 25%. A Rent Shield no longer skips the rent duel: both learners
+still answer, and the shield cancels only a payment that is actually owed. A
+timed-out math card receives the same consolation as a wrong answer, so an
+instant guess no longer beats thinking until time runs out. A Bank Offer and a
+discount token never stack; the better single price is used, and the token is
+kept when it would not help.
+
 ## Turn presentation
 
 The server schedules one bot action at a time and computes it from the latest

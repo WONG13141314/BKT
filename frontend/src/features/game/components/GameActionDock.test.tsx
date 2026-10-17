@@ -73,4 +73,14 @@ describe('GameActionDock', () => {
       isMyTurn selectedTile={0} isBoardAnimating={false} isHoldingDuelResult={false} {...callbacks} />);
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();
   });
+  it('shows one discount, not a Bank Offer stacked with a token', () => {
+    const offer = {
+      ...state, turnPhase: 'BUY_DECISION',
+      tiles: Array.from({ length: 5 }, (_, index) => ({ index, type: 'PROPERTY', name: 'Lot', price: 120, buildCost: 60 })),
+      pendingTileEvent: { type: 'PROPERTY', tileIndex: 4, tileName: 'Lot', propertyPrice: 96, bankOfferAttempted: true, bankOfferApproved: true },
+    } as unknown as GameState;
+    render(<GameActionDock state={offer} currentPlayer={{ id: 'p1', money: 800, hasDiscountToken: true } as Player}
+      isMyTurn selectedTile={0} isBoardAnimating={false} isHoldingDuelResult={false} {...callbacks} />);
+    expect(screen.getByRole('button', { name: /accept offer/i })).toHaveTextContent('RM84');
+  });
 });

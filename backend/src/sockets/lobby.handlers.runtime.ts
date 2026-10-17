@@ -1,5 +1,5 @@
 import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
-import type { RoomManager } from './lobby.manager';
+import { shuffleTurnOrder, type RoomManager } from './lobby.manager';
 import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 import type { GameService } from '../features/game/game.runtime';
 import type { GameState } from '../features/game/game.types';
@@ -17,6 +17,8 @@ export interface LobbyHandlersRuntimeOptions {
   presence?: SocketPresence;
   scheduler?: TimerScheduler;
   publishGameStart: (io: Server, state: GameState) => void;
+  /** Keep join order instead of shuffling turns. Fixed-order test runtimes only. */
+  fixedTurnOrder?: boolean;
 }
 
 export function createLobbyHandlersRuntime(options: LobbyHandlersRuntimeOptions) {
@@ -238,7 +240,9 @@ export function createLobbyHandlersRuntime(options: LobbyHandlersRuntimeOptions)
       const gameId = `game_${startingRoom.code}`;
       const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
       const PLAYER_TOKENS = ['race_car', 'battleship', 'top_hat', 'scottie_dog'] as const;
-      const gamePlayers = Array.from(startingRoom.players.values()).map((p, idx) => ({
+      const lobbyOrder = Array.from(startingRoom.players.values());
+      const turnOrder = options.fixedTurnOrder ? lobbyOrder : shuffleTurnOrder(lobbyOrder);
+      const gamePlayers = turnOrder.map((p, idx) => ({
         id: p.id,
         playerId: p.id,
         name: p.name,

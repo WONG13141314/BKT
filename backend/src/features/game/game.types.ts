@@ -312,6 +312,8 @@ export interface DuelResolution {
   challengerCorrect: boolean;
   ownerCorrect: boolean;
   headline: string;
+  /** Rent a challenger's Rent Shield cancelled after the duel; absent when unused. */
+  shieldBlocked?: number;
 }
 
 /** Client-safe duel: each side's question is redacted, and only their own is sent. */

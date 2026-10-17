@@ -43,6 +43,7 @@ import {
   MAX_JAIL_TURNS,
   TOTAL_TILES,
   SMART_BUY_DISCOUNT,
+  DISCOUNT_TOKEN_RATE,
   LANDLORD_BONUS,
   DUEL_DRAW_RENT_RATIO,
   LUCKY_BREAK_CASH_OPTIONS,
@@ -347,15 +348,8 @@ function resolvePropertyTile(state: GameState, player: PlayerState, tileIndex: n
   const owner = state.players.find((p) => p.id === property.ownerId);
   if (!owner || owner.isBankrupt) return { ...state, turnPhase: 'END_TURN' };
 
-  // Check rent shield
-  if (player.hasRentShield) {
-    const updatedPlayers = updatePlayerInList(state.players, state.currentPlayerIndex, (p) => ({
-      ...p,
-      hasRentShield: false,
-    }));
-    return { ...state, players: updatedPlayers, turnPhase: 'END_TURN' };
-  }
-
+  // A Rent Shield no longer skips the duel: both learners still answer, and
+  // the shield cancels only the payment, if one is owed (see `resolveDuel`).
   const hasMonopoly = tile.colorGroup ? ownsFullColorGroup(owner.properties, tile.colorGroup) : false;
   const rent = calculateRent(tile, property.isLeveledUp, hasMonopoly);
 
@@ -561,6 +555,15 @@ export function resolveDuel(state: GameState): {
   }
 
   const landlordBonus = ownerCorrect ? LANDLORD_BONUS : 0;
+  const headline = duelHeadline(outcome, rentPaid, duel.rentAmount, landlordBonus);
+
+  // The shield is spent only when it actually blocks a payment, so winning the
+  // duel outright keeps it for a later rent.
+  const shieldBlocked = rentPaid > 0 &&
+    state.players.find((p) => p.id === duel.challenger.playerId)?.hasRentShield === true
+    ? rentPaid
+    : 0;
+  if (shieldBlocked > 0) rentPaid = 0;
 
   const resolution: DuelResolution = {
     outcome,
@@ -568,7 +571,8 @@ export function resolveDuel(state: GameState): {
     landlordBonus,
     challengerCorrect,
     ownerCorrect,
-    headline: duelHeadline(outcome, rentPaid, duel.rentAmount, landlordBonus),
+    headline: shieldBlocked > 0 ? `${headline} Rent Shield blocked the ${formatRM(shieldBlocked)} payment.` : headline,
+    ...(shieldBlocked > 0 ? { shieldBlocked } : {}),
   };
 
   // Apply both players' BKT updates, recording each transition on its side so
@@ -603,7 +607,9 @@ export function resolveDuel(state: GameState): {
   const ownerIdx = players.findIndex((p) => p.id === ownerSide.playerId);
 
   players = players.map((p, idx) => {
-    if (idx === challengerIdx) return { ...p, money: p.money - rentPaid };
+    if (idx === challengerIdx) {
+      return { ...p, money: p.money - rentPaid, hasRentShield: shieldBlocked > 0 ? false : p.hasRentShield };
+    }
     if (idx === ownerIdx) return { ...p, money: p.money + rentPaid + landlordBonus };
     return p;
   });
@@ -651,18 +657,26 @@ function duelHeadline(
 
 // ---- BUY DECISIONS ----
 
-/** Player buys at full price (or discounted if they have a discount token) */
+/** Price to pay for the pending deed, and whether the discount token is spent on it. */
+export function purchaseQuote(state: GameState): { price: number; usesDiscountToken: boolean } {
+  const player = getCurrentPlayer(state);
+  const event = state.pendingTileEvent!;
+  const offerPrice = event.propertyPrice!;
+  // Discounts never stack: an approved Bank Offer and a 30% token used to
+  // combine to 45% off. The token applies to the listed price, and is spent
+  // only when it beats the price already on offer.
+  const listedPrice = BOARD_TILES[event.tileIndex]?.price ?? offerPrice;
+  const tokenPrice = Math.floor(listedPrice * (1 - DISCOUNT_TOKEN_RATE));
+  return player.hasDiscountToken && tokenPrice < offerPrice
+    ? { price: tokenPrice, usesDiscountToken: true }
+    : { price: offerPrice, usesDiscountToken: false };
+}
+
+/** Player buys at the best single price available to them. */
 export function buyPropertyFullPrice(state: GameState): GameState {
   const player = getCurrentPlayer(state);
   const event = state.pendingTileEvent!;
-  let price = event.propertyPrice!;
-
-  // Apply discount token if available
-  let useDiscount = false;
-  if (player.hasDiscountToken) {
-    price = Math.floor(price * 0.70); // 30% off
-    useDiscount = true;
-  }
+  const { price, usesDiscountToken: useDiscount } = purchaseQuote(state);
 
   if (player.money < price) return state; // Can't afford
 
@@ -867,9 +881,10 @@ export function processCardChallengeAnswer(
   );
 
   const fallbackEffect: CardEffect = { type: 'GAIN_MONEY', amount: isCorrect ? 80 : 20 };
-  const effect = timedOut
-    ? { type: 'NOTHING' } as CardEffect
-    : (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
+  // A timeout gets the same consolation as a wrong answer. When only a wrong
+  // answer was consoled, an instant random guess earned more on average than
+  // thinking until time ran out, which also fed guesses into BKT.
+  const effect = (isCorrect ? card?.correctReward : card?.wrongOutcome) || card?.effect || fallbackEffect;
   const updatedPlayers = updatePlayerAfterAnswer(state, isCorrect, challenge, newMastery, timedOut);
   let stateAfterEffect = { ...state, players: updatedPlayers };
   const positionBefore = getCurrentPlayer(stateAfterEffect).position;
@@ -882,7 +897,7 @@ export function processCardChallengeAnswer(
 
   const cardName = card?.name || 'Challenge Card';
   const reward: RewardResult = timedOut
-    ? { type: 'NONE', value: 0, description: 'Time ran out — no card reward this time.' }
+    ? { type: 'NONE', value: 0, description: `Time ran out — ${cardName}: ${describeEffect(effect)}` }
     : isCorrect
     ? { type: 'BONUS_CASH', value: 0, description: `${cardName} — Correct! ${describeEffect(effect)}` }
     : { type: 'NONE', value: 0, description: `${cardName} — ${describeEffect(effect)}` };
