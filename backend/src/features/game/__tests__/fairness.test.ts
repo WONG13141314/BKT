@@ -17,6 +17,7 @@ import { gameService } from '../../../test/game.service';
 import { registerLobbyHandlers, roomManager } from '../../../test/socket.runtime';
 import { SocketPresence } from '../../../sockets/presence.manager';
 import { makeServer, makeSocket } from '../../../sockets/__tests__/socket.harness';
+import { LANDLORD_BONUS } from '../game.constants';
 import type { GameState } from '../game.types';
 
 const PLAYERS = [
@@ -93,7 +94,7 @@ describe('math card timeouts', () => {
 });
 
 describe('Rent Shield', () => {
-  /** P1 lands on P2's Tambah Alley (rent RM20) holding a Rent Shield. */
+  /** P1 lands on P2's Tambah Alley holding a Rent Shield. */
   function landOnRentWithShield(): GameState {
     const base = initializeGameState('game_SHIELD', PLAYERS);
     return resolveTileEvent({
@@ -127,10 +128,11 @@ describe('Rent Shield', () => {
 
     expect(resolution.outcome).toBe('OWNER_WINS');
     expect(resolution.rentPaid).toBe(0);
-    expect(resolution.shieldBlocked).toBe(20);
+    expect(resolution.shieldBlocked).toBe(BOARD_TILES[1].baseRent);
     expect(resolution.headline).toContain('Rent Shield');
     expect(newState.players[0].money).toBe(before.players[0].money);
-    expect(newState.players[1].money).toBe(before.players[1].money);
+    // The bank still pays the owner's bonus for a correct defence.
+    expect(newState.players[1].money).toBe(before.players[1].money + LANDLORD_BONUS);
     expect(newState.players[0].hasRentShield).toBe(false);
   });
 

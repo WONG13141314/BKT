@@ -30,7 +30,6 @@ import {
 import {
   Loader2,
   AlertCircle,
-  Hourglass,
 } from 'lucide-react';
 import './GamePage.css';
 
@@ -67,7 +66,6 @@ export function GamePage() {
   const { play: playSound, playMovementStep } = useGameAudio(gameState);
 
   const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
-  const [challengePlayerId, setChallengePlayerId] = useState<string | null>(null);
   const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
   const [rollRequested, setRollRequested] = useState(false);
@@ -101,7 +99,6 @@ export function GamePage() {
     activeChallengeIdRef.current = null;
     setActiveChallenge(null);
     setAnswerResult(null);
-    setChallengePlayerId(null);
   }, [clearVisible, setAnswerResult]);
 
   const dismissDuelResult = useCallback(() => {
@@ -227,8 +224,6 @@ export function GamePage() {
           markChallengeVisible(state.currentChallenge.id);
           setActiveChallenge(state.currentChallenge);
         }
-      } else if (!isChallengePhase(state.turnPhase)) {
-        setChallengePlayerId(null);
       }
       // The server has moved past the duel — clear it if it's still unresolved,
       // but let it linger if we are showing the resolution result.
@@ -251,7 +246,6 @@ export function GamePage() {
         setDuelChallenge(data.challenge);
         return;
       }
-      setChallengePlayerId(data.playerId);
       if (activeChallengeIdRef.current !== data.challenge.id) {
         markChallengeVisible(data.challenge.id);
         setAnswerResult(null);
@@ -263,8 +257,8 @@ export function GamePage() {
       // question arrives, or it would cover the new player's challenge.
       dismissDuelResult();
     },
-    onChallengeStarted: (data) => {
-      setChallengePlayerId(data.playerId);
+    onChallengeStarted: () => {
+      // The turn banner already shows "<name>'s Turn — Answering".
     },
     onAnswerResult: (data) => {
       const answeringSeat = gameState?.players.find((seat) => seat.id === data.playerId);
@@ -752,16 +746,6 @@ export function GamePage() {
           }}
           onClose={emitCardAck}
         />
-      )}
-
-      {/* Waiting indicator for other players */}
-      {isChallengePhase(gameState.turnPhase) && challengePlayerId && !isMyTurn && (
-        <div className="challenge-waiting-overlay">
-          <div className="challenge-waiting">
-            <Hourglass size={32} className="waiting-icon" />
-            <p>{gameState.players.find(p => p.id === challengePlayerId)?.name} is answering...</p>
-          </div>
-        </div>
       )}
 
       {/* Notifications */}

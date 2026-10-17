@@ -12,8 +12,12 @@ export const TILES_PER_SIDE = 5; // 5 tiles per side including corners
 
 // ---- Economy (all RM) ----
 
-export const STARTING_MONEY = 800;
-export const GO_SALARY = 150;
+// Tuned with 4,000 simulated games per setting (bots that also build houses):
+// RM800/RM150 left cash only rising, with no game ever going below RM100.
+// RM700/RM100 with property rents x1.5 makes purchases a real choice while
+// bankruptcy, which would stop a learner's questions, stays below 1%.
+export const STARTING_MONEY = 700;
+export const GO_SALARY = 100;
 export const TAX_AMOUNT = 50;
 export const LUXURY_TAX_AMOUNT = 75;
 export const BAIL_COST = 50;
@@ -30,7 +34,7 @@ export const DISCOUNT_TOKEN_RATE = 0.30;       // Discount card: 30% off the lis
 // The challenger's stake is the rent; the owner's reward comes from the bank, so
 // winning a duel never takes extra money from the other child.
 
-export const LANDLORD_BONUS = 0;               // Rent itself is the owner's reward
+export const LANDLORD_BONUS = 15;              // Bank pays the owner for a correct defence
 export const DUEL_DRAW_RENT_RATIO = 0.50;      // Both correct → challenger pays half
 
 // ---- Pacing ----

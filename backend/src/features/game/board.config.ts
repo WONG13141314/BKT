@@ -61,7 +61,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'blue',
     skillTheme: 'Addition',
     price: 80,
-    baseRent: 20,
+    baseRent: 30,
     leveledRent: 50,
   },
   {
@@ -71,7 +71,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'blue',
     skillTheme: 'Subtraction',
     price: 80,
-    baseRent: 20,
+    baseRent: 30,
     leveledRent: 50,
   },
   {
@@ -91,7 +91,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'orange',
     skillTheme: 'Subtraction',
     price: 120,
-    baseRent: 35,
+    baseRent: 50,
     leveledRent: 80,
   },
 
@@ -115,7 +115,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'orange',
     skillTheme: 'Addition',
     price: 120,
-    baseRent: 35,
+    baseRent: 50,
     leveledRent: 80,
   },
   {
@@ -145,7 +145,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'green',
     skillTheme: 'Subtraction',
     price: 160,
-    baseRent: 50,
+    baseRent: 75,
     leveledRent: 110,
   },
 
@@ -169,7 +169,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'purple',
     skillTheme: 'Addition',
     price: 160,
-    baseRent: 50,
+    baseRent: 75,
     leveledRent: 110,
   },
   {
@@ -189,7 +189,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'purple',
     skillTheme: 'Subtraction',
     price: 200,
-    baseRent: 65,
+    baseRent: 100,
     leveledRent: 140,
   },
   {
@@ -199,7 +199,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'green',
     skillTheme: 'Addition',
     price: 200,
-    baseRent: 65,
+    baseRent: 100,
     leveledRent: 140,
   },
 
@@ -233,7 +233,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'red',
     skillTheme: 'Addition',
     price: 240,
-    baseRent: 80,
+    baseRent: 120,
     leveledRent: 170,
   },
   {
@@ -243,7 +243,7 @@ const BOARD_TILE_DATA: Omit<TileConfig, 'buildCost'>[] = [
     colorGroup: 'red',
     skillTheme: 'Subtraction',
     price: 240,
-    baseRent: 80,
+    baseRent: 120,
     leveledRent: 170,
   },
   {

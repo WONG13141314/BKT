@@ -4,7 +4,7 @@ import { COLOR_GROUP_PRESENTATION } from '../config/board.presentation';
 import './SpaceDetailsPanel.css';
 
 const SPECIAL_COPY: Record<string, string> = {
-  GO: 'Pass Mula to collect RM150 from the bank.',
+  GO: 'Pass Mula to collect RM100 from the bank.',
   CHALLENGE_CARD: 'Draw a Monopoly-style event card. Some cards contain an adaptive mathematics challenge.',
   JAIL: 'Choose Math Escape, pay RM50 bail, or wait for release.',
   GO_TO_JAIL: 'Move directly to Penjara. Do not collect salary.',

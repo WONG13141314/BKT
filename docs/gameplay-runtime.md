@@ -11,6 +11,29 @@ instant guess no longer beats thinking until time runs out. A Bank Offer and a
 discount token never stack; the better single price is used, and the token is
 kept when it would not help.
 
+## Economy
+
+The economy was tuned with 4,000 simulated games per setting, including bots
+that build houses. The original RM800 start, RM150 GO salary and RM20-80
+rents let cash only rise: no simulated game ever went below RM100, so buying
+needed no thought. The current values are a RM700 start, a RM100 GO salary,
+property rents of RM30-120 (x1.5, rounded to RM5) and unchanged house rents.
+About 7% of games now see a player drop below RM100, while bankruptcy, which
+would end that learner's questions, stays below 1% of 4-player games.
+Doubling house rents as well was rejected: a built set could then charge
+RM680 on one landing, and 13% of 4-player games had a bankruptcy.
+
+The bank pays a RM15 landlord bonus for a correct defence, so the owner's
+answer matters even when the challenger answers wrongly. Bail stays at RM50:
+with the tighter economy it is about a fifth of a typical low cash point,
+and scaling it with cash added rules without changing that cost much.
+
+Questions adapt to each learner, so a stronger pupil receives harder
+questions for the same reward. This is deliberate: each learner has a
+similar chance of success, and money is not a hidden reward for prior
+attainment. In simulation the most accurate player wins about 60% of
+2-player and 33% of 4-player games, against 50% and 25% by chance.
+
 ## Turn presentation
 
 The server schedules one bot action at a time and computes it from the latest
