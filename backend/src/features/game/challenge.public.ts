@@ -202,7 +202,8 @@ export function redactQuestionData(data: QuestionData): PublicQuestionData {
   }
 }
 
-export function toPublicChallenge(challenge: MathChallenge): PublicMathChallenge {
+/** `hintsLeft` is the recipient's own remaining hints; it is sent only to them. */
+export function toPublicChallenge(challenge: MathChallenge, hintsLeft?: number): PublicMathChallenge {
   const questionData = redactQuestionData(challenge.questionData);
   return {
     id: challenge.id,
@@ -212,6 +213,7 @@ export function toPublicChallenge(challenge: MathChallenge): PublicMathChallenge
     timeLimit: challenge.timeLimit,
     expiresAt: challenge.startedAt + challenge.timeLimit * 1000,
     serverNow: Date.now(),
+    ...(hintsLeft === undefined ? {} : { hintsRemaining: hintsLeft }),
     ...(challenge.hintRequestedAt === undefined ? {} : {
       hint: buildQuestionHint(challenge.questionData, questionData),
     }),

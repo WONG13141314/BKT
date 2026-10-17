@@ -58,7 +58,8 @@ export function buildAttemptData(
         expiresAt: challenge.startedAt + challenge.timeLimit * 1_000,
       },
       hintUsage: {
-        version: 'strategy-cue-v1',
+        // v2: hints name the visible numbers and the next step (was a generic strategy).
+        version: 'worked-step-v2',
         requestedAt: challenge.hintRequestedAt ?? null,
         timeFromStartMs: challenge.hintRequestedAt === undefined
           ? null : Math.max(0, challenge.hintRequestedAt - challenge.startedAt),

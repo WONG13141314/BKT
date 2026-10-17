@@ -96,6 +96,8 @@ export interface PlayerState {
    * evidence. Cleared as soon as the learner reconnects.
    */
   autopilot?: boolean;
+  /** "Help me start" cues used this match; server-only so hint use stays private. */
+  hintsUsed?: number;
 }
 
 // ---- Turn Flow (State Machine) ----
@@ -263,6 +265,8 @@ export interface PublicMathChallenge {
   expiresAt: number;            // Unix ms — client drives its countdown from this
   /** Server clock when sent, so clients can count down despite device clock skew. */
   serverNow: number;
+  /** The recipient's own hints left this match; sent only to that learner. */
+  hintsRemaining?: number;
   /** Available privately only after the learner has requested it. */
   hint?: QuestionHint | null;
 }

@@ -1,6 +1,7 @@
 import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
 import { toPublicChallenge } from '../features/game/challenge.public';
 import { toPublicGameState } from '../features/game/game.public';
+import { hintsRemaining } from '../features/game/game.engine';
 import type { DuelState, FinalScore, GameState, MasteryReport, PublicDuelState } from '../features/game/game.types';
 
 function getSocketRoom(gameId: string): string {
@@ -52,7 +53,7 @@ function publishChallengeToSocket(socket: Socket, state: GameState): void {
 
   if (isSocketPlayer(socket, activePlayer.playerId)) {
     socket.emit('game:challenge', {
-      challenge: toPublicChallenge(state.currentChallenge),
+      challenge: toPublicChallenge(state.currentChallenge, hintsRemaining(activePlayer)),
       playerId: activePlayer.id,
     });
     return;
@@ -79,7 +80,7 @@ function publishDuelToSocket(socket: Socket, state: GameState): void {
   socket.emit('game:duel', {
     duel: toPublicDuelState(duel),
     myChallenge: mySide && mySide.selectedIndex === null && !mySide.timedOut
-      ? toPublicChallenge(mySide.challenge)
+      ? toPublicChallenge(mySide.challenge, hintsRemaining(mySide === duel.challenger ? challenger! : owner!))
       : null,
   });
 }

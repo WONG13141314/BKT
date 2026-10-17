@@ -35,7 +35,8 @@ describe('one visual question-specific hint', () => {
       missingPosition: 'internal_digit', missingDigitPlace: 'ones', missingDigitRow: 'top',
     } as QuestionData;
     const hint = buildQuestionHint(source, redactQuestionData(source));
-    expect(hint.content).toContain('carry');
+    // 1 + 1 = 2 with the top ones digit hidden: the hint names the column sum.
+    expect(hint.content).toBe('Ones: ? + 1 must end in 2. Which digit makes that true?');
     expect(hint.highlights).toContainEqual({ row: 'top', column: 0 });
     expect(hint.highlights).toContainEqual({ row: 'answer', column: 0 });
   });
@@ -94,5 +95,47 @@ describe('one visual question-specific hint', () => {
     }
     expect(targets).toEqual(new Set(['answer', 'top_operand', 'bottom_operand', 'internal_digit',
       'quotient_digit', 'product', 'subtraction_result', 'remainder']));
+  });
+  it('names the numbers on screen and the next step, never a result', () => {
+    const column = (operation: '+' | '-' | '×', top: number, bottom: number, answer: number): Extract<QuestionData, { type: 'column' }> => ({
+      type: 'column', operation, topNumber: top, bottomNumber: bottom, answer, hasRegrouping: true,
+      placeValues: { tens: { top: Math.floor(top / 10), bottom: Math.floor(bottom / 10) }, ones: { top: top % 10, bottom: bottom % 10 } },
+      answerDigits: { tens: Math.floor(answer / 10) % 10, ones: answer % 10 }, missingPosition: 'answer',
+    });
+    const hintFor = (q: QuestionData) => buildQuestionHint(q, redactQuestionData(q)).content;
+    expect(hintFor(column('+', 36, 27, 63))).toBe(
+      'Ones: 6 + 7. Write the ones digit; it is 10 or more, so carry 1. Then tens: 3 + 2 + 1 carried.');
+    expect(hintFor(column('-', 54, 27, 27))).toBe(
+      'Ones: 4 is smaller than 7, so borrow a ten: 14 − 7. Then tens: 5 − 1 − 2.');
+    expect(hintFor({ ...column('+', 58, 27, 85), missingPosition: 'top_operand' })).toBe(
+      'Subtract: 85 − 27 gives the missing number. Check by adding it back.');
+    const division: QuestionData = {
+      type: 'long_division', divisor: 7, dividend: 45, quotient: 6, remainder: 3,
+      steps: [
+        { quotientDigit: 0, product: 0, subtractionResult: 4, broughtDownDigit: 5 },
+        { quotientDigit: 6, product: 42, subtractionResult: 3, broughtDownDigit: null },
+      ],
+      missingTarget: 'quotient_digit', missingStepIndex: 1,
+    };
+    expect(hintFor(division)).toBe('How many 7s fit into 45 without going over? Count in 7s: 7, 14, 21, …');
+  });
+
+  it('never states a hidden whole value across the question bank', () => {
+    for (const skill of SKILL_NAMES) {
+      for (const tier of [1, 2, 3] as const) {
+        for (let i = 0; i < 100; i++) {
+          const question = generateQuestion(skill, tier);
+          const visible = redactQuestionData(question.questionData);
+          const content = buildQuestionHint(question.questionData, visible).content;
+          expect(content).not.toMatch(/null|NaN|undefined/);
+          const target = Number(question.options[question.correctIndex]);
+          const shown = visible.type === 'column'
+            ? [visible.topCells, visible.bottomCells, visible.answerCells].map((row) => Number(row.filter((c) => /[0-9]/.test(c)).join('')))
+            : [];
+          const numbers = (content.match(/[0-9]+/g) ?? []).map(Number);
+          if (target >= 10 && !shown.includes(target)) expect(numbers).not.toContain(target);
+        }
+      }
+    }
   });
 });

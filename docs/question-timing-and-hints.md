@@ -64,13 +64,25 @@ remains in the prototype.
 
 ## Voluntary hint behavior
 
-An active human player can press **Help me start** once per question. The server
-returns a short strategy and highlights relevant visible cells. Examples:
+An active human player can press **Help me start** once per question, up to
+**3 times per game** (`MAX_HINTS_PER_MATCH`). The button shows how many are
+left. Hints keep full game rewards, so a struggling learner is never penalised
+for asking; the cap keeps most answers independent BKT evidence.
 
-- Addition: start with the ones column and consider carrying.
-- Missing operand: use the inverse operation with the shown values.
-- Division product: multiply the quotient digit by the divisor.
-- Remainder: perform the final subtraction and check it is smaller than the divisor.
+The server returns the exact next calculation using the numbers on screen, and
+highlights the cells involved. It names the step but never its result.
+Examples:
+
+- Addition (36 + 27): "Ones: 6 + 7. Write the ones digit; it is 10 or more, so
+  carry 1. Then tens: 3 + 2 + 1 carried."
+- Subtraction (54 − 27): "Ones: 4 is smaller than 7, so borrow a ten: 14 − 7.
+  Then tens: 5 − 1 − 2."
+- Missing operand (? + 27 = 85): "Subtract: 85 − 27 gives the missing number."
+- Division (7 into 45): "How many 7s fit into 45 without going over? Count in
+  7s: 7, 14, 21, …"
+
+Attempts record the hint version (`worked-step-v2`; earlier generic cues were
+`strategy-cue-v1`), so the two hint styles can be analysed separately.
 
 The generator receives the redacted layout. It does not reveal the target
 answer, hidden operands or later division work, and it does not remove answer

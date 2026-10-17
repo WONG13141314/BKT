@@ -15,7 +15,8 @@ import type { RoomManager } from './lobby.manager';
 import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 import type { AnswerResult, FinalScore, GameState } from '../features/game/game.types';
 import { validateSelectedIndex } from './answer.validation';
-import { getCurrentPlayer, nextDuelDeadline } from '../features/game/game.engine';
+import { getCurrentPlayer, hintsRemaining, nextDuelDeadline } from '../features/game/game.engine';
+import { MAX_HINTS_PER_MATCH } from '../features/game/game.constants';
 import { getBotActionDelay, isBotControlled } from '../features/game/bot.engine';
 import { buildWorkedFeedback } from '../bkt/feedback';
 import { toPublicChallenge } from '../features/game/challenge.public';
@@ -822,10 +823,16 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       }
       const outcome = gameService.requestHint(gameId, seat.id, challengeId);
       if (!outcome) {
-        reply(false, 'A hint is available only while your unanswered question is active.');
+        reply(false, hintsRemaining(seat) === 0
+          ? `You have used all ${MAX_HINTS_PER_MATCH} hints for this game.`
+          : 'A hint is available only while your unanswered question is active.');
         return;
       }
-      socket.emit('game:challenge', { challenge: toPublicChallenge(outcome.challenge), playerId: seat.id });
+      const updatedSeat = outcome.state.players.find((candidate) => candidate.id === seat.id) ?? seat;
+      socket.emit('game:challenge', {
+        challenge: toPublicChallenge(outcome.challenge, hintsRemaining(updatedSeat)),
+        playerId: seat.id,
+      });
       reply(true);
     });
 

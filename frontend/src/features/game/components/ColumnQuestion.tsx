@@ -14,6 +14,8 @@ interface Props {
   timeLimit: number;
   hint?: ChallengeHint | null;
   onRequestHint?: () => Promise<void>;
+  /** This learner's hints left this match, when the server sent it. */
+  hintsRemaining?: number;
   /** Once graded, the server tells us what belonged in the '?' box. */
   revealedAnswer?: string | null;
 }
@@ -32,6 +34,7 @@ export function ColumnQuestion({
   timeLimit,
   hint,
   onRequestHint,
+  hintsRemaining,
   revealedAnswer,
 }: Props) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -84,7 +87,7 @@ export function ColumnQuestion({
         </div>
       </div>
 
-      <QuestionHelp hint={hint} onRequestHint={onRequestHint}
+      <QuestionHelp hint={hint} onRequestHint={onRequestHint} hintsRemaining={hintsRemaining}
         disabled={!!disabled || answered || expired} expiresAt={expiresAt} timeLimit={timeLimit} />
 
       <div className="column-options">

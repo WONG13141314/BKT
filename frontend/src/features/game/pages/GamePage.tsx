@@ -480,6 +480,7 @@ export function GamePage() {
       expiresAt: challenge.expiresAt,
       timeLimit: challenge.timeLimit,
       hint: challenge.hint,
+      hintsRemaining: challenge.hintsRemaining,
       onRequestHint: () => emitRequestHint(challenge.id),
     };
     const questionData = challenge.questionData;

@@ -234,7 +234,7 @@ describe('Attempt rows', () => {
         startedAt: 1_800_000,
         expiresAt: 1_845_000,
       },
-      hintUsage: { version: 'strategy-cue-v1', requestedAt: null, timeFromStartMs: null },
+      hintUsage: { version: 'worked-step-v2', requestedAt: null, timeFromStartMs: null },
     });
     expect(data.hintLevel).toBe(0);
   });
@@ -245,7 +245,7 @@ describe('Attempt rows', () => {
 
     expect(data.hintLevel).toBe(1);
     expect(data.questionData).toMatchObject({
-      hintUsage: { version: 'strategy-cue-v1', requestedAt: 1_809_000, timeFromStartMs: 9_000 },
+      hintUsage: { version: 'worked-step-v2', requestedAt: 1_809_000, timeFromStartMs: 9_000 },
       timingPolicy: { expiresAt: 1_845_000 },
     });
     expect(data.isCorrect).toBe(true);

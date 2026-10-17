@@ -187,6 +187,8 @@ export interface MathChallenge {
   expiresAt: number;
   /** Server clock when this question was sent; absent in older payloads. */
   serverNow?: number;
+  /** This learner's hints left this match; sent only to them. */
+  hintsRemaining?: number;
   /** Sent privately only after this player requests help. */
   hint?: ChallengeHint | null;
 }

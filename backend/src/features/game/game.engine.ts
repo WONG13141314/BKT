@@ -49,6 +49,7 @@ import {
   LUCKY_BREAK_CASH_OPTIONS,
   LUCKY_BREAK_TOKEN_CHANCE,
   ANSWER_NETWORK_GRACE_MS,
+  MAX_HINTS_PER_MATCH,
   formatRM,
 } from './game.constants';
 import { createShuffledDeck, drawCard, getCardById } from './card.deck';
@@ -167,6 +168,11 @@ export function getActivePlayers(state: GameState): PlayerState[] {
   return state.players.filter((p) => !p.isBankrupt);
 }
 
+/** Hints a learner may still request this match. */
+export function hintsRemaining(player: PlayerState): number {
+  return Math.max(0, MAX_HINTS_PER_MATCH - (player.hintsUsed ?? 0));
+}
+
 /** Request exactly one private hint for a live, unanswered human challenge. */
 export function requestChallengeHint(
   state: GameState,
@@ -184,6 +190,11 @@ export function requestChallengeHint(
   const withHint = (challenge: MathChallenge): MathChallenge => challenge.hintRequestedAt === undefined
     ? { ...challenge, hintRequestedAt: requestedAt }
     : challenge;
+  // A repeated request for an already-hinted question is free; a new one needs an unused hint.
+  const canStartHint = (challenge: MathChallenge) =>
+    challenge.hintRequestedAt !== undefined || hintsRemaining(player) > 0;
+  const countHint = (players: PlayerState[]) => players.map((seat) =>
+    seat.id === seatId ? { ...seat, hintsUsed: (seat.hintsUsed ?? 0) + 1 } : seat);
 
   if (state.turnPhase === 'MATH_DUEL') {
     const duel = state.duelState;
@@ -192,21 +203,25 @@ export function requestChallengeHint(
       : duel.owner.playerId === seatId ? 'owner' : null;
     if (!sideKey) return null;
     const side = duel[sideKey];
-    if (isDuelSideComplete(side) || !available(side.challenge)) return null;
+    if (isDuelSideComplete(side) || !available(side.challenge) || !canStartHint(side.challenge)) return null;
     const challenge = withHint(side.challenge);
     return {
       challenge,
       newState: challenge === side.challenge ? state : {
-        ...state, duelState: { ...duel, [sideKey]: { ...side, challenge } },
+        ...state, players: countHint(state.players), duelState: { ...duel, [sideKey]: { ...side, challenge } },
       },
     };
   }
 
   if (!['SMART_BUY_CHALLENGE', 'CARD_MATH_CHALLENGE', 'JAIL_CHALLENGE'].includes(state.turnPhase) ||
       getCurrentPlayer(state).id !== seatId || !state.currentChallenge ||
-      !available(state.currentChallenge)) return null;
+      !available(state.currentChallenge) || !canStartHint(state.currentChallenge)) return null;
   const challenge = withHint(state.currentChallenge);
-  return { challenge, newState: challenge === state.currentChallenge ? state : { ...state, currentChallenge: challenge } };
+  return {
+    challenge,
+    newState: challenge === state.currentChallenge ? state
+      : { ...state, players: countHint(state.players), currentChallenge: challenge },
+  };
 }
 
 // ---- A. ROLL PHASE ----

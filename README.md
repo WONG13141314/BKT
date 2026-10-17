@@ -44,9 +44,11 @@ During each match, each learner has a private question history. The selector avo
 questions in a row on the same skill and reviews skills missing from the last
 eight questions. Difficulty rises at most one tier at a time; answered evidence,
 recent errors and division prerequisites still limit which tiers are available.
-Each human question offers one optional **Help me start** strategy cue with
-highlighted cells. Hints remain private, keep all four choices and normal game
-rewards, and preserve the original deadline. Questions allow **30 / 45 / 60
+Each human question offers one optional **Help me start** cue that names the
+numbers on screen and the next step (for example "Ones: 6 + 7"), with
+highlighted cells and never the result. Each learner may use 3 hints per game.
+Hints remain private, keep all four choices and normal game rewards, and
+preserve the original deadline. Questions allow **30 / 45 / 60
 seconds** for easy / medium / hard in both modes and all challenge contexts.
 These are provisional reasoning windows for pupils aged 10–12, not validated
 age norms. See [the timing and hint policy](docs/question-timing-and-hints.md)

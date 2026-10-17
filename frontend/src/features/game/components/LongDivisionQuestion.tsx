@@ -14,6 +14,8 @@ interface Props {
   timeLimit: number;
   hint?: ChallengeHint | null;
   onRequestHint?: () => Promise<void>;
+  /** This learner's hints left this match, when the server sent it. */
+  hintsRemaining?: number;
   revealedAnswer?: string | null;
 }
 
@@ -33,6 +35,7 @@ export function LongDivisionQuestion({
   timeLimit,
   hint,
   onRequestHint,
+  hintsRemaining,
   revealedAnswer,
 }: Props) {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -141,7 +144,7 @@ export function LongDivisionQuestion({
         </div>
       </div>
 
-      <QuestionHelp hint={hint} onRequestHint={onRequestHint}
+      <QuestionHelp hint={hint} onRequestHint={onRequestHint} hintsRemaining={hintsRemaining}
         disabled={!!disabled || answered || expired} expiresAt={expiresAt} timeLimit={timeLimit} />
 
       <div className="division-options">

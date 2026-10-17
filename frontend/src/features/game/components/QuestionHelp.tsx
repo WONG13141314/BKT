@@ -9,6 +9,8 @@ interface Props {
   disabled: boolean;
   expiresAt: number;
   timeLimit: number;
+  /** Hints this learner has left this match; undefined when not limited. */
+  hintsRemaining?: number;
 }
 
 export function isHintHighlighted(
@@ -25,7 +27,7 @@ export function isHintHighlighted(
 }
 
 /** One private, optional starting cue. Requesting help never changes the deadline. */
-export function QuestionHelp({ hint, onRequestHint, disabled, expiresAt, timeLimit }: Props) {
+export function QuestionHelp({ hint, onRequestHint, disabled, expiresAt, timeLimit, hintsRemaining }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -37,7 +39,7 @@ export function QuestionHelp({ hint, onRequestHint, disabled, expiresAt, timeLim
   }, []);
 
   const requestHelp = async () => {
-    if (!onRequestHint || hint || disabled || pendingRef.current
+    if (!onRequestHint || hint || disabled || hintsRemaining === 0 || pendingRef.current
       || (timeLimit > 0 && Date.now() >= expiresAt)) return;
     pendingRef.current = true;
     setPending(true);
@@ -64,17 +66,21 @@ export function QuestionHelp({ hint, onRequestHint, disabled, expiresAt, timeLim
   }
 
   if (!onRequestHint) return null;
+  const outOfHints = hintsRemaining === 0;
   return (
     <div className="question-help">
       <button
         type="button"
         className="question-help__button"
         onClick={() => { void requestHelp(); }}
-        disabled={disabled || pending}
+        disabled={disabled || pending || outOfHints}
         aria-busy={pending}
       >
         <Lightbulb size={17} aria-hidden="true" />
-        {pending ? 'Getting help…' : 'Help me start'}
+        {pending ? 'Getting help…' : outOfHints ? 'No hints left this game' : 'Help me start'}
+        {!pending && !outOfHints && hintsRemaining !== undefined && (
+          <span className="question-help__count">{hintsRemaining} left</span>
+        )}
       </button>
       {error && <p className="question-help__error" role="alert">{error}</p>}
     </div>

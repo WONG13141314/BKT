@@ -105,4 +105,15 @@ describe('optional question help', () => {
     expect(screen.getByRole('button', { name: '6' })).toBeEnabled();
     expect(onRequestHint).not.toHaveBeenCalled();
   });
+  it('shows the hints left and disables help once they are used up', () => {
+    const props = { question: column, options, onAnswer: vi.fn(), onRequestHint: vi.fn(), expiresAt: 70_000, timeLimit: 60 };
+    const { rerender } = render(<ColumnQuestion {...props} hintsRemaining={2} />);
+    expect(screen.getByRole('button', { name: /help me start/i })).toHaveTextContent('2 left');
+
+    rerender(<ColumnQuestion {...props} hintsRemaining={0} />);
+    const button = screen.getByRole('button', { name: /no hints left this game/i });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(props.onRequestHint).not.toHaveBeenCalled();
+  });
 });

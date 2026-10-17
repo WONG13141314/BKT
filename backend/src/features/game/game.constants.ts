@@ -67,6 +67,13 @@ export const QUESTION_TIME_LIMITS: Record<1 | 2 | 3, number> = {
  */
 export const ANSWER_NETWORK_GRACE_MS = 2_000;
 
+/**
+ * "Help me start" cues each learner may use per match. Hints keep full game
+ * rewards, so struggling learners are never penalised for asking, but an
+ * assisted answer is not BKT evidence; the cap keeps most answers independent.
+ */
+export const MAX_HINTS_PER_MATCH = 3;
+
 /** Recorded with each attempt so timing changes remain distinguishable. */
 export const QUESTION_TIMING_POLICY_VERSION = 'reasoning-30-45-60-v1';
 

@@ -1,7 +1,8 @@
 import {
   processCardChallengeAnswer, processJailEscapeAnswer, processSmartBuyAnswer,
-  requestChallengeHint, resolveDuel, submitDuelAnswer,
+  requestChallengeHint, resolveDuel, submitDuelAnswer, hintsRemaining,
 } from '../game.engine';
+import { MAX_HINTS_PER_MATCH } from '../game.constants';
 import { makeGameState, makePrivateChallenge } from '../../../test/game.fixtures';
 import type { DuelSide, GameState, TurnPhase } from '../game.types';
 
@@ -107,5 +108,29 @@ describe('private hint lifecycle and BKT evidence', () => {
     expect(assisted.newState.players[1].masteryStates).toEqual(state.players[1].masteryStates);
     expect(assisted.newState.players[1].skillAttempts).toEqual(state.players[1].skillAttempts);
     expect(assisted.newState.players[1].consecutiveFailures).toEqual(state.players[1].consecutiveFailures);
+  });
+  it('allows three hints per learner per match, counting each question once', () => {
+    let state = soloState();
+    const seat = state.players[0].id;
+    for (let used = 0; used < MAX_HINTS_PER_MATCH; used++) {
+      state = { ...state, currentChallenge: makePrivateChallenge({ id: `q-${used}` }) };
+      const granted = requestChallengeHint(state, seat, `q-${used}`, 1_500)!;
+      // Asking again for the same question is free.
+      const again = requestChallengeHint(granted.newState, seat, `q-${used}`, 1_600)!;
+      expect(again.newState).toBe(granted.newState);
+      state = granted.newState;
+    }
+    expect(state.players[0].hintsUsed).toBe(MAX_HINTS_PER_MATCH);
+    expect(hintsRemaining(state.players[0])).toBe(0);
+    state = { ...state, currentChallenge: makePrivateChallenge({ id: 'q-extra' }) };
+    expect(requestChallengeHint(state, seat, 'q-extra', 1_500)).toBeNull();
+  });
+
+  it('counts a duel hint against the same per-match limit', () => {
+    const state = duelState();
+    state.players[1] = { ...state.players[1], hintsUsed: MAX_HINTS_PER_MATCH - 1 };
+    const granted = requestChallengeHint(state, state.players[1].id, 'duel-1', 1_500)!;
+    expect(granted.newState.players[1].hintsUsed).toBe(MAX_HINTS_PER_MATCH);
+    expect(granted.newState.players[0].hintsUsed ?? 0).toBe(0);
   });
 });

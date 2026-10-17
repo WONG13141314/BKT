@@ -94,4 +94,27 @@ describe('authenticated private hint requests', () => {
       myChallenge: expect.objectContaining({ id: 'duel-1', hint: expect.any(Object) }),
     }));
   });
+  it('tells the learner how many hints are left, and why a further hint is refused', async () => {
+    const state = makeGameState({ turnPhase: 'CARD_MATH_CHALLENGE', currentChallenge: makePrivateChallenge() });
+    state.players[0] = { ...state.players[0], hintsUsed: 2 };
+    gameService.replaceState(state.id, state);
+    const learner = makeSocket({ player: { id: state.players[0].playerId }, gameId: state.id });
+    const io = makeServer([learner], state.id);
+    registerGameHandlers(io, learner);
+
+    const first = jest.fn();
+    await learner.trigger('game:request-hint', { gameId: state.id, challengeId: 'challenge-1' }, first);
+    expect(first).toHaveBeenCalledWith({ success: true });
+    expect(learner.emit).toHaveBeenCalledWith('game:challenge', expect.objectContaining({
+      challenge: expect.objectContaining({ hintsRemaining: 0 }),
+    }));
+
+    gameService.replaceState(state.id, {
+      ...gameService.getGameSync(state.id)!,
+      currentChallenge: makePrivateChallenge({ id: 'challenge-2' }),
+    });
+    const refused = jest.fn();
+    await learner.trigger('game:request-hint', { gameId: state.id, challengeId: 'challenge-2' }, refused);
+    expect(refused).toHaveBeenCalledWith({ success: false, error: 'You have used all 3 hints for this game.' });
+  });
 });
