@@ -49,6 +49,7 @@ export function GameLobby() {
 
   const { player } = usePlayer();
   const myId = player?.id ?? null;
+  const isHost = myId !== null && myId === room?.hostId;
 
   // Download the 3D dice and tokens while players wait, so the board opens in 3D.
   useEffect(() => { preloadBoardScenes(); }, []);
@@ -176,21 +177,11 @@ export function GameLobby() {
     } catch { /* fallback */ }
   };
 
-  // Hosting shows the waiting room at once with the host seated; the code and
-  // controls fill in when the server confirms the room a moment later.
-  const creating = !room && !error && action === 'host' && !!player
-    && !sessionStorage.getItem(lobbySeatStorageKey(player.id));
-  const shownRoom: RoomState | null = room ?? (creating && player ? {
-    code: '', hostId: player.id, maxPlayers: 4, status: 'waiting',
-    players: [{ id: player.id, name: player.displayName, avatar: player.avatar, isReady: true, isBot: false }],
-  } : null);
-  const isHost = myId !== null && myId === shownRoom?.hostId;
-
   const humanPlayers = room ? room.players.filter(p => !p.isBot) : [];
   const allHumansReady = humanPlayers.length >= 1 && humanPlayers.every(p => p.isReady);
   const canStart = room ? room.players.length >= 2 && allHumansReady : false;
 
-  if (!shownRoom && !error) {
+  if (!room && !error) {
     return (
       <div className="lobby-container">
         <div className="lobby-card">
@@ -203,7 +194,7 @@ export function GameLobby() {
     );
   }
 
-  if (!shownRoom && error) {
+  if (!room && error) {
     return (
       <div className="lobby-container">
         <div className="lobby-card">
@@ -229,16 +220,15 @@ export function GameLobby() {
               type="button"
               className="room-code-box"
               onClick={copyCode}
-              disabled={!room}
-              aria-label={room ? `Copy room code ${room.code}` : 'Creating room code'}
+              aria-label={`Copy room code ${room!.code}`}
             >
-              <span className="room-code-value">{room ? room.code : '······'}</span>
+              <span className="room-code-value">{room!.code}</span>
               <span className="copy-icon-btn">
                 {copied ? <Check size={16} /> : <Copy size={16} />}
               </span>
             </button>
             <span className="room-code-hint" role="status">
-              {!room ? 'Creating your room…' : copied ? 'Copied to clipboard' : 'Share this code with your friends'}
+              {copied ? 'Copied to clipboard' : 'Share this code with your friends'}
             </span>
           </div>
         </div>
@@ -248,12 +238,12 @@ export function GameLobby() {
         {/* Player count */}
         <div className="player-count">
           <Users size={14} />
-          <span>{shownRoom!.players.length}</span> / <span>{shownRoom!.maxPlayers}</span> Players
+          <span>{room!.players.length}</span> / <span>{room!.maxPlayers}</span> Players
         </div>
 
         {/* Player list */}
         <div className="players-grid">
-          {shownRoom!.players.map(player => (
+          {room!.players.map(player => (
             <div
               key={player.id}
               className={`player-slot ${player.isReady ? 'ready' : 'not-ready'} ${player.id === myId ? 'is-me' : ''} ${player.isBot ? 'is-bot' : ''}`}
@@ -262,7 +252,7 @@ export function GameLobby() {
               <div className="player-details">
                 <span className="player-name">
                   {player.name}
-                  {player.id === shownRoom!.hostId && (
+                  {player.id === room!.hostId && (
                     <span className="host-badge"><Crown size={12} /> Host</span>
                   )}
                   {player.id === myId && <span className="you-badge">You</span>}
@@ -295,7 +285,7 @@ export function GameLobby() {
           ))}
 
           {/* Empty slots */}
-          {Array.from({ length: shownRoom!.maxPlayers - shownRoom!.players.length }).map((_, i) => (
+          {Array.from({ length: room!.maxPlayers - room!.players.length }).map((_, i) => (
             <div key={`empty-${i}`} className="player-slot empty">
               <div className="player-avatar player-avatar--empty">?</div>
               <div className="player-details">
@@ -306,7 +296,7 @@ export function GameLobby() {
         </div>
 
         {/* Add Bot Section (Host only) */}
-        {isHost && shownRoom!.players.length < shownRoom!.maxPlayers && (
+        {isHost && room!.players.length < room!.maxPlayers && (
           <div className="add-bot-section">
             <div className="add-bot-controls">
               <select
@@ -318,7 +308,7 @@ export function GameLobby() {
                 <option value="medium">Medium Bot</option>
                 <option value="hard">Hard Bot</option>
               </select>
-              <button className="btn-add-bot" onClick={addBot} disabled={!room}>
+              <button className="btn-add-bot" onClick={addBot}>
                 <Bot size={16} />
                 Add Bot
               </button>
@@ -339,7 +329,7 @@ export function GameLobby() {
             </button>
           ) : (
             <button className="btn-ready btn-full" onClick={toggleReady}>
-              {shownRoom!.players.find(p => p.id === myId)?.isReady ? (
+              {room!.players.find(p => p.id === myId)?.isReady ? (
                 <><Clock size={16} /> Unready</>
               ) : (
                 <><UserCheck size={16} /> Ready Up</>
@@ -355,7 +345,7 @@ export function GameLobby() {
         {/* Start condition hint */}
         {isHost && !canStart && (
           <p className="start-hint">
-            {shownRoom!.players.length < 2
+            {room!.players.length < 2
               ? 'Need at least 2 players (human or bot) to start.'
               : 'Waiting for all human players to be ready...'}
           </p>

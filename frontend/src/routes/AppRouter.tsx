@@ -1,4 +1,4 @@
-import { lazy, ReactNode, Suspense, useEffect, useState } from 'react';
+import { lazy, ReactNode, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { usePlayer } from '../features/auth/PlayerContext';
@@ -9,14 +9,7 @@ const GameLobby = lazy(() => import('../features/game/components/GameLobby')
 const GamePage = lazy(() => import('../features/game/pages/GamePage')
   .then((module) => ({ default: module.GamePage })));
 
-/** Most route loads are instant; the spinner appears only if one is slow. */
 function RouteLoading() {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), 1000);
-    return () => clearTimeout(timer);
-  }, []);
-  if (!visible) return null;
   return (
     <div className="route-loading" role="status" aria-live="polite">
       <Loader2 size={28} className="icon-spin" aria-hidden="true" />

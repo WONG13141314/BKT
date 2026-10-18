@@ -48,11 +48,9 @@ export function LoginPage() {
     setStep(player ? 'welcome' : 'newPlayer');
   }, [isRestoring, player]);
 
-  // A known player is about to host or join. The small lobby page is fetched
-  // at once so Host/Join opens without a spinner; the 3D board while idle.
+  // A known player is about to host or join: fetch the 3D board while this page is idle.
   useEffect(() => {
     if (!player) return;
-    void import('../../game/components/GameLobby').catch(() => undefined);
     const preload = () => {
       void import('../../game/components/board.preload')
         .then((module) => module.preloadBoardScenes())
