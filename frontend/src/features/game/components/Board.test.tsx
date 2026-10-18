@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameState, Player } from '../types/game.types';
 import { Board } from './Board';
-import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
+import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, TOKEN_STEP_MS } from './board.animation';
 
 const dice = vi.hoisted(() => ({ onRollingChange: undefined as ((rolling: boolean) => void) | undefined, fail: false }));
 const rendering = vi.hoisted(() => ({ supported: true, tokensDrawn: true }));
@@ -40,7 +40,7 @@ function makeState(position = 0, rollId = 0, turnPhase: GameState['turnPhase'] =
 async function mountBoard() {
   const callbacks = {
     onDiceRollingChange: vi.fn(), onMovementChange: vi.fn(),
-    onMovementStep: vi.fn(), onMovementComplete: vi.fn(),
+    onMovementStep: vi.fn(), onMovementComplete: vi.fn(), onScenesReady: vi.fn(),
   };
   const props = { selectedTile: 0, onTileSelect: vi.fn(), ...callbacks };
   const view = render(<Board gameState={makeState()} {...props} />);
@@ -168,14 +168,22 @@ describe('board playback ordering', () => {
     expect(screen.queryByText('Setting up the board…')).not.toBeInTheDocument();
   });
 
-  it('keeps the dice hidden while the token scene is still loading, up to the fallback limit', async () => {
+  it('keeps the dice hidden while the token scene is still loading, up to the reveal limit', async () => {
     rendering.tokensDrawn = false;
-    const { container } = await mountBoard();
+    const { container, callbacks } = await mountBoard();
     expect(container.querySelector('.board-grid')).toHaveClass('board-grid--scenes-pending');
-    expect(screen.getByRole('status')).toHaveTextContent('Setting up the board');
-    act(() => vi.advanceTimersByTime(SCENE_FALLBACK_DELAY_MS));
+    // No loading card: the page keeps the whole table hidden until it is ready.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(BOARD_REVEAL_LIMIT_MS - 1));
+    expect(callbacks.onScenesReady).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
     expect(container.querySelector('.board-grid')).not.toHaveClass('board-grid--scenes-pending');
-    expect(screen.queryByText('Setting up the board…')).not.toBeInTheDocument();
+    expect(callbacks.onScenesReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports ready once when both scenes draw', async () => {
+    const { callbacks } = await mountBoard();
+    expect(callbacks.onScenesReady).toHaveBeenCalledTimes(1);
   });
 
   it('allocates no idle movement polling timers', async () => {

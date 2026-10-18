@@ -17,7 +17,8 @@ describe('live bot phases and presentation barriers', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(NOW);
     jest.spyOn(Math, 'random').mockReturnValue(0);
-    gameService.replaceState(gameId, initializeGameState(gameId, players));
+    // These cases begin after the opening; `game.opening.test.ts` covers it.
+    gameService.replaceState(gameId, { ...initializeGameState(gameId, players), opening: null });
   });
   afterEach(() => {
     jest.clearAllTimers();

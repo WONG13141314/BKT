@@ -36,6 +36,8 @@ export interface PublicGameState {
   phaseDeadline: number | null;
   /** Server clock at publication, so clients can show deadlines despite clock skew. */
   serverNow: number;
+  /** Before the first turn: whether the table is still waiting for boards to draw. */
+  opening: { ready: boolean } | null;
 }
 
 function toPublicPlayerState(player: PlayerState): PublicPlayerState {
@@ -87,5 +89,6 @@ export function toPublicGameState(state: GameState): PublicGameState {
     isFinalRound: state.isFinalRound,
     phaseDeadline: state.phaseDeadline ?? null,
     serverNow: Date.now(),
+    opening: state.opening ? { ready: state.opening.beginsAt !== null } : null,
   };
 }

@@ -88,9 +88,49 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     void triggerBotTurnIfNeeded(io, liveState.id);
   }
 
-  /** Starts a freshly created game on the same deadline-managed publication path as later turns. */
+  /**
+   * Starts a freshly created game on the same deadline-managed publication path
+   * as later turns. The first turn waits for the boards: bots used to roll while
+   * every learner's screen was still loading the table.
+   */
   function publishGameStartTransition(io: Server, state: GameState): void {
-    broadcastState(io, getSocketRoom(state.id), state);
+    const live = gameService.getGameSync(state.id) ?? state;
+    // `null` means the opening already finished; a repeated start keeps the table as it is.
+    if (live.opening !== undefined || live.diceRollId !== 0) {
+      broadcastState(io, getSocketRoom(state.id), live);
+      return;
+    }
+    const opening = { readyPlayerIds: [], waitUntil: Date.now() + PHASE_TIMEOUTS.openingWait, beginsAt: null };
+    broadcastState(io, getSocketRoom(state.id), gameService.replaceState(state.id, { ...live, opening }));
+  }
+
+  /** Learners the opening waits for; bots and away seats are always ready. */
+  function openingIsReady(state: GameState): boolean {
+    const ready = new Set(state.opening?.readyPlayerIds ?? []);
+    return state.players.every((seat) => seat.isBot || seat.isBankrupt || seat.autopilot || ready.has(seat.playerId));
+  }
+
+  /** Shows the opening banner, or after it, hands the table its first turn. */
+  function advanceOpening(io: Server, gameId: string, readyAccount?: string): void {
+    const state = gameService.getGameSync(gameId);
+    const opening = state?.opening;
+    if (!state || !opening) return;
+    let next: GameState;
+    if (opening.beginsAt === null) {
+      const readyPlayerIds = readyAccount && !opening.readyPlayerIds.includes(readyAccount)
+        ? [...opening.readyPlayerIds, readyAccount]
+        : opening.readyPlayerIds;
+      const waiting = { ...state, opening: { ...opening, readyPlayerIds } };
+      const begin = openingIsReady(waiting) || Date.now() >= opening.waitUntil;
+      if (!begin && readyPlayerIds === opening.readyPlayerIds) return;
+      next = begin
+        ? { ...waiting, opening: { ...waiting.opening, beginsAt: Date.now() + PHASE_TIMEOUTS.openingBanner } }
+        : waiting;
+    } else {
+      if (readyAccount) return;
+      next = { ...state, opening: null };
+    }
+    broadcastState(io, getSocketRoom(gameId), gameService.replaceState(gameId, next));
   }
 
   // ---- Bot duellists ----
@@ -331,10 +371,17 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
    * A correct Math Escape (or a final jail-turn release) rolls in the same step
    * that grades the answer. The learner reads the answer card before the board
    * presents that roll, so its movement fallback starts after the card's hold.
+   * An answer that ends in End Turn gets the same allowance.
    */
-  function allowAnswerReviewBeforeMovement(gameId: string, state: GameState): void {
-    if (state.turnPhase !== 'MOVING' || isBotControlled(getCurrentPlayer(state))) return;
-    savePhaseDeadline(gameId, state, Date.now() + PHASE_TIMEOUTS.answerReview + PHASE_TIMEOUTS.movementFallback);
+  function allowAnswerReview(gameId: string, state: GameState): void {
+    if (isBotControlled(getCurrentPlayer(state))) return;
+    // The End Turn window likewise opens only once the answer card has closed.
+    const window = state.turnPhase === 'MOVING' ? PHASE_TIMEOUTS.movementFallback
+      : state.turnPhase === 'END_TURN'
+        ? canBuildOnEndTurn(state) ? PHASE_TIMEOUTS.build : PHASE_TIMEOUTS.endTurn
+        : null;
+    if (window === null) return;
+    savePhaseDeadline(gameId, state, Date.now() + PHASE_TIMEOUTS.answerReview + window);
   }
 
   function savePhaseDeadline(
@@ -356,6 +403,14 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
     const state = gameService.getGameSync(gameId);
     if (!state || state.phase !== 'PLAYING') return;
+
+    // Before the first turn no countdown is shown; only the opening runs.
+    if (state.opening) {
+      savePhaseDeadline(gameId, state, null);
+      const at = state.opening.beginsAt ?? state.opening.waitUntil;
+      phaseTimers.arm(io, gameId, at, () => advanceOpening(io, gameId));
+      return;
+    }
 
     // RESOLVE_TILE is driven by the server in the same transition loop.
     if (state.turnPhase === 'RESOLVE_TILE') {
@@ -416,7 +471,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
     if (outcome.result) {
       emitAnswerResult(io, socketRoom, outcome.state, outcome.result, before?.currentChallenge?.id);
-      allowAnswerReviewBeforeMovement(gameId, outcome.state);
+      allowAnswerReview(gameId, outcome.state);
     }
 
     // A duel forced to settle reveals its result like a normal one.
@@ -453,6 +508,8 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
   function setAutopilot(io: Server, gameId: string, accountId: string, enabled: boolean): void {
     const state = gameService.setAutopilot(gameId, accountId, enabled);
     if (state) publishTransition(io, gameId, getSocketRoom(gameId), state);
+    // A learner who left before the start no longer holds the opening.
+    if (state?.opening) advanceOpening(io, gameId);
   }
 
   function scheduleAway(
@@ -561,7 +618,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
   /** At most one pending bot action per game, computed only when it runs. */
   async function triggerBotTurnIfNeeded(io: Server, gameId: string): Promise<void> {
     const state = gameService.getGameSync(gameId);
-    const delay = state ? getBotActionDelay(state) : null;
+    const delay = state && !state.opening ? getBotActionDelay(state) : null;
     if (!state || delay === null) {
       clearBotActionTimer(gameId);
       return;
@@ -690,7 +747,8 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
     /** Confirms the caller is the active player and returns the live state. */
     function validateTurn(gameId: string): GameState | null {
       const state = gameService.getGameSync(gameId);
-      if (!state) return null;
+      // Nobody acts before the opening hands out the first turn.
+      if (!state || state.opening) return null;
 
       const activePlayer = state.players[state.currentPlayerIndex];
       if (activePlayer.playerId !== playerId) {
@@ -740,7 +798,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
 
       const socketRoom = getSocketRoom(gameId);
       emitAnswerResult(io, socketRoom, outcome.state, outcome.result, challengeId);
-      allowAnswerReviewBeforeMovement(gameId, outcome.state);
+      allowAnswerReview(gameId, outcome.state);
       publishTransition(io, gameId, socketRoom, outcome.state);
 
       if (opts.autoEnd === true) void handleEndTurnFlow(io, gameId);
@@ -791,6 +849,15 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       }
 
       publishGameRecoveryToSocket(socket, gameService.getGameSync(data.gameId) ?? live);
+    });
+
+    // The board has drawn on this learner's screen; the first turn may begin.
+    socket.on('game:board-ready', (data: unknown) => {
+      const gameId = data && typeof data === 'object' ? (data as Record<string, unknown>).gameId : undefined;
+      if (typeof gameId !== 'string' || socket.data.gameId !== gameId) return;
+      const state = gameService.getGameSync(gameId);
+      if (!state?.opening || !findAuthenticatedSeat(state)) return;
+      advanceOpening(io, gameId, playerId);
     });
 
     socket.on('game:request-challenge', async (data: { gameId: string }) => {
@@ -1045,7 +1112,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
       // keeps its presentation fallback, and a question cannot accept answers
       // after its own expiry, so neither is extended.
       const graceKey = disconnectGraceKey(state);
-      if (wasActivePlayer && !['MOVING', 'MATH_DUEL'].includes(state.turnPhase) && !state.currentChallenge &&
+      if (wasActivePlayer && !state.opening && !['MOVING', 'MATH_DUEL'].includes(state.turnPhase) && !state.currentChallenge &&
           state.disconnectGraceFor !== graceKey) {
         gameService.replaceState(gameId, { ...state, disconnectGraceFor: graceKey });
         armPhaseTimer(io, gameId, PHASE_TIMEOUTS.disconnectGrace);

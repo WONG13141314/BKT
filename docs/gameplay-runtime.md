@@ -36,6 +36,18 @@ attainment. In simulation the most accurate player wins about 60% of
 
 ## Turn presentation
 
+The first turn waits for the table. After Start, the game page stays hidden
+until its 3D dice and tokens have drawn (6 seconds at most, then the basic
+board), with no loading card. Each learner's page then sends
+`game:board-ready`. No bot acts, no countdown runs and no roll is accepted
+until every learner seat (not bots or away seats) is ready, or 15 seconds have
+passed. A "Round 1 · X goes first" banner then shows for 1.5 seconds before the
+first roll. A refresh later in the game does not repeat this.
+
+An answer that ends in End Turn (a card or a failed Math Escape) gets the
+answer card's 6 seconds on top of the End Turn window, the same allowance a
+correct Math Escape gets before its roll.
+
 The server schedules one bot action at a time and computes it from the latest
 match state after its presentation delay. It does not plan a whole turn as future
 state snapshots. A player's response therefore cannot be overwritten by an old

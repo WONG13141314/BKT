@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
-import { DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
+import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
 import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWebGL2 } from './BoardRendering';
 import { loadBoardPiecesScene, loadPhysicsDice } from './board.preload';
 import './Board.css';
@@ -17,6 +17,8 @@ interface Props {
   onMovementChange?: (isMoving: boolean) => void;
   onMovementStep?: (tileIndex: number, playerId: string) => void;
   onMovementComplete?: () => void;
+  /** Called once, when the 3D dice and tokens have drawn (or the reveal limit passed). */
+  onScenesReady?: () => void;
 }
 
 const TILE_ICONS: Record<string, string> = {
@@ -37,6 +39,7 @@ export function Board({
   onMovementChange,
   onMovementStep,
   onMovementComplete,
+  onScenesReady,
 }: Props) {
   const { players, properties } = gameState;
   const boardElement = useRef<HTMLDivElement>(null);
@@ -46,7 +49,7 @@ export function Board({
   const [revealTimedOut, setRevealTimedOut] = useState(false);
   const handleDiceSceneReady = useCallback(() => setDiceSceneReady(true), []);
   const handleTokenSceneReady = useCallback(() => setTokenSceneReady(true), []);
-  // Cover the board until the dice and tokens have both drawn, so it opens complete.
+  // Hold the reveal until the dice and tokens have both drawn, so it opens complete.
   const scenesVisible = !canRender3D || revealTimedOut || (diceSceneReady && tokenSceneReady);
   const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map((player) => [player.id, player.position]))
@@ -58,8 +61,8 @@ export function Board({
   const diceStatus = useRef({ rollId: 0, rolling: false });
   const activeRollId = useRef(gameState.diceRollId);
   activeRollId.current = gameState.diceRollId;
-  const callbacks = useRef({ onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete });
-  callbacks.current = { onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete };
+  const callbacks = useRef({ onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady });
+  callbacks.current = { onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady };
   const diceAnimating = gameState.diceRollId > 0 && settledRollId !== gameState.diceRollId;
   // Money and status broadcasts must not restart the current hop's timer.
   const targetPositionsJson = JSON.stringify(Object.fromEntries(players.map((player) => [player.id, player.position])));
@@ -82,8 +85,11 @@ export function Board({
   }, [canRender3D]);
 
   useEffect(() => {
-    if (scenesVisible) return;
-    const timer = setTimeout(() => setRevealTimedOut(true), SCENE_FALLBACK_DELAY_MS);
+    if (scenesVisible) {
+      callbacks.current.onScenesReady?.();
+      return;
+    }
+    const timer = setTimeout(() => setRevealTimedOut(true), BOARD_REVEAL_LIMIT_MS);
     return () => clearTimeout(timer);
   }, [scenesVisible]);
 
@@ -246,12 +252,6 @@ export function Board({
         </BoardSceneBoundary> : basicDice}
         <div className="dice-roll-btn" aria-live="polite">{centerStatus}</div>
       </div>
-
-      {!scenesVisible && (
-        <div className="board-scene-loading" role="status" aria-live="polite">
-          <span className="board-scene-loading-card">Setting up the board…</span>
-        </div>
-      )}
 
       {canRender3D ? <BoardSceneBoundary fallback={basicTokens}>
         <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicTokens}</DelayedFallback>}><BoardPiecesScene players={visualPlayers} onReady={handleTokenSceneReady} /></Suspense>

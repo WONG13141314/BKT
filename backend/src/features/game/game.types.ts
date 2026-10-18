@@ -426,6 +426,15 @@ export interface LuckyBreakReward {
 
 // ---- Game State ----
 
+export interface GameOpening {
+  /** Accounts whose board has finished drawing. */
+  readyPlayerIds: string[];
+  /** The table starts anyway at this time, so one slow device cannot hold it. */
+  waitUntil: number;
+  /** Set once the table is ready: the first turn begins after the banner. */
+  beginsAt: number | null;
+}
+
 export interface GameState {
   /** Session id, `game_<ROOMCODE>` — also derives the socket room. */
   id: string;
@@ -464,6 +473,12 @@ export interface GameState {
   phaseDeadlineFor?: TurnPhase | null;
   /** Server-only identity of the phase that already received disconnect grace. */
   disconnectGraceFor?: string | null;
+  /**
+   * Present only before the first turn. No bot acts and no turn timer runs until
+   * every learner's board has drawn (or the wait cap passes), then the opening
+   * banner shows until `beginsAt`.
+   */
+  opening?: GameOpening | null;
 
 }
 

@@ -13,6 +13,7 @@ import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
 import { ChallengeDialog } from '../components/ChallengeDialog';
 import { AnswerFeedback } from '../components/AnswerFeedback';
+import { DelayedFallback } from '../components/BoardRendering';
 import { usePlayer } from '../../auth/PlayerContext';
 import { authService } from '../../auth/services/auth.service';
 import { StoredProfile } from '../../auth/types/auth.types';
@@ -129,6 +130,9 @@ export function GamePage() {
   // A correct Math Escape (or a final-turn release) rolls on the server at once.
   // Present that roll only after the answer card is dismissed.
   const holdRollForAnswer = gameState?.turnPhase === 'MOVING' && !!answerResult;
+  // The table stays hidden until the 3D dice and tokens have drawn, so it opens complete.
+  const [boardReady, setBoardReady] = useState(false);
+  const handleScenesReady = useCallback(() => setBoardReady(true), []);
 
   const switchToGameSeat = useCallback(async (profile: StoredProfile) => {
     if (seatRecoveryRef.current) return;
@@ -198,6 +202,7 @@ export function GamePage() {
     emitBuildHouse,
     emitRequestChallenge,
     emitRequestHint,
+    emitBoardReady,
   } = useGameSocket(gameId, {
     onStateUpdate: (state) => {
       const mySeat = state.players.find((seat) =>
@@ -420,6 +425,13 @@ export function GamePage() {
     return () => clearTimeout(safety);
   }, [isDiceRolling, isPawnMoving, gameState?.diceRollId]);
 
+  // The first turn waits for every learner's board. Repeat after a reconnect;
+  // the server ignores a board it already counted.
+  const waitingForBoards = gameState?.opening?.ready === false;
+  useEffect(() => {
+    if (boardReady && waitingForBoards && isConnected) emitBoardReady();
+  }, [boardReady, waitingForBoards, isConnected, emitBoardReady]);
+
   // Auto-request missing active challenge if in challenge phase
   const turnPhase = gameState?.turnPhase;
   useEffect(() => {
@@ -566,12 +578,15 @@ export function GamePage() {
   }
 
   if (!gameState) {
+    // Usually a moment; a message appears only if the game is slow to arrive.
     return (
       <div className="game-page game-page--center">
-        <div className="game-page__message">
-          <Loader2 size={28} className="icon-spin" />
-          <h2>Loading Game...</h2>
-        </div>
+        <DelayedFallback delayMs={2000}>
+          <div className="game-page__message">
+            <Loader2 size={28} className="icon-spin" />
+            <h2>Loading Game...</h2>
+          </div>
+        </DelayedFallback>
       </div>
     );
   }
@@ -636,7 +651,7 @@ export function GamePage() {
       : selectedTile;
   const showingLandedTile = detailTileIndex === currentPlayer?.position;
   return (
-    <div className={`game-page ${showChallenge || showChallengeLoading ? 'game-page--quiz-active' : ''}`}>
+    <div className={`game-page${showChallenge || showChallengeLoading ? ' game-page--quiz-active' : ''}${boardReady ? '' : ' game-page--revealing'}`}>
       <TurnIndicator
         currentPlayer={currentPlayer}
         isMyTurn={isMyTurn}
@@ -666,6 +681,7 @@ export function GamePage() {
           onMovementChange={handleMovementChange}
           onMovementStep={playMovementStep}
           onMovementComplete={handleMovementComplete}
+          onScenesReady={handleScenesReady}
         />
 
         {/* Right Panel: selected Monopoly space + its available actions. */}
@@ -676,7 +692,7 @@ export function GamePage() {
             currentPlayer={currentPlayer}
             isMyTurn={isMyTurn}
             selectedTile={selectedTile}
-            isBoardAnimating={isBoardAnimating}
+            isBoardAnimating={isBoardAnimating || !!gameState.opening}
             isHoldingDuelResult={isHoldingDuelResult}
             onRoll={handleRollClick}
             onBuyFull={emitBuyFull}
@@ -747,6 +763,17 @@ export function GamePage() {
           }}
           onClose={emitCardAck}
         />
+      )}
+
+      {/* Opening: who goes first, while the table gets ready. */}
+      {boardReady && gameState.opening && currentPlayer && (
+        <div className="game-opening" role="status" aria-live="polite">
+          <div className="game-opening__card">
+            <span className="game-opening__round">Round 1</span>
+            <h2>{isMyTurn ? 'You go first' : `${currentPlayer.name} goes first`}</h2>
+            {!gameState.opening.ready && <p>Waiting for everyone's board…</p>}
+          </div>
+        </div>
       )}
 
       {/* Notifications */}

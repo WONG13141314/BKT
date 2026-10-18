@@ -147,6 +147,9 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
   const emitJailBail = useCallback(() => emit('game:jail-bail'), [emit]);
   const emitJailWait = useCallback(() => emit('game:jail-wait'), [emit]);
 
+  // This screen's 3D board has drawn; the first turn waits for every learner's.
+  const emitBoardReady = useCallback(() => emit('game:board-ready'), [emit]);
+
   // Request challenge re-sync
   const emitRequestChallenge = useCallback(() => emit('game:request-challenge'), [emit]);
 
@@ -193,5 +196,6 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     emitBuildHouse,
     emitRequestChallenge,
     emitRequestHint,
+    emitBoardReady,
   };
 }

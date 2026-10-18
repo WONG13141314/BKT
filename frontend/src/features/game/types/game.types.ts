@@ -292,6 +292,8 @@ export interface GameState {
   phaseDeadline: number | null;
   /** Server clock when this snapshot was published; absent in older payloads. */
   serverNow?: number;
+  /** Before the first turn: `ready` once every board has drawn and the banner shows. */
+  opening?: { ready: boolean } | null;
 }
 
 // ---- Math Duel ----

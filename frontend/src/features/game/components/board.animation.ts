@@ -7,3 +7,5 @@ export const TOKEN_HOP_SECONDS = .22;
 export const JAIL_TRANSFER_HOLD_MS = 450;
 // A 3D scene that loads quickly replaces an empty placeholder instead of flashing the 2D fallback first.
 export const SCENE_FALLBACK_DELAY_MS = 1500;
+// The table stays hidden until the 3D dice and tokens have drawn, at most this long.
+export const BOARD_REVEAL_LIMIT_MS = 6000;

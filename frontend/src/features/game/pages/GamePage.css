@@ -565,3 +565,73 @@
 
 .game-reconnecting-card h2 { margin: 0.5rem 0; }
 .game-reconnecting-card p { margin: 0; line-height: 1.5; }
+
+/* ---- Opening: the table appears complete, then shows who goes first ---- */
+
+.game-page .game-layout,
+.game-page .turn-banner-wrapper {
+  transition: opacity 0.35s ease-out;
+}
+
+.game-page--revealing .game-layout,
+.game-page--revealing .turn-banner-wrapper {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-opening {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 28, 21, 0.35);
+  pointer-events: none;
+}
+
+.game-opening__card {
+  min-width: min(100%, 280px);
+  padding: 1rem 1.5rem;
+  border: 3px solid #000;
+  background: #fff;
+  box-shadow: 6px 6px 0 #000;
+  color: #000;
+  text-align: center;
+  animation: game-opening-in 0.3s ease-out;
+}
+
+.game-opening__round {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border: 2px solid #000;
+  background: #c1121f;
+  color: #fff;
+  font: 800 0.75rem 'Courier New', monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.game-opening__card h2 {
+  margin: 0.5rem 0 0;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+}
+
+.game-opening__card p {
+  margin: 0.4rem 0 0;
+  font: 700 0.75rem 'Courier New', monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+@keyframes game-opening-in {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-page .game-layout,
+  .game-page .turn-banner-wrapper { transition: none; }
+  .game-opening__card { animation: none; }
+}

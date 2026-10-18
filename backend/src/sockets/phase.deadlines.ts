@@ -12,6 +12,10 @@ export const PHASE_TIMEOUTS = {
   /** Answer card shown before a roll that follows a graded answer (Math Escape). */
   answerReview: 6_000,
   disconnectGrace: 60_000,
+  /** Longest the first turn waits for every learner's board to draw. */
+  openingWait: 15_000,
+  /** "Round 1 · X goes first" banner, once every board is ready. */
+  openingBanner: 1_500,
 } as const;
 
 export function getPhaseDeadline(

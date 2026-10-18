@@ -85,7 +85,7 @@ describe('room-owned game runtime and alarm reconstruction', () => {
   test('wake does not restart a bot thinking delay', () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
     const service = createGameService({ persistence: persistence() });
-    const state = makeGameState();
+    const state = makeGameState({ opening: null });
     state.players[0].isBot = true;
     service.replaceState(state.id, state);
     const scheduler = new AlarmScheduler();

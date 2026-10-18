@@ -58,11 +58,18 @@ describe('room:start', () => {
     await Promise.all([host.trigger('room:start'), host.trigger('room:start')]);
 
     expect(createGame).toHaveBeenCalledTimes(1);
+    // No countdown while the boards load; the host never reports ready here,
+    // so the opening cap starts the table, then the banner shows.
     expect(io.roomEmitter.emit).toHaveBeenCalledWith('game:state', expect.objectContaining({
-      state: expect.objectContaining({
-        turnPhase: 'ROLL_PHASE',
-        phaseDeadline: 1_700_000_000_000 + PHASE_TIMEOUTS.roll,
-      }),
+      state: expect.objectContaining({ turnPhase: 'ROLL_PHASE', phaseDeadline: null, opening: { ready: false } }),
+    }));
+    jest.advanceTimersByTime(PHASE_TIMEOUTS.openingWait);
+    expect(gameService.getGameSync(gameId)?.opening?.beginsAt).toBe(
+      1_700_000_000_000 + PHASE_TIMEOUTS.openingWait + PHASE_TIMEOUTS.openingBanner);
+    jest.advanceTimersByTime(PHASE_TIMEOUTS.openingBanner);
+    const started = 1_700_000_000_000 + PHASE_TIMEOUTS.openingWait + PHASE_TIMEOUTS.openingBanner;
+    expect(io.roomEmitter.emit).toHaveBeenLastCalledWith('game:state', expect.objectContaining({
+      state: expect.objectContaining({ opening: null, phaseDeadline: started + PHASE_TIMEOUTS.roll }),
     }));
 
     jest.advanceTimersByTime(PHASE_TIMEOUTS.roll);

@@ -10,11 +10,14 @@ vi.mock('../../../shared/contexts/SocketContext', () => ({
 }));
 vi.mock('../../auth/PlayerContext', () => ({ usePlayer: () => ({ player: { id: 'account-one' }, setPlayer: vi.fn() }) }));
 vi.mock('../hooks/useGameAudio', () => ({ useGameAudio: () => ({ play: vi.fn(), playMovementStep: vi.fn() }) }));
-vi.mock('../components/Board', () => ({ Board: ({ gameState, onMovementComplete }: {
-  gameState: GameState; onMovementComplete: () => void;
-}) => <button data-phase={gameState.turnPhase} data-roll={gameState.diceRollId} onClick={onMovementComplete}>
-  Finish board movement
-</button> }));
+vi.mock('../components/Board', () => ({ Board: ({ gameState, onMovementComplete, onScenesReady }: {
+  gameState: GameState; onMovementComplete: () => void; onScenesReady: () => void;
+}) => <>
+  <button data-phase={gameState.turnPhase} data-roll={gameState.diceRollId} onClick={onMovementComplete}>
+    Finish board movement
+  </button>
+  <button onClick={onScenesReady}>Draw board</button>
+</> }));
 vi.mock('../components/PlayerPanel', () => ({ PlayerPanel: () => null }));
 vi.mock('../components/SpaceDetailsPanel', () => ({ SpaceDetailsPanel: () => null }));
 vi.mock('../components/TurnIndicator', () => ({ TurnIndicator: () => null }));
@@ -64,6 +67,26 @@ describe('live game question feedback', () => {
     socket.timeout.mockReturnValue(socket);
   });
   afterEach(() => vi.useRealTimers());
+
+  it('reveals the table once drawn, reports it, and shows who goes first until the opening ends', () => {
+    const { container } = mount();
+    const opening = (ready: boolean) => ({ ...makeState('ROLL_PHASE'), diceRollId: 0, opening: { ready } });
+    receive('game:state', { state: opening(false) });
+    expect(container.querySelector('.game-page')).toHaveClass('game-page--revealing');
+    expect(screen.queryByText('You go first')).not.toBeInTheDocument();
+    expect(socket.emit).not.toHaveBeenCalledWith('game:board-ready', expect.anything());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Draw board' }));
+    expect(container.querySelector('.game-page')).not.toHaveClass('game-page--revealing');
+    expect(socket.emit).toHaveBeenCalledWith('game:board-ready', { gameId: 'game_ONE' });
+    expect(screen.getByText('You go first')).toBeVisible();
+    expect(screen.getByText("Waiting for everyone's board…")).toBeVisible();
+
+    receive('game:state', { state: opening(true) });
+    expect(screen.queryByText("Waiting for everyone's board…")).not.toBeInTheDocument();
+    receive('game:state', { state: { ...opening(true), opening: null } });
+    expect(screen.queryByText('You go first')).not.toBeInTheDocument();
+  });
 
   it('shows one primary result with reward and worked maths, with no correctness toast', () => {
     const { container } = mount();

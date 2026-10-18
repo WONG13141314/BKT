@@ -309,7 +309,12 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       const initial = (await host.wait('game:state', () => true, startMark)).state;
       assert.equal(initial.turnPhase, 'ROLL_PHASE');
       assert.equal(initial.players.length, 2);
+      assert.deepEqual(initial.opening, { ready: false }, 'The first turn waits for both boards');
       assertPublicState(initial);
+      const openedMark = host.mark();
+      host.send('game:board-ready', { gameId });
+      second.send('game:board-ready', { gameId });
+      await host.wait('game:state', (data) => data.state.opening === null, openedMark);
       const rollId = randomUUID();
       const rollMark = host.mark();
       host.send('game:roll', { gameId }, { actionId: rollId });
