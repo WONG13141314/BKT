@@ -3,9 +3,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { usePlayer } from '../features/auth/PlayerContext';
 import { LoginPage } from '../features/auth/pages/LoginPage';
+// Loaded with the app so hosting goes straight to "Creating room...".
+import { GameLobby } from '../features/game/components/GameLobby';
 
-const GameLobby = lazy(() => import('../features/game/components/GameLobby')
-  .then((module) => ({ default: module.GameLobby })));
 const GamePage = lazy(() => import('../features/game/pages/GamePage')
   .then((module) => ({ default: module.GamePage })));
 
