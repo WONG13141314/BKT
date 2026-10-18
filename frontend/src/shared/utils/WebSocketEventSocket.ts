@@ -26,6 +26,9 @@ interface ResumeEvent {
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 const HEARTBEAT_TIMEOUT_MS = 60_000;
+/** After the tab returns or the network comes back, a silent link is replaced this quickly. */
+const RESUME_PROBE_TIMEOUT_MS = 3_000;
+const MAX_RETRY_DELAY_MS = 5_000;
 const DEFAULT_ACK_TIMEOUT_MS = 5_000;
 
 function newActionId(): string {
@@ -57,6 +60,7 @@ export class WebSocketEventSocket implements RealtimeSocket {
   private handshakeTimer?: ReturnType<typeof setTimeout>;
   private heartbeatTimer?: ReturnType<typeof setInterval>;
   private retryTimer?: ReturnType<typeof setTimeout>;
+  private probeTimer?: ReturnType<typeof setTimeout>;
 
   constructor(endpoint: string, private readonly token: string) {
     this.endpoint = new URL(endpoint, window.location.href);
@@ -66,6 +70,8 @@ export class WebSocketEventSocket implements RealtimeSocket {
       throw new Error('The game connection URL must use HTTP or WebSocket.');
     }
     if (this.endpoint.pathname === '/') this.endpoint.pathname = '/ws';
+    window.addEventListener('online', this.handleResume);
+    document.addEventListener('visibilitychange', this.handleResume);
     this.openConnection();
   }
 
@@ -99,10 +105,33 @@ export class WebSocketEventSocket implements RealtimeSocket {
 
   close(): this {
     this.closed = true;
+    window.removeEventListener('online', this.handleResume);
+    document.removeEventListener('visibilitychange', this.handleResume);
     clearTimeout(this.retryTimer);
     this.loseConnection('client disconnect');
     return this;
   }
+
+  /**
+   * A phone that was locked, or a tab that was hidden, often comes back with a
+   * dead link the heartbeat would take up to a minute to notice. Check now:
+   * an open link must answer a ping quickly; a waiting retry runs at once.
+   */
+  private readonly handleResume = (): void => {
+    if (this.closed || document.visibilityState === 'hidden') return;
+    if (this.connected && this.socket) {
+      if (this.probeTimer) return;
+      const sentAt = Date.now();
+      try { this.socket.send('ping'); } catch { this.loseConnection('resume probe failed'); return; }
+      this.probeTimer = setTimeout(() => {
+        this.probeTimer = undefined;
+        if (this.connected && this.lastPongAt < sentAt) this.loseConnection('resume probe timeout');
+      }, RESUME_PROBE_TIMEOUT_MS);
+    } else if (!this.socket) {
+      this.retryAttempt = 0;
+      this.scheduleReconnect();
+    }
+  };
 
   private notify(event: string, ...args: any[]): void {
     for (const listener of [...(this.listeners.get(event) ?? [])]) listener(...args);
@@ -260,6 +289,8 @@ export class WebSocketEventSocket implements RealtimeSocket {
   private clearConnectionTimers(): void {
     clearTimeout(this.handshakeTimer);
     clearInterval(this.heartbeatTimer);
+    clearTimeout(this.probeTimer);
+    this.probeTimer = undefined;
   }
 
   private loseConnection(reason: string): void {
@@ -277,9 +308,12 @@ export class WebSocketEventSocket implements RealtimeSocket {
     if (!this.closed) this.scheduleReconnect();
   }
 
+  /** First retry at once (most drops are momentary), then 0.5, 1, 2, 4, 5 s with jitter. */
   private scheduleReconnect(): void {
     clearTimeout(this.retryTimer);
-    const delay = Math.min(500 * 2 ** this.retryAttempt++, 10_000);
+    const attempt = this.retryAttempt++;
+    const delay = attempt === 0 ? 0
+      : Math.min(500 * 2 ** (attempt - 1), MAX_RETRY_DELAY_MS) * (0.8 + Math.random() * 0.4);
     this.retryTimer = setTimeout(() => this.openConnection(), delay);
   }
 }

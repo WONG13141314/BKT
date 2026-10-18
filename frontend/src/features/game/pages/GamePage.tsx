@@ -21,6 +21,7 @@ import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useAnswerResultHold } from '../hooks/useAnswerResultHold';
+import { useConnectionNotice } from '../hooks/useConnectionNotice';
 import { useGameAudio } from '../hooks/useGameAudio';
 import {
   MathChallenge,
@@ -43,13 +44,14 @@ export function GamePage() {
   const { player, setPlayer } = usePlayer();
   const { socket, isConnected, connectSocket, disconnectSocket } = useSocket();
   const myPlayerId = player?.id ?? '';
+  const connectionNotice = useConnectionNotice(isConnected);
 
   // A browser refresh can enter /game directly without passing through the
   // lobby. Restore the authenticated socket here as well so reconnect never
   // leaves the board permanently on "Loading Game".
   useEffect(() => {
-    if (player && !socket) connectSocket();
-  }, [player, socket, connectSocket]);
+    if (player && !socket) connectSocket(roomCode);
+  }, [player, socket, connectSocket, roomCode]);
 
   const {
     gameState,
@@ -781,7 +783,13 @@ export function GamePage() {
         notifications={notifications}
         onDismiss={dismissNotification}
       />
-      {!isConnected && (
+      {connectionNotice === 'tag' && (
+        <div className="game-reconnecting-tag" role="status" aria-live="polite">
+          <Loader2 size={14} className="icon-spin" aria-hidden="true" />
+          Reconnecting…
+        </div>
+      )}
+      {connectionNotice === 'panel' && (
         <div className="game-reconnecting-overlay" role="status" aria-live="polite">
           <div className="game-reconnecting-card">
             <Loader2 size={26} className="icon-spin" aria-hidden="true" />

@@ -99,8 +99,23 @@ for the whole table. Moving to the next player's turn also clears it, including
 a turn that begins with jail choices. Question and duel IDs scope timers and
 dismissals, so an older dismissal cannot close a new question or duel.
 
-Disconnected clients show a recovery status and do not queue gameplay actions for
-later replay. Reconnection requests the authoritative match state. Deadlines
+Disconnected clients do not queue gameplay actions for later replay; action
+buttons are disabled while offline. A drop under 2 seconds shows nothing, a
+small "Reconnecting…" tag appears after 2 seconds, and the full recovery panel
+only after 8. The first retry is immediate, then 0.5, 1, 2, 4 and at most 5
+seconds apart (with jitter). When a tab becomes visible again or the device
+comes back online, the client pings at once and replaces a link that does not
+answer within 3 seconds, instead of waiting up to a minute for the heartbeat.
+
+A page that already knows its room (a refreshed game page, a saved lobby seat
+or a join link) connects straight to that room (`/ws?room=CODE`) instead of
+through the gateway and a redirect. Each room remembers its players' profiles
+for 30 minutes, and is given the profile when it reserves a new room or accepts
+a join, so reconnects check the token signature but skip the Neon lookup. This
+matters because Neon sleeps when idle and can take seconds to wake. The cached
+profiles are removed together with the room record.
+
+Reconnection requests the authoritative match state. Deadlines
 continue on the server during a connection interruption; reconnecting does not
 grant additional question or decision time. Roll, buy, jail and end-turn
 decisions show a countdown to the server's default action.

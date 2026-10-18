@@ -566,6 +566,27 @@
 .game-reconnecting-card h2 { margin: 0.5rem 0; }
 .game-reconnecting-card p { margin: 0; line-height: 1.5; }
 
+/* A brief drop: a small tag instead of covering the table. */
+.game-reconnecting-tag {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  z-index: var(--z-modal);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border: 2px solid #000;
+  background: #fff;
+  box-shadow: 3px 3px 0 #000;
+  color: #000;
+  font: 800 0.75rem 'Courier New', monospace;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 /* ---- Opening: the table appears complete, then shows who goes first ---- */
 
 .game-page .game-layout,

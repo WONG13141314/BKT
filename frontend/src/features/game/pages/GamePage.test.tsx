@@ -287,8 +287,14 @@ describe('live game question feedback', () => {
     fireEvent.click(screen.getByRole('button', { name: '6' }));
     expect(socket.emit.mock.calls.filter(([event]) => event === 'game:smart-buy-answer')).toHaveLength(0);
     receive('game:state', { state: makeState() });
-    expect(screen.getByText('Reconnecting…')).toBeVisible();
+    // A brief drop shows nothing, then a small tag, then the full panel.
+    expect(screen.queryByText('Reconnecting…')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '6' })).toBeDisabled();
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(screen.getByText('Reconnecting…')).toBeVisible();
+    expect(screen.queryByText('Your game will refresh when the connection returns.')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(6_000));
+    expect(screen.getByText('Your game will refresh when the connection returns.')).toBeVisible();
     socket.connected = true;
     receive('game:state', { state: makeState() });
     receive('game:challenge', { playerId: 'seat-one', challenge: question });

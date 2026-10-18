@@ -56,13 +56,13 @@ export function GameLobby() {
 
   useEffect(() => {
     if (terminalRecoveryRef.current) return;
+    const savedRoomCode = myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null;
     if (!socket) {
-      connectSocket();
+      connectSocket(savedRoomCode ?? (action === 'join' ? codeParam : null));
       return;
     }
     if (!isConnected) return;
 
-    const savedRoomCode = myId ? sessionStorage.getItem(lobbySeatStorageKey(myId)) : null;
     const bootstrapKey = savedRoomCode
       ? `resume:${socket.id ?? 'connected'}:${savedRoomCode}`
       : `fresh:${socket.id ?? 'connected'}:${action ?? ''}:${codeParam ?? ''}`;

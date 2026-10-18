@@ -6,7 +6,7 @@ import { RoomManager, type RoomManagerSnapshot } from '../sockets/lobby.manager'
 import { SocketPresence } from '../sockets/presence.manager';
 import { createGameHandlersRuntime, type GameHandlersRuntime, type GameHandlersSnapshot } from '../sockets/game.handlers.runtime';
 import { createLobbyHandlersRuntime, type LobbyHandlersRuntime, type LobbyHandlersSnapshot } from '../sockets/lobby.handlers.runtime';
-import { ApiError, authenticateToken, readBearerToken, readSocketToken, socketProtocolHeaders } from './auth';
+import { ApiError, authenticateToken, readBearerToken, readSocketToken, socketProtocolHeaders, type ProfileCache } from './auth';
 import { CloudflarePersistence, type DurableAttemptEvent, type DurableGameResultEvent } from './database';
 import { jsonResponse } from './http';
 import { AlarmScheduler, type ScheduledDeadline } from './scheduler';
@@ -37,6 +37,10 @@ const ROOM_CODE = /^[A-Z2-9]{6}$/;
 const FRAME_LIMIT = 64 * 1024;
 const OUTBOX_LIMIT = 2_000;
 const OUTBOX_REQUEST_LEASE_MS = 30_000;
+/** A reconnect within this long reuses the profile instead of querying Neon. */
+const PROFILE_CACHE_TTL_MS = 30 * 60_000;
+const PROFILE_CACHE_LIMIT = 16;
+type CachedProfiles = Record<string, { player: PublicPlayer; at: number }>;
 
 /** One room owns its complete rules, storage, sockets, deadlines and research outbox. */
 export class GameRoom {
@@ -58,6 +62,25 @@ export class GameRoom {
   private storedOutboxIds = new Set<string>();
   private readonly persistenceRequests = new Map<string, Promise<void>>();
   private backgroundFlush?: Promise<void>;
+
+  /**
+   * Every socket open used to look the learner up in Neon, which sleeps when
+   * idle and can take seconds to wake. A room keeps its players' profiles
+   * (the token signature is still checked each time) and drops them with the
+   * room record. Rooms not yet reserved keep nothing.
+   */
+  private readonly profiles: ProfileCache = {
+    get: async (playerId) => {
+      const hit = (await this.ctx.storage.get<CachedProfiles>('profiles'))?.[playerId];
+      return hit && Date.now() - hit.at < PROFILE_CACHE_TTL_MS ? hit.player : undefined;
+    },
+    set: async (player) => {
+      if (!this.code) return;
+      const profiles = { ...(await this.ctx.storage.get<CachedProfiles>('profiles')), [player.id]: { player, at: Date.now() } };
+      const kept = Object.entries(profiles).sort(([, a], [, b]) => b.at - a.at).slice(0, PROFILE_CACHE_LIMIT);
+      await this.ctx.storage.put('profiles', Object.fromEntries(kept));
+    },
+  };
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: WorkerEnv) {
     this.database = new CloudflarePersistence(env.DATABASE_URL);
@@ -172,7 +195,7 @@ export class GameRoom {
       // A room with no lobby, match, research backlog or deadline has nothing
       // to recover, so its record is removed instead of kept forever.
       const empty = !state.rooms.rooms.length && !state.games.length && !outbox.length && !state.timers.length;
-      if (empty) await storage.delete(['room']);
+      if (empty) await storage.delete(['room', 'profiles']);
       else await storage.put('room', { ...state, outboxIds: ids } satisfies StoredRoom);
       if (Number.isFinite(next)) await storage.setAlarm(Math.max(Date.now() + 1, next));
       else await storage.deleteAlarm();
@@ -354,23 +377,30 @@ export class GameRoom {
     }
     if (url.pathname === '/internal/inspect') {
       const room = this.code ? this.rooms.getRoom(this.code) : undefined;
+      // The gateway names the learner it is about to send here, so their
+      // connection can skip the database lookup.
+      const { player } = request.method === 'POST' ? await request.json() as { player?: PublicPlayer } : {};
+      if (room && player) await this.profiles.set(player);
       return jsonResponse({ room: room ? this.rooms.serializeRoom(room) : null });
     }
     if (url.pathname === '/internal/reserve' && request.method === 'POST') {
-      return this.transact(async () => {
+      const { code, player } = await request.json() as { code: string; player: PublicPlayer };
+      const response = await this.transact(async () => {
         if (this.code || this.rooms.snapshot().rooms.length) return jsonResponse({ error: 'Room exists' }, 409);
-        const { code, player } = await request.json() as { code: string; player: PublicPlayer };
         if (!ROOM_CODE.test(code)) return jsonResponse({ error: 'Invalid room' }, 400);
         this.code = code;
         this.initialize();
         const room = this.rooms.createRoom(player.id, player.displayName, player.avatar);
         return jsonResponse({ room: this.rooms.serializeRoom(room) }, 201);
       });
+      // The host's redirected connection arrives next; it need not wait for Neon.
+      if (response.status === 201) await this.profiles.set(player);
+      return response;
     }
     const socketToken = url.pathname === '/ws' ? readSocketToken(request) : null;
     try {
       const token = socketToken ? socketToken.token : readBearerToken(request.headers.get('authorization'));
-      const player = await authenticateToken(token, this.env);
+      const player = await authenticateToken(token, this.env, undefined, this.profiles);
       if (url.pathname.startsWith('/api/games')) return await this.gameHttp(request, player);
       if (url.pathname !== '/ws' || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         return jsonResponse({ message: 'Not found' }, 404);
@@ -456,7 +486,9 @@ export class GameRoom {
       }
       if (target === this.code) return false;
       const stub = this.env.ROOMS.get(this.env.ROOMS.idFromName(`room:${target}`));
-      const { room } = await (await stub.fetch('https://room/internal/inspect')).json() as {
+      const { room } = await (await stub.fetch('https://room/internal/inspect', {
+        method: 'POST', body: JSON.stringify({ player: socket.data.player }),
+      })).json() as {
         room: ReturnType<RoomManager['serializeRoom']> | null;
       };
       const member = room?.players.some((seat) => seat.id === socket.data.player.id);

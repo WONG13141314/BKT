@@ -58,10 +58,17 @@ export function socketProtocolHeaders(viaProtocol: boolean): HeadersInit | undef
   return viaProtocol ? { 'sec-websocket-protocol': SOCKET_PROTOCOL } : undefined;
 }
 
+/** Profiles a room already looked up, so a reconnect need not wait for the database. */
+export interface ProfileCache {
+  get(playerId: string): Promise<PublicPlayer | undefined>;
+  set(player: PublicPlayer): Promise<void>;
+}
+
 /** Verifies the same HS256 playerId tokens already issued by the Render backend. */
 export async function authenticateToken(
   token: string | null | undefined, env: WorkerEnv,
   database: AuthDatabase = new CloudflareDatabase(env.DATABASE_URL),
+  cache?: ProfileCache,
 ): Promise<PublicPlayer> {
   if (!token) throw new ApiError('Authentication required', 401);
   let playerId: string;
@@ -74,7 +81,12 @@ export async function authenticateToken(
   } catch {
     throw new ApiError('Authentication required', 401);
   }
-  return toPublicPlayer(existingPlayer(await database.findPlayerById(playerId)));
+  // The signature is always checked; only the profile lookup is reused.
+  const cached = await cache?.get(playerId);
+  if (cached) return cached;
+  const player = toPublicPlayer(existingPlayer(await database.findPlayerById(playerId)));
+  await cache?.set(player);
+  return player;
 }
 
 /** Executed inside ApiDO so the unchanged bcrypt cost 10 has the DO CPU allowance. */

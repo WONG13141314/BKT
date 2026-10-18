@@ -1,6 +1,6 @@
 # Refinement plan: smooth start, smooth network, cleaner code
 
-Status: **agreed with defaults on 2026-10-18.** Step 1 (items 1–3) done; work happens on the `optimization` branch.
+Status: **agreed with defaults on 2026-10-18.** Steps 1 and 2 (items 1–4d) done; work happens on the `optimization` branch.
 Date: 2026-10-18
 
 Each item says what the player sees today, why it happens, and the proposed fix.
@@ -126,6 +126,10 @@ reserve the code with one quick HTTP call first, then open the single socket
 directly to the new room. Together with 4c, create room should drop from
 several round trips (plus a possible Neon wake-up) to about two quick ones.
 
+*As built:* the lobby socket is normally already open from sign-in, so
+"create" keeps its single redirect. The reserving room is handed the host's
+profile, so the redirected connection skips Neon. No new HTTP call was needed.
+
 ### 4e. Smaller broadcasts (optional, low priority)
 
 Every state update is about 5 KB, and 3 KB of that is the board's tile list,
@@ -169,8 +173,8 @@ All steps go on the existing `optimization` branch, then to `main`.
 | Step | Items | Status |
 |---|---|---|
 | 1 | 1, 2, 3: start pacing, no loading card, end-turn timer | Done |
-| 2 | 4a, 4b, 4c, 4d: network smoothness | Next |
-| 3 | 5: clean-up (split all three files) | Later |
+| 2 | 4a, 4b, 4c, 4d: network smoothness | Done |
+| 3 | 5: clean-up (split all three files) | Next |
 
 Each step is tested (unit tests, Cloudflare checks and a browser playtest)
 before it goes to `main`.

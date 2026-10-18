@@ -261,6 +261,22 @@ test('Cloudflare runtime preserves auth, multiplayer gameplay and durable recove
       assert.equal(room.players.find((player) => player.id === guestIdentity.player.id).isReady, true);
     });
 
+    await t.test('a known room code connects straight to its room; a wrong code is refused', async () => {
+      const direct = await connect(guestIdentity, `/ws?room=${code}`);
+      const mark = direct.mark();
+      direct.send('room:resume', { code });
+      const room = await direct.wait('room:update', (value) => value.code === code, mark);
+      assert.equal(room.players.length, 2);
+      assert.equal(direct.frames.some((frame) => frame.redirect), false, 'No gateway redirect for a known room');
+      await direct.close();
+      const stranger = await connect(await guest('Wrong Code'), '/ws?room=ZZZZZ2');
+      const wrongMark = stranger.mark();
+      stranger.send('room:join', { code: 'ZZZZZ2' });
+      const error = await stranger.wait('room:error', () => true, wrongMark);
+      assert.match(error.message, /not found/i);
+      await stranger.close();
+    });
+
     await t.test('a profile changing lobby in another tab releases its previous seat and transfers hosts', async () => {
       const moverIdentity = await guest('Tab Mover');
       const remainingIdentity = await guest('Old Member');

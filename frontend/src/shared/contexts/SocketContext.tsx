@@ -4,7 +4,8 @@ import { WebSocketEventSocket, type RealtimeSocket } from '../utils/WebSocketEve
 interface SocketContextType {
   socket: RealtimeSocket | null;
   isConnected: boolean;
-  connectSocket: () => void;
+  /** `roomCode`, when already known, connects straight to that room's server. */
+  connectSocket: (roomCode?: string | null) => void;
   disconnectSocket: () => void;
 }
 
@@ -41,7 +42,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setIsConnected(false);
   }, []);
 
-  const connectSocket = useCallback(() => {
+  const connectSocket = useCallback((roomCode?: string | null) => {
     const token = sessionStorage.getItem('mm.session-token') ?? localStorage.getItem('mm.token');
     if (!token) return;
 
@@ -61,7 +62,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     currentTokenRef.current = token;
 
-    const newSocket: RealtimeSocket = new WebSocketEventSocket('/ws', token);
+    // A known room skips the gateway's extra connection and redirect.
+    const room = roomCode && /^[A-Za-z0-9]{6}$/.test(roomCode) ? roomCode.toUpperCase() : null;
+    const newSocket: RealtimeSocket = new WebSocketEventSocket(room ? `/ws?room=${room}` : '/ws', token);
 
     newSocket.on('connect', () => {
       setIsConnected(true);

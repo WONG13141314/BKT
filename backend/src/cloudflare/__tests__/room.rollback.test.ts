@@ -33,6 +33,7 @@ function harness(saved?: RoomSnapshot) {
   const backgroundTasks: Promise<unknown>[] = [];
   let rejectNextCommit = false;
   const storage = {
+    async put(key: string, value: unknown) { values.set(key, structuredClone(value)); },
     async get(key: string | string[]) {
       return Array.isArray(key)
         ? new Map(key.filter((item) => values.has(item)).map((item) => [item, structuredClone(values.get(item))]))
@@ -164,6 +165,8 @@ describe('room command recovery after a failed durable commit', () => {
       method: 'POST', body: JSON.stringify({ code: 'ABC234', player: socket.deserializeAttachment().player }),
     }));
     expect(reserved.status).toBe(201);
+    // The host's redirected connection can skip the database lookup.
+    expect(values.get('profiles')).toMatchObject({ 'synthetic-player-1': { player: { displayName: 'Aina' } } });
     socket.sent.length = 0;
     failNextCommit();
     const log = jest.spyOn(console, 'error').mockImplementation(() => {});

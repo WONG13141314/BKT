@@ -183,6 +183,41 @@ describe('native game event transport', () => {
     expect(TestWebSocket.instances).toHaveLength(2);
   });
 
+  it('retries a dropped link at once, then backs off up to five seconds', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    TestWebSocket.instances[0].receive({ event: 'connect', data: { id: 'one' } });
+    TestWebSocket.instances[0].disconnect();
+    vi.advanceTimersByTime(0);
+    expect(TestWebSocket.instances).toHaveLength(2);
+    TestWebSocket.instances[1].disconnect();
+    vi.advanceTimersByTime(499);
+    expect(TestWebSocket.instances).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(TestWebSocket.instances).toHaveLength(3);
+    for (let n = 3; n < 8; n++) {
+      TestWebSocket.instances[n - 1].disconnect();
+      vi.advanceTimersByTime(5_000);
+      expect(TestWebSocket.instances).toHaveLength(n + 1);
+    }
+    random.mockRestore();
+  });
+
+  it('checks the link as soon as the tab returns, and replaces one that stays silent', () => {
+    const socket = TestWebSocket.instances[0];
+    socket.receive({ event: 'connect', data: { id: 'one' } });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(socket.sent).toEqual(['ping']);
+    socket.receiveText('pong');
+    vi.advanceTimersByTime(3_000);
+    expect(client.connected).toBe(true);
+
+    window.dispatchEvent(new Event('online'));
+    vi.advanceTimersByTime(3_000);
+    expect(client.connected).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(TestWebSocket.instances).toHaveLength(2);
+  });
+
   it('bounds an unfinished handshake and stops retrying an explicitly invalid session', () => {
     const failed = vi.fn();
     client.on('connect_error', failed);
