@@ -13,26 +13,25 @@ import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
 import { ChallengeDialog } from '../components/ChallengeDialog';
 import { AnswerFeedback } from '../components/AnswerFeedback';
-import { DelayedFallback } from '../components/BoardRendering';
+import {
+  ChallengeLoading,
+  FatalGameScreen,
+  LoadingGameScreen,
+  MissingRoomScreen,
+  OpeningBanner,
+  ReconnectNotice,
+  SeatRecoveryScreen,
+} from '../components/GameStatusScreens';
+import { boardPresentationState } from '../utils/boardPresentation';
 import { usePlayer } from '../../auth/PlayerContext';
-import { authService } from '../../auth/services/auth.service';
-import { StoredProfile } from '../../auth/types/auth.types';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { useGameState } from '../hooks/useGameState';
 import { useGameSocket } from '../hooks/useGameSocket';
-import { useAnswerResultHold } from '../hooks/useAnswerResultHold';
+import { useQuestionCards } from '../hooks/useQuestionCards';
+import { useGameSeatRecovery } from '../hooks/useGameSeatRecovery';
 import { useConnectionNotice } from '../hooks/useConnectionNotice';
 import { useGameAudio } from '../hooks/useGameAudio';
-import {
-  MathChallenge,
-  MasteryReport,
-  PublicDuelState,
-  AnswerResult,
-} from '../types/game.types';
-import {
-  Loader2,
-  AlertCircle,
-} from 'lucide-react';
+import type { MathChallenge, MasteryReport } from '../types/game.types';
 import './GamePage.css';
 
 export function GamePage() {
@@ -68,58 +67,29 @@ export function GamePage() {
   } = useGameState(myPlayerId);
   const { play: playSound, playMovementStep } = useGameAudio(gameState);
 
-  const [activeChallenge, setActiveChallenge] = useState<MathChallenge | null>(null);
   const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
   const [rollRequested, setRollRequested] = useState(false);
-  const [seatRecoveryMessage, setSeatRecoveryMessage] = useState<string | null>(null);
-  const [seatChoices, setSeatChoices] = useState<StoredProfile[]>([]);
-  const [isSeatRecovering, setIsSeatRecovering] = useState(false);
   const [fatalGameError, setFatalGameError] = useState<string | null>(null);
-  const seatRecoveryRef = useRef(false);
-
-  // Duel state is separate from `gameState`: it is redacted per recipient, so it
-  // arrives on its own channel rather than inside the shared state broadcast.
-  const [duel, setDuel] = useState<PublicDuelState | null>(null);
-  const [duelChallenge, setDuelChallenge] = useState<MathChallenge | null>(null);
-  const [duelAnswerResult, setDuelAnswerResult] = useState<AnswerResult | null>(null);
-  const activeChallengeIdRef = useRef<string | null>(null);
-  const duelChallengeIdRef = useRef<string | null>(null);
-  const duelIdRef = useRef<string | null>(null);
-  const duelAnswerResultRef = useRef<AnswerResult | null>(null);
-  const pendingDuelChallengeIdRef = useRef<string | null>(null);
-  const [questionRecoveryRevision, setQuestionRecoveryRevision] = useState(0);
-  const completedChallengeIdsRef = useRef(new Set<string>());
-  const { markChallengeVisible, holdThenClear, clearVisible } = useAnswerResultHold();
   const {
-    markChallengeVisible: markDuelVisible,
-    holdThenClear: holdDuelThenClear,
-    clearVisible: clearDuelVisible,
-  } = useAnswerResultHold();
-
-  const dismissAnswerResult = useCallback(() => {
-    clearVisible();
-    activeChallengeIdRef.current = null;
-    setActiveChallenge(null);
-    setAnswerResult(null);
-  }, [clearVisible, setAnswerResult]);
-
-  const dismissDuelResult = useCallback(() => {
-    clearDuelVisible();
-    duelIdRef.current = null;
-    duelChallengeIdRef.current = null;
-    duelAnswerResultRef.current = null;
-    pendingDuelChallengeIdRef.current = null;
-    setDuel(null);
-    setDuelChallenge(null);
-    setDuelAnswerResult(null);
-  }, [clearDuelVisible]);
-
-  const rememberCompletedChallenge = useCallback((challengeId: string) => {
-    const completed = completedChallengeIdsRef.current;
-    completed.add(challengeId);
-    if (completed.size > 64) completed.delete(completed.values().next().value!);
-  }, []);
+    activeChallenge,
+    duel,
+    duelChallenge,
+    duelAnswerResult,
+    questionRecoveryRevision,
+    dismissAnswerResult,
+    dismissDuelResult,
+    ...cards
+  } = useQuestionCards({ setAnswerResult, playSound });
+  const clearGame = useCallback(() => setGameState(null), [setGameState]);
+  const {
+    seatRecoveryMessage,
+    seatChoices,
+    isSeatRecovering,
+    switchToGameSeat,
+    recoverGameSeat,
+    clearSeatRecovery,
+  } = useGameSeatRecovery({ roomCode, playerName: player?.displayName, setPlayer, disconnectSocket, clearGame });
 
   // Visual motion may delay a modal briefly, but it must never become the
   // authority for the turn. The server phase always controls legal actions.
@@ -135,55 +105,6 @@ export function GamePage() {
   // The table stays hidden until the 3D dice and tokens have drawn, so it opens complete.
   const [boardReady, setBoardReady] = useState(false);
   const handleScenesReady = useCallback(() => setBoardReady(true), []);
-
-  const switchToGameSeat = useCallback(async (profile: StoredProfile) => {
-    if (seatRecoveryRef.current) return;
-    seatRecoveryRef.current = true;
-    setIsSeatRecovering(true);
-    setSeatChoices([]);
-    setSeatRecoveryMessage(`Restoring ${profile.displayName}'s game seat…`);
-
-    try {
-      const restored = await authService.switchTo(profile);
-      if (!restored) throw new Error('The saved profile has expired.');
-      if (roomCode) sessionStorage.setItem(`mm.game-seat.${roomCode}`, restored.id);
-      // The old socket is authenticated as the wrong profile. Replacing it is
-      // essential; changing React state alone cannot change a socket identity.
-      disconnectSocket();
-      setPlayer(restored);
-      setSeatRecoveryMessage(null);
-    } catch (error) {
-      setSeatRecoveryMessage(
-        error instanceof Error ? error.message : 'Could not restore the player for this game.'
-      );
-    } finally {
-      seatRecoveryRef.current = false;
-      setIsSeatRecovering(false);
-    }
-  }, [disconnectSocket, roomCode, setPlayer]);
-
-  const recoverGameSeat = useCallback((seats: { playerId: string; name: string }[]) => {
-    if (seatRecoveryRef.current) return;
-    // Never leave a stale board visible as WAIT while identity is unresolved.
-    setGameState(null);
-
-    const savedProfiles = authService.getStoredProfiles();
-    const candidates = savedProfiles.filter((profile) =>
-      seats.some((seat) => seat.playerId === profile.id)
-    );
-    const preferredId = roomCode ? sessionStorage.getItem(`mm.game-seat.${roomCode}`) : null;
-    const preferred = candidates.find((profile) => profile.id === preferredId);
-
-    if (preferred || candidates.length === 1) {
-      void switchToGameSeat(preferred ?? candidates[0]);
-      return;
-    }
-
-    setSeatChoices(candidates);
-    setSeatRecoveryMessage(candidates.length > 1
-      ? 'Choose the player who joined this game.'
-      : `${player?.displayName ?? 'This profile'} did not join this game.`);
-  }, [player?.displayName, roomCode, setGameState, switchToGameSeat]);
 
   const {
     emitRoll,
@@ -218,113 +139,29 @@ export function GamePage() {
       }
       if (roomCode) sessionStorage.setItem(`mm.game-seat.${roomCode}`, mySeat.playerId);
       setFatalGameError(null);
-      setSeatRecoveryMessage(null);
-      setSeatChoices([]);
+      clearSeatRecovery();
       setGameState(state);
       if (state.turnPhase !== 'ROLL_PHASE' && state.turnPhase !== 'MOVING') {
         setSelectedTile(state.players[state.currentPlayerIndex]?.position ?? 0);
       }
-      if (state.currentChallenge) {
-        if (!completedChallengeIdsRef.current.has(state.currentChallenge.id)) {
-          if (activeChallengeIdRef.current !== state.currentChallenge.id) setAnswerResult(null);
-          activeChallengeIdRef.current = state.currentChallenge.id;
-          markChallengeVisible(state.currentChallenge.id);
-          setActiveChallenge(state.currentChallenge);
-        }
-      }
-      // The server has moved past the duel — clear it if it's still unresolved,
-      // but let it linger if we are showing the resolution result.
-      if (state.turnPhase !== 'MATH_DUEL') {
-        setDuel(prev => prev?.resolution ? prev : null);
-        setDuelChallenge(null);
-      }
-      if (state.players[state.currentPlayerIndex]?.id !== gameState?.players[gameState.currentPlayerIndex]?.id
-        || state.turnPhase === 'ROLL_PHASE' || state.turnPhase === 'MOVING') {
-        dismissDuelResult();
-      }
+      cards.syncWithState(state, gameState);
     },
-    onChallenge: (data) => {
-      if (completedChallengeIdsRef.current.has(data.challenge.id)) return;
-      // Help refreshes only the requesting player's existing question. A duel
-      // stays open and the other side never receives this private cue.
-      if (data.challenge.context === 'MATH_DUEL') {
-        if (pendingDuelChallengeIdRef.current === data.challenge.id) return;
-        duelChallengeIdRef.current = data.challenge.id;
-        setDuelChallenge(data.challenge);
-        return;
-      }
-      if (activeChallengeIdRef.current !== data.challenge.id) {
-        markChallengeVisible(data.challenge.id);
-        setAnswerResult(null);
-      }
-      activeChallengeIdRef.current = data.challenge.id;
-      setActiveChallenge(data.challenge);
-      // The duel reveal lingers deliberately so the table can read it, but the
-      // server has already advanced the turn. Drop it the moment the next
-      // question arrives, or it would cover the new player's challenge.
-      dismissDuelResult();
-    },
+    onChallenge: cards.onChallenge,
     onChallengeStarted: () => {
       // The turn banner already shows "<name>'s Turn — Answering".
     },
     onAnswerResult: (data) => {
       const answeringSeat = gameState?.players.find((seat) => seat.id === data.playerId);
-      const isMyAnswer = !!answeringSeat
-        && (answeringSeat.playerId === myPlayerId || answeringSeat.id === myPlayerId);
-
       // Other players receive an outcome-only event for table synchronisation.
       // It must not open our private question card (which we never received)
       // or spam us with every bot's learning feedback.
-      if (!isMyAnswer) return;
-      // Each result belongs to an issued question, including an owner's duel
-      // answer on another player's turn. Late results cannot replace a new one.
-      if (data.challengeId === duelChallengeIdRef.current) {
-        pendingDuelChallengeIdRef.current = null;
-        rememberCompletedChallenge(data.challengeId);
-        duelAnswerResultRef.current = data.result;
-        setDuelAnswerResult(data.result);
-        return;
+      if (answeringSeat && (answeringSeat.playerId === myPlayerId || answeringSeat.id === myPlayerId)) {
+        cards.onMyAnswerResult(data);
       }
-      if (data.challengeId !== activeChallengeIdRef.current) return;
-      rememberCompletedChallenge(data.challengeId);
-      setAnswerResult(data.result);
-      playSound(data.result.isCorrect ? 'correct' : 'incorrect');
-      // One primary card gives time to read, with an earlier Continue action.
-      holdThenClear(data.challengeId, 6000, (answeredId) => {
-        if (activeChallengeIdRef.current === answeredId) dismissAnswerResult();
-      });
     },
-    onDuel: (data) => {
-      // Ignore re-sent resolved duels — they've already been handled by
-      // onDuelResult and would re-show the card after the timeout cleared it.
-      if (data.duel.resolution) return;
-      if (duelIdRef.current !== data.duel.id) {
-        dismissAnswerResult();
-        markDuelVisible(data.duel.id);
-        duelIdRef.current = data.duel.id;
-        duelAnswerResultRef.current = null;
-        setDuelAnswerResult(null);
-        duelChallengeIdRef.current = data.myChallenge?.id ?? null;
-        pendingDuelChallengeIdRef.current = null;
-      }
-      if (data.myChallenge) duelChallengeIdRef.current = data.myChallenge.id;
-      setDuel(data.duel);
-      setDuelChallenge(data.myChallenge && !completedChallengeIdsRef.current.has(data.myChallenge.id)
-        && pendingDuelChallengeIdRef.current !== data.myChallenge.id
-        ? data.myChallenge : null);
-    },
-    onDuelResult: (data) => {
-      if (duelIdRef.current !== data.duel.id) return;
-      setDuel(data.duel);
-      setDuelChallenge(null);
-      playSound(duelAnswerResultRef.current?.isCorrect === false ? 'incorrect' : 'correct');
-      holdDuelThenClear(data.duel.id, 6000, (answeredDuelId) => {
-        if (duelIdRef.current === answeredDuelId) dismissDuelResult();
-      });
-    },
-    onDuelDismissed: (data) => {
-      if (data.duelId === duelIdRef.current) dismissDuelResult();
-    },
+    onDuel: cards.onDuel,
+    onDuelResult: cards.onDuelResult,
+    onDuelDismissed: cards.onDuelDismissed,
     onGameFinished: (data) => {
       playSound('gameOver');
       setFinalScores(data.scores);
@@ -337,17 +174,7 @@ export function GamePage() {
       // No text banner needed.
     },
     onSeatMismatch: (data) => recoverGameSeat(data.seats),
-    onConnectionRestored: () => {
-      // A click can leave the browser without ever reaching the server. The
-      // recovery snapshot decides whether it was accepted; remount unanswered
-      // controls so a local pending selection cannot lock the restored question.
-      pendingDuelChallengeIdRef.current = null;
-      activeChallengeIdRef.current = null;
-      setActiveChallenge(null);
-      setAnswerResult(null);
-      setDuelChallenge(null);
-      setQuestionRecoveryRevision(revision => revision + 1);
-    },
+    onConnectionRestored: cards.resetAfterReconnect,
     onError: (data) => {
       setRollRequested(false);
       if (data.code === 'GAME_NOT_FOUND') {
@@ -463,10 +290,9 @@ export function GamePage() {
    */
   const handleDuelAnswer = useCallback((selectedIndex: number) => {
     if (!emitDuelAnswer(selectedIndex)) return false;
-    pendingDuelChallengeIdRef.current = duelChallengeIdRef.current;
-    setDuelChallenge(null);
+    cards.markDuelAnswerSent();
     return true;
-  }, [emitDuelAnswer]);
+  }, [emitDuelAnswer, cards]);
 
   const handleDuelContinue = useCallback(() => {
     if (!isMyTurn || !duel?.resolution) return;
@@ -528,70 +354,20 @@ export function GamePage() {
   }
 
   // ---- Loading / Error states ----
-  if (!roomCode) {
-    return (
-      <div className="game-page game-page--center">
-        <div className="game-page__message">
-          <AlertCircle size={24} />
-          <h2>No Game Room specified.</h2>
-          <button className="action-btn action-btn--primary" onClick={() => navigate('/')}>Go Back</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (fatalGameError) {
-    return (
-      <div className="game-page game-page--center">
-        <div className="game-page__message seat-recovery-card">
-          <AlertCircle size={30} />
-          <h2>{fatalGameError}</h2>
-          <button className="action-btn action-btn--primary" onClick={() => navigate('/')}>
-            Return to Player Select
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  if (!roomCode) return <MissingRoomScreen onBack={() => navigate('/')} />;
+  if (fatalGameError) return <FatalGameScreen message={fatalGameError} onExit={() => navigate('/')} />;
   if (seatRecoveryMessage) {
     return (
-      <div className="game-page game-page--center">
-        <div className="game-page__message seat-recovery-card">
-          {isSeatRecovering && <Loader2 size={28} className="icon-spin" />}
-          <h2>{seatRecoveryMessage}</h2>
-          {seatChoices.map((profile) => (
-            <button
-              key={profile.id}
-              className="action-btn action-btn--primary"
-              onClick={() => void switchToGameSeat(profile)}
-            >
-              Continue as {profile.displayName}
-            </button>
-          ))}
-          {seatChoices.length === 0 && !isSeatRecovering && (
-            <button className="action-btn action-btn--secondary" onClick={() => navigate('/')}>
-              Return to Player Select
-            </button>
-          )}
-        </div>
-      </div>
+      <SeatRecoveryScreen
+        message={seatRecoveryMessage}
+        choices={seatChoices}
+        recovering={isSeatRecovering}
+        onChoose={(profile) => void switchToGameSeat(profile)}
+        onExit={() => navigate('/')}
+      />
     );
   }
-
-  if (!gameState) {
-    // Usually a moment; a message appears only if the game is slow to arrive.
-    return (
-      <div className="game-page game-page--center">
-        <DelayedFallback delayMs={2000}>
-          <div className="game-page__message">
-            <Loader2 size={28} className="icon-spin" />
-            <h2>Loading Game...</h2>
-          </div>
-        </DelayedFallback>
-      </div>
-    );
-  }
+  if (!gameState) return <LoadingGameScreen />;
 
   // ---- Game Over ----
   if (gameState.phase === 'FINISHED' && finalScores) {
@@ -610,31 +386,8 @@ export function GamePage() {
   const isHoldingDuelResult = !!duel?.resolution;
   const isChallenge = isChallengePhase(renderPhase) && isMyTurn && !isBoardAnimating;
 
-  // The server deliberately keeps the committed player position unchanged
-  // during MOVING. Give the board the deterministic dice destination as a
-  // presentation-only target so its existing pawn animation can complete
-  // before this client acknowledges the authoritative transition.
-  const presentationGameState = holdRollForAnswer
-    ? {
-        // Keep the earlier dice and no movement target behind the answer card.
-        ...gameState,
-        turnPhase: 'JAIL_CHALLENGE' as const,
-        diceRollId: shownDice?.rollId ?? gameState.diceRollId - 1,
-        diceValues: shownDice?.values ?? gameState.diceValues,
-      }
-    : renderPhase === 'MOVING'
-    ? {
-        ...gameState,
-        players: gameState.players.map((seat, index) => index === gameState.currentPlayerIndex
-          ? {
-              ...seat,
-              position: (seat.position + gameState.diceValues[0] + gameState.diceValues[1])
-                % gameState.tiles.length,
-            }
-          : seat),
-      }
-    : gameState;
-  
+  const presentationGameState = boardPresentationState(gameState, holdRollForAnswer, shownDice);
+
   const showChallenge = ((isChallenge && !!activeChallenge) || isHoldingAnswer) && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
   const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isBoardAnimating;
@@ -736,20 +489,7 @@ export function GamePage() {
       {/* Challenge Loading / Recovery Overlay */}
       {showChallengeLoading && (
         <ChallengeDialog title="Loading challenge">
-            <div style={{ padding: '24px', textAlign: 'center' }}>
-              <Loader2 size={32} className="icon-spin" style={{ margin: '0 auto 16px' }} />
-              <h3 style={{ margin: '8px 0', fontSize: '1.25rem' }}>Loading Question...</h3>
-              <p style={{ color: '#6b7280', margin: '4px 0 16px', fontSize: '0.9rem' }}>
-                Fetching your challenge from the server.
-              </p>
-              <button
-                className="action-btn action-btn--primary"
-                onClick={emitRequestChallenge}
-                style={{ margin: '0 auto' }}
-              >
-                Fetch Question
-              </button>
-            </div>
+          <ChallengeLoading onFetch={emitRequestChallenge} />
         </ChallengeDialog>
       )}
 
@@ -769,13 +509,7 @@ export function GamePage() {
 
       {/* Opening: who goes first, while the table gets ready. */}
       {boardReady && gameState.opening && currentPlayer && (
-        <div className="game-opening" role="status" aria-live="polite">
-          <div className="game-opening__card">
-            <span className="game-opening__round">Round 1</span>
-            <h2>{isMyTurn ? 'You go first' : `${currentPlayer.name} goes first`}</h2>
-            {!gameState.opening.ready && <p>Waiting for everyone's board…</p>}
-          </div>
-        </div>
+        <OpeningBanner firstPlayer={currentPlayer} isMe={isMyTurn} waiting={!gameState.opening.ready} />
       )}
 
       {/* Notifications */}
@@ -783,21 +517,7 @@ export function GamePage() {
         notifications={notifications}
         onDismiss={dismissNotification}
       />
-      {connectionNotice === 'tag' && (
-        <div className="game-reconnecting-tag" role="status" aria-live="polite">
-          <Loader2 size={14} className="icon-spin" aria-hidden="true" />
-          Reconnecting…
-        </div>
-      )}
-      {connectionNotice === 'panel' && (
-        <div className="game-reconnecting-overlay" role="status" aria-live="polite">
-          <div className="game-reconnecting-card">
-            <Loader2 size={26} className="icon-spin" aria-hidden="true" />
-            <h2>Reconnecting…</h2>
-            <p>Your game will refresh when the connection returns.</p>
-          </div>
-        </div>
-      )}
+      <ReconnectNotice notice={connectionNotice} />
     </div>
   );
 }

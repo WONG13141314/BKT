@@ -21,7 +21,7 @@ import { toDeviceClock } from '../utils/serverClock';
  */
 const DUPLICATE_COMMAND_WINDOW_MS = 500;
 
-interface GameSocketEvents {
+export interface GameSocketEvents {
   onStateUpdate: (state: GameState) => void;
   onChallenge: (data: { challenge: MathChallenge; playerId: string }) => void;
   onChallengeStarted: (data: { playerId: string; context: string }) => void;

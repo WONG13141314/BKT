@@ -1,5 +1,7 @@
 import type { RealtimeServer as Server } from './realtime.types';
 import type { GameState } from '../features/game/game.types';
+import { getCurrentPlayer } from '../features/game/game.engine';
+import { getLevelUpCost, ownsFullColorGroup } from '../features/game/board.config';
 import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 
 export const PHASE_TIMEOUTS = {
@@ -64,4 +66,29 @@ export class PhaseTimerRegistry {
   clearAll(): void {
     for (const gameId of this.timers.keys()) this.clear(gameId);
   }
+}
+
+/** True when the active player could still build a house this End Turn. */
+export function canBuildOnEndTurn(state: GameState): boolean {
+  if (state.turnPhase !== 'END_TURN') return false;
+
+  const player = getCurrentPlayer(state);
+  return state.properties.some((property) => {
+    const tile = state.tiles[property.tileIndex];
+    if (
+      !tile ||
+      tile.type !== 'PROPERTY' ||
+      !tile.colorGroup ||
+      property.ownerId !== player.id ||
+      property.isLeveledUp ||
+      !ownsFullColorGroup(player.properties, tile.colorGroup)
+    ) return false;
+
+    return player.hasLevelUpToken || player.money >= getLevelUpCost(tile);
+  });
+}
+
+/** Identifies one occurrence of a turn phase, so disconnect grace is granted once. */
+export function disconnectGraceKey(state: GameState): string {
+  return [state.dbGameId, state.round, state.currentPlayerIndex, state.turnPhase, state.diceRollId].join('|');
 }

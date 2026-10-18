@@ -1,6 +1,6 @@
 # Refinement plan: smooth start, smooth network, cleaner code
 
-Status: **agreed with defaults on 2026-10-18.** Steps 1 and 2 (items 1–4d) done; work happens on the `optimization` branch.
+Status: **agreed with defaults on 2026-10-18.** All three steps done; work happens on the `optimization` branch.
 Date: 2026-10-18
 
 Each item says what the player sees today, why it happens, and the proposed fix.
@@ -160,6 +160,20 @@ large files**, so they are easier to change for 3D later:
 
 I'll also remove unused exports and leftover comments.
 
+*As built:*
+
+- The engine is now `features/game/engine/` (setup, players, turn, landing,
+  property, duel, cards, jail, scoring), and `game.engine.ts` re-exports the
+  same public functions.
+- The handlers runtime keeps the timers, bots and turn advancement (706
+  lines). Learner commands moved to `game.socket.handlers.ts`, result
+  messages to `game.emitters.ts`, and pure deadline helpers to
+  `phase.deadlines.ts`.
+- `GamePage.tsx` went from about 800 to 533 lines. The question and duel cards
+  are in `useQuestionCards`, seat recovery in `useGameSeatRecovery`, the status
+  screens and overlays in `GameStatusScreens.tsx`, and the board target in
+  `utils/boardPresentation.ts`.
+
 **Safety rule:** move code only. Don't change behaviour, keep every test
 passing after each step (404 backend + 78 frontend + 11 Cloudflare checks),
 and make it a separate commit from the fixes above.
@@ -174,7 +188,7 @@ All steps go on the existing `optimization` branch, then to `main`.
 |---|---|---|
 | 1 | 1, 2, 3: start pacing, no loading card, end-turn timer | Done |
 | 2 | 4a, 4b, 4c, 4d: network smoothness | Done |
-| 3 | 5: clean-up (split all three files) | Next |
+| 3 | 5: clean-up (split all three files) | Done |
 
 Each step is tested (unit tests, Cloudflare checks and a browser playtest)
 before it goes to `main`.
