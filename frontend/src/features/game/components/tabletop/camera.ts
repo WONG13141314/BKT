@@ -31,7 +31,7 @@ const WORLD_UP = new Vector3(0, 1, 0);
 
 // Elevations chosen for each moment: low and close while travelling, looking
 // down onto the landed space, and high enough to read the whole board.
-const ELEVATION = { overview: 0.98, dice: 1.08, follow: 0.6, landing: 0.8 };
+const ELEVATION = { overview: 0.98, dice: 0.95, follow: 0.66, landing: 0.82 };
 // The camera trails a little behind the moving piece, so the route ahead
 // recedes diagonally into the picture (a three-quarter tracking shot).
 const TRAIL = { follow: 0.34, landing: 0.12 };
@@ -76,12 +76,20 @@ const BOARD_EXTENT = BOARD_HALF + 0.2;
 const BOARD_POINTS = [-1, 1].flatMap((x) => [-1, 1].flatMap((z) => [0, 0.9].map((y) =>
   new Vector3(x * BOARD_EXTENT, y, z * BOARD_EXTENT))));
 
-/** The whole board, viewed square to one side. */
+// The tray in the centre where the dice land, with a little room around it.
+const TRAY_POINTS = [-1, 1].flatMap((x) => [-1, 1].flatMap((z) => [0, 0.6].map((y) =>
+  new Vector3(x * 2.8, y, z * 2.2))));
+
+/**
+ * The whole board viewed square to one side, or, while the dice roll, a closer
+ * look at the tray: the dice are the subject of that moment.
+ */
 export function overviewShot(azimuth: number, viewport: CameraViewport, mode: 'overview' | 'dice' = 'overview'): CameraShot {
   const elevation = ELEVATION[mode];
   const target = new Vector3(0, 0, 0);
-  const distance = fitDistance(BOARD_POINTS, target, shotDirection(azimuth, elevation), viewport);
-  return { target: [0, 0, 0], azimuth, elevation, distance: mode === 'dice' ? distance * 0.92 : distance };
+  const points = mode === 'dice' ? TRAY_POINTS : BOARD_POINTS;
+  const distance = fitDistance(points, target, shotDirection(azimuth, elevation), viewport, mode === 'dice' ? 1.15 : 1.04);
+  return { target: [0, 0, 0], azimuth, elevation, distance };
 }
 
 function tileCorners(index: number, y = 0): Vector3[] {
@@ -104,14 +112,14 @@ export function travelShot(
   mode: 'follow' | 'landing',
 ): CameraShot {
   const landing = mode === 'landing';
-  // Over the last three spaces the travelling shot becomes the landing shot,
+  // Over the last two spaces the travelling shot becomes the landing shot,
   // so the arrival is already framed when the piece touches down.
-  const approach = landing ? 0 : Math.min(1, ahead.length / 3);
+  const approach = landing ? 0 : Math.min(1, ahead.length / 2);
   const mix = (arrive: number, travel: number) => arrive + (travel - arrive) * approach;
   const azimuth = outwardAzimuth(anchor.x, anchor.z) + mix(TRAIL.landing, TRAIL.follow);
   const elevation = mix(ELEVATION.landing, ELEVATION.follow);
   const back = shotDirection(azimuth, elevation);
-  const piece = new Vector3(anchor.x, 0.5, anchor.z);
+  const piece = new Vector3(anchor.x, 0.4, anchor.z);
   const points = [piece, new Vector3(anchor.x, 0, anchor.z)];
   const aheadCentres = ahead.map((index) => {
     const tile = tilePlacement(index);
@@ -130,8 +138,8 @@ export function travelShot(
   const inward = new Vector3(-back.x, 0, -back.z).normalize().multiplyScalar(mix(0.35, 0.6));
   target.add(inward);
 
-  const fitted = fitDistance(points, target, back, viewport, mix(1.5, 1.25));
-  const [near, far] = [mix(6.5, 8.5), mix(17, 21)];
+  const fitted = fitDistance(points, target, back, viewport, mix(1.45, 1.12));
+  const [near, far] = [mix(5.5, 6.5), mix(11, 13)];
   return {
     target: [target.x, 0.15, target.z],
     azimuth,

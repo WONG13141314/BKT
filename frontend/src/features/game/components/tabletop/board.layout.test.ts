@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getGridPosition } from '../../config/board.presentation';
 import {
-  BOARD_HALF, CENTRE_SIZE, forwardSteps, nearestAngle, outwardAzimuth, spacesAhead, TILE_COUNT, tilePlacement, tokenSpot, travelYaw,
+  BOARD_HALF, CENTRE_SIZE, forwardSteps, nearestAngle, outwardAzimuth, spacesAhead, TILE_COUNT, pieceFacing, tilePlacement, tokenSpot,
 } from './board.layout';
 import { overviewShot, shotPosition, springStep, travelShot, type CameraViewport } from './camera';
 
@@ -47,19 +47,29 @@ describe('3D board layout', () => {
     expect(outwardAzimuth(tilePlacement(5).x, tilePlacement(5).z)).toBeCloseTo(-Math.PI / 4, 5);
   });
 
-  it('turns the route direction smoothly along the whole loop', () => {
-    let previous = travelYaw(tilePlacement(0).x, tilePlacement(0).z);
+  it('keeps a piece facing still along a side and turns only a quarter at corners', () => {
+    let yaw = pieceFacing(0);
+    for (let index = 1; index <= TILE_COUNT; index++) {
+      const next = nearestAngle(pieceFacing(index), yaw);
+      // Never a full spin: at most a quarter turn, and only onto a new side.
+      expect(Math.abs(next - yaw)).toBeCloseTo(index % 5 === 0 ? Math.PI / 2 : 0, 6);
+      yaw = next;
+    }
+    // Bottom-row pieces face towards -x (turned slightly outwards).
+    expect(Math.cos(pieceFacing(2))).toBeLessThan(-0.9);
+  });
+
+  it('turns the camera direction smoothly along the whole loop', () => {
+    let previous = outwardAzimuth(tilePlacement(0).x, tilePlacement(0).z);
     for (let index = 0; index < TILE_COUNT; index++) {
       const from = tilePlacement(index);
       const to = tilePlacement(index + 1);
       for (let t = 0; t <= 1; t += 0.05) {
-        const yaw = nearestAngle(travelYaw(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t), previous);
-        expect(Math.abs(yaw - previous)).toBeLessThan(0.35);
-        previous = yaw;
+        const azimuth = nearestAngle(outwardAzimuth(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t), previous);
+        expect(Math.abs(azimuth - previous)).toBeLessThan(0.35);
+        previous = azimuth;
       }
     }
-    // Bottom-row pieces travel towards -x.
-    expect(Math.cos(travelYaw(tilePlacement(2).x, tilePlacement(2).z))).toBeCloseTo(-1, 2);
   });
 
   it('counts forward spaces with wrapping', () => {

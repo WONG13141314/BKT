@@ -11,8 +11,8 @@ import { SceneReady } from '../BoardRendering';
 import { PhysicsDiceContent } from '../PhysicsDice';
 import { TOKEN_HOP_SECONDS } from '../board.animation';
 import {
-  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, forwardSteps, SURFACE_Y, TILE_COUNT, TILE_GAP,
-  tilePlacement, tokenSpot, travelYaw,
+  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
+  tilePlacement, tokenSpot,
 } from './board.layout';
 import { CameraRig, type TokenMotion } from './CameraRig';
 import { springStep, type CameraMode, type SafeInsets } from './camera';
@@ -47,9 +47,13 @@ export interface TabletopSceneProps {
 }
 
 const BOARD_THICKNESS = 0.24;
-const TOKEN_SCALE = 0.86;
-// Resting pieces turn a little towards the outside, so they show their profile.
-const REST_TURN = 0.3;
+// Sizes in proportion to a side space (2 wide): a piece about 0.6 long, so four
+// fit on one space with room between them, and a die about a third of a space,
+// as on a printed board.
+const TOKEN_SCALE = 0.56;
+export const DICE_SCALE = 0.6;
+const RING_RADIUS = 0.27;
+
 // How far the highlighted space rises out of the board.
 const LIFT = 0.16;
 const GOLD = '#ffbd19';
@@ -108,8 +112,10 @@ function TabletopWorld(props: TabletopSceneProps) {
       {props.stepTile && <StepFlash key={props.stepTile.id} index={props.stepTile.index} />}
       <CardDeck />
 
-      <group position={[0, SURFACE_Y + 0.042, 0]}>
+      {/* The physics floor sits 0.04 below the tray origin, scaled with the dice. */}
+      <group position={[0, SURFACE_Y + 0.04 * DICE_SCALE + 0.002, 0]}>
         <PhysicsDiceContent
+          visualScale={DICE_SCALE}
           values={props.dice.values}
           rollId={props.dice.rollId}
           animate={props.dice.animate}
@@ -411,7 +417,7 @@ const CardDeck = memo(function CardDeck() {
   const face = useMemo(() => makeCardBackTexture(), []);
   useEffect(() => () => face.dispose(), [face]);
   return (
-    <group position={[-2.55, SURFACE_Y, -2.75]} rotation-y={Math.PI / 4}>
+    <group position={[-2.6, SURFACE_Y, -2.6]} rotation-y={Math.PI / 4} scale={0.78}>
       {Array.from({ length: 7 }, (_, i) => (
         <RoundedBox key={i} args={[1.05, 0.03, 1.4]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
           <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
@@ -469,7 +475,7 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
       from: start.clone(), to: start.clone(), live: start.clone(),
       centreFrom: centre.clone(), centreTo: centre.clone(), centre: centre.clone(),
       start: -1, duration: 0, height: 0, lastHop: -Infinity,
-      yaw: travelYaw(centre.x, centre.z) + REST_TURN,
+      yaw: pieceFacing(player.position),
     };
   }
 
@@ -484,7 +490,7 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
       state.centreTo.copy(centreOf(player.position));
       state.fromIndex = state.index;
       state.duration = reducedMotion ? 0.12 : walk ? TOKEN_HOP_SECONDS : 0.55;
-      state.height = reducedMotion ? 0.05 : walk ? 0.7 : 2.1;
+      state.height = reducedMotion ? 0.04 : walk ? 0.45 : 1.6;
       state.start = performance.now();
       state.index = player.position;
     }
@@ -501,7 +507,7 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
         state.centreFrom.copy(state.centre);
         state.fromIndex = state.index;
         state.duration = 0.34;
-        state.height = 0.35;
+        state.height = 0.25;
         state.start = performance.now();
       }
     }
@@ -541,11 +547,11 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
         animating = true;
       }
     }
-    const travelling = state.start >= 0 || now - state.lastHop < 650;
-    const targetYaw = travelYaw(state.centre.x, state.centre.z) + (travelling ? 0 : REST_TURN);
-    state.yaw = MathUtils.lerp(state.yaw, targetYaw, 1 - Math.exp(-delta * (travelling ? 16 : 5)));
+    // Turn only when the facing changes (at a corner), the short way round.
+    const targetYaw = nearestAngle(pieceFacing(state.index), state.yaw);
+    state.yaw = MathUtils.lerp(state.yaw, targetYaw, 1 - Math.exp(-delta * 14));
     if (Math.abs(state.yaw - targetYaw) > 1e-3) animating = true;
-    else if (!travelling && now - state.lastHop < 700) animating = true;
+    else state.yaw = targetYaw;
     // Ride the lifted space, blending across a hop between spaces.
     const base = MathUtils.lerp(lifts[state.fromIndex] ?? 0, lifts[state.index] ?? 0, liftBlend);
 
@@ -564,8 +570,8 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
 
   return (
     <group ref={group}>
-      <mesh ref={ring} rotation-x={-Math.PI / 2} position={[0, 0.014, 0]}>
-        <torusGeometry args={[0.36, 0.032, 10, 40]} />
+      <mesh ref={ring} rotation-x={-Math.PI / 2} position={[0, 0.01, 0]}>
+        <torusGeometry args={[RING_RADIUS, 0.022, 10, 40]} />
         <meshStandardMaterial color={player.color} emissive={player.color} emissiveIntensity={active ? 0.9 : 0.15} roughness={0.4} />
       </mesh>
       <group ref={body}>

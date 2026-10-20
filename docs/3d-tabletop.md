@@ -28,18 +28,38 @@ The camera uses three ideas, and no one ever controls it:
   can without overshooting. Velocity carries over when the goal changes, so
   moving from one moment to the next never jerks.
 - **Destination-aware framing.** While a piece travels, the shot keeps it and
-  the next spaces in view, with room ahead of it and a three-quarter angle
-  trailing behind. Over the last three spaces it blends into the landing shot,
+  the next two spaces in view, with room ahead of it and a three-quarter angle
+  trailing behind. Over the last two spaces it blends into the landing shot,
   so the camera is already framed when the piece touches down.
+- **Predictive tracking.** A spring chasing a moving point trails it by
+  2 × speed ÷ stiffness. The camera aims that far ahead along the piece's
+  smoothed velocity, so the piece stays where the framing puts it.
 
 The moments: the overview while a player decides (square to their side), the
-dice (higher, over the centre), following the move ("Tolak Towers · 2 of 6"),
+dice (a closer look at the tray in the centre), following the move ("Tolak Towers · 2 of 6"),
 and the landing ("Landed on Tolak Drive"). The landing view holds through the
 decision and for 1.4 s into End Turn, then eases back to the overview.
 
 Bots, autopilot seats and other players get the same camera.
 With reduced motion, the camera stays on the overview and pieces barely hop. If
 WebGL is missing or lost, the 2D board is used instead.
+
+## Sizes
+
+Everything is sized against a side space, which is 2 units wide and 2.2 deep:
+
+| Item | Size | Relative to a space |
+| --- | --- | --- |
+| Board | 12.4 square, 0.24 thick | Open centre is 65% of the board |
+| Piece | About 0.6 long | About 30% of the width; four fit on one space |
+| Die | 0.66 edge | About a third of the width, as on a printed board |
+| Challenge deck | 0.8 × 1.1 | |
+
+The dice are simulated at full size so the planned throws land on the right
+faces, then drawn at 0.6 scale.
+
+Pieces face along their side of the route and never spin. They make a single
+quarter turn when they reach a corner.
 
 ## Tokens
 

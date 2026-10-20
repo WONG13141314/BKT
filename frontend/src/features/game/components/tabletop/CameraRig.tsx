@@ -34,8 +34,8 @@ interface Props {
 
 // Spring stiffness per moment (higher settles faster). Travel is tight so the
 // piece stays put on screen; handovers to the overview are slow and calm.
-const STIFFNESS: Record<CameraMode, number> = { follow: 7.5, landing: 6.5, dice: 3.2, overview: 2.7 };
-const AHEAD = 3;
+const STIFFNESS: Record<CameraMode, number> = { follow: 7.5, landing: 8.5, dice: 4, overview: 2.7 };
+const AHEAD = 2;
 
 function toArray(shot: CameraShot): number[] {
   return [...shot.target, shot.azimuth, shot.elevation, shot.distance];
@@ -58,6 +58,8 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
   const velocities = useRef<number[]>([0, 0, 0, 0, 0, 0]);
   const position = useRef(new Vector3());
   const look = useRef(new Vector3());
+  // The followed piece's smoothed velocity, for predictive tracking.
+  const tracked = useRef({ x: 0, z: 0, vx: 0, vz: 0, id: '' as string | undefined });
   const viewport = useRef<CameraViewport>({ width: size.width, height: size.height, fov: camera.fov, insets });
   viewport.current = { width: size.width, height: size.height, fov: camera.fov, insets };
 
@@ -77,11 +79,34 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
     const index = focus?.index ?? restingIndex;
     const current = values.current;
 
+    // A spring chasing a moving point trails it by 2v/stiffness. Aiming that far
+    // ahead along the piece's (smoothed) velocity cancels the lag, so the piece
+    // stays where the framing puts it instead of drifting to the frame's edge.
+    const track = tracked.current;
+    const dt = Math.min(Math.max(delta, 1e-3), 0.1);
+    if (focus && track.id === focusId) {
+      const blend = 1 - Math.exp(-dt / 0.25);
+      track.vx += ((focus.cx - track.x) / dt - track.vx) * blend;
+      track.vz += ((focus.cz - track.z) / dt - track.vz) * blend;
+    } else {
+      track.vx = 0;
+      track.vz = 0;
+    }
+    track.id = focusId;
+    if (focus) {
+      track.x = focus.cx;
+      track.z = focus.cz;
+    }
+
     let shot: CameraShot;
     if ((mode === 'follow' || mode === 'landing') && focus) {
-      // Spaces still to walk (up to three); none once the final hop has begun.
+      // Spaces still to walk (up to two); none once the final hop has begun.
       const ahead = mode === 'follow' && destination !== null ? spacesAhead(index, destination, AHEAD) : [];
+      const lead = mode === 'follow' ? 2 / STIFFNESS.follow : 0;
+      const leadX = Math.max(-2.5, Math.min(2.5, track.vx * lead));
+      const leadZ = Math.max(-2.5, Math.min(2.5, track.vz * lead));
       shot = travelShot({ x: focus.cx, z: focus.cz }, ahead, destination, viewport.current, mode);
+      shot.target = [shot.target[0] + leadX, shot.target[1], shot.target[2] + leadZ];
     } else {
       // Square to the side the piece is on, or about to walk along from a corner.
       shot = overviewShot(sideAzimuth(Math.floor(index / 5)), viewport.current, mode === 'dice' ? 'dice' : 'overview');
@@ -96,7 +121,6 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
       velocities.current = [0, 0, 0, 0, 0, 0];
     } else {
       // A long frame (a background tab) is clamped, so the camera never leaps.
-      const dt = Math.min(delta, 0.1);
       const stiffness = STIFFNESS[mode];
       for (let i = 0; i < goal.length; i++) {
         const [value, velocity] = springStep(current[i], velocities.current[i], goal[i], stiffness, dt);

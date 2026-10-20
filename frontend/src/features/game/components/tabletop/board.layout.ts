@@ -113,13 +113,15 @@ export function outwardAzimuth(x: number, z: number): number {
   return Math.atan2(gx, gz);
 }
 
-/** Model yaw that faces a piece (built facing +x) along the route at a point. */
-export function travelYaw(x: number, z: number): number {
-  const azimuth = outwardAzimuth(x, z);
-  // Clockwise travel is the outward direction turned a quarter.
-  const tx = -Math.cos(azimuth);
-  const tz = Math.sin(azimuth);
-  return Math.atan2(-tz, tx);
+/**
+ * A piece's facing on a space (models are built facing +x): along its side of
+ * the route, a corner counting as the start of the next side, turned a little
+ * outwards to show its profile. It is fixed per side, so pieces never turn
+ * except a quarter turn at a corner.
+ */
+export const OUTWARD_TURN = 0.25;
+export function pieceFacing(index: number): number {
+  return Math.PI - Math.floor(wrapTile(index) / 5) * Math.PI / 2 + OUTWARD_TURN;
 }
 
 /** The outward azimuth of a whole side, for views square to it. */

@@ -1,5 +1,5 @@
 import { RoundedBox } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, createPortal, useFrame, useThree } from '@react-three/fiber';
 import {
   CuboidCollider,
   Physics,
@@ -8,7 +8,7 @@ import {
   useAfterPhysicsStep,
 } from '@react-three/rapier';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Quaternion, Vector3 } from 'three';
+import { Group, Quaternion, Scene, Vector3 } from 'three';
 import { DICE_ROLL_LIMIT_MS, DICE_SETTLE_HOLD_MS } from './board.animation';
 import { SceneReady } from './BoardRendering';
 import { buildThrowPlan, PlannedDie, restingRotation, ThrowPlan } from './dice.throw';
@@ -48,6 +48,11 @@ interface Props {
   onRollingChange?: (rolling: boolean) => void;
   /** Called once the physics world has loaded and the dice are drawn. */
   onReady?: () => void;
+  /**
+   * Draw the dice at this size while simulating them at full size. The throws
+   * are planned for full-size physics, so the world is never scaled itself.
+   */
+  visualScale?: number;
 }
 
 export function PhysicsDice(props: Props) {
@@ -84,7 +89,7 @@ export function PhysicsDice(props: Props) {
  * The dice world without a canvas, so a larger scene (the 3D board) can host
  * it. The canvas renders continuously only while a throw is in flight.
  */
-export function PhysicsDiceContent({ values, rollId, animate = true, onRollingChange, onReady }: Props) {
+export function PhysicsDiceContent({ values, rollId, animate = true, onRollingChange, onReady, visualScale }: Props) {
   const [firstValue, secondValue] = values;
   const activeValues = useMemo(
     () => [firstValue, secondValue].filter((value) => value >= 1 && value <= 6),
@@ -156,18 +161,69 @@ export function PhysicsDiceContent({ values, rollId, animate = true, onRollingCh
   }), [activeValues, rollId]);
 
   const visiblePlan = rollId === 0 || restingRollId === rollId ? staticPlan : plan;
+  const physicsScene = useMemo(() => new Scene(), []);
+  const bodies = useRef<(RapierRigidBody | null)[]>([]);
+  const register = useCallback((index: number, body: RapierRigidBody | null) => { bodies.current[index] = body; }, []);
+
+  const world = (
+    <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
+      <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} register={visualScale ? register : undefined} />
+    </Physics>
+  );
 
   return (
     <>
-      <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
-        <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} />
-      </Physics>
+      {visualScale ? (
+        <>
+          {/* Full-size physics in an unrendered scene; scaled copies are drawn. */}
+          {createPortal(world, physicsScene)}
+          <DiceMirror plan={visiblePlan} bodies={bodies} scale={visualScale} />
+        </>
+      ) : world}
       <SceneReady onReady={onReady} />
     </>
   );
 }
 
-function DiceWorld({ plan, onSettled, onAwake }: { plan: ThrowPlan; onSettled: (index: number) => void; onAwake: (index: number) => void }) {
+/** Draws each die where its full-size body is, scaled about the tray's centre. */
+function DiceMirror({ plan, bodies, scale }: { plan: ThrowPlan; bodies: { current: (RapierRigidBody | null)[] }; scale: number }) {
+  const groups = useRef<(Group | null)[]>([]);
+  const invalidate = useThree((state) => state.invalidate);
+  const quaternions = useMemo(() => plan.dice.map((die) => new Quaternion(...die.modelRotation)), [plan]);
+  useEffect(() => { invalidate(); }, [plan, invalidate]);
+  useFrame(() => {
+    plan.dice.forEach((_, index) => {
+      const body = bodies.current[index];
+      const group = groups.current[index];
+      if (!body || !group) return;
+      const position = body.translation();
+      const rotation = body.rotation();
+      group.position.set(position.x * scale, position.y * scale, position.z * scale);
+      group.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    });
+  });
+  return (
+    <>
+      {plan.dice.map((die, index) => (
+        <group
+          key={`${plan.id}-${plan.seed}-${index}`}
+          ref={(group) => { groups.current[index] = group; }}
+          position={[die.position[0] * scale, die.position[1] * scale, die.position[2] * scale]}
+          scale={scale}
+        >
+          <DieModel modelQuaternion={quaternions[index]} />
+        </group>
+      ))}
+    </>
+  );
+}
+
+function DiceWorld({ plan, onSettled, onAwake, register }: {
+  plan: ThrowPlan;
+  onSettled: (index: number) => void;
+  onAwake: (index: number) => void;
+  register?: (index: number, body: RapierRigidBody | null) => void;
+}) {
   return (
     <>
       <RigidBody type="fixed" colliders={false}>
@@ -182,14 +238,24 @@ function DiceWorld({ plan, onSettled, onAwake }: { plan: ThrowPlan; onSettled: (
         <shadowMaterial transparent opacity={.08} />
       </mesh>
       {plan.dice.map((die, index) => (
-        <PhysicsDie key={`${plan.id}-${plan.seed}-${index}`} index={index} die={die} onSettled={onSettled} onAwake={onAwake} />
+        <PhysicsDie key={`${plan.id}-${plan.seed}-${index}`} index={index} die={die} onSettled={onSettled} onAwake={onAwake} register={register} />
       ))}
     </>
   );
 }
 
-function PhysicsDie({ index, die, onSettled, onAwake }: { index: number; die: PlannedDie; onSettled: (index: number) => void; onAwake: (index: number) => void }) {
+function PhysicsDie({ index, die, onSettled, onAwake, register }: {
+  index: number;
+  die: PlannedDie;
+  onSettled: (index: number) => void;
+  onAwake: (index: number) => void;
+  register?: (index: number, body: RapierRigidBody | null) => void;
+}) {
   const body = useRef<RapierRigidBody>(null);
+  useEffect(() => {
+    register?.(index, body.current);
+    return () => register?.(index, null);
+  }, [index, register]);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reported = useRef(false);
   const modelQuaternion = useMemo(

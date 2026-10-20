@@ -34,7 +34,8 @@ function canvas(width: number, height: number) {
 function finish(element: HTMLCanvasElement) {
   const texture = new CanvasTexture(element);
   texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 8;
+  // The renderer clamps this to what the device supports; crisp print at low angles.
+  texture.anisotropy = 16;
   return texture;
 }
 
