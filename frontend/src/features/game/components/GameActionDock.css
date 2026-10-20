@@ -1,10 +1,30 @@
+/* The actions for this moment, floating at the bottom of the table. */
 .game-action-dock {
-  display: grid;
-  gap: 0.5rem;
-  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255, 253, 247, 0.96);
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.38);
+  animation: dock-in 0.2s ease-out;
 }
 
+.game-action-dock .action-btn {
+  min-height: 46px;
+  padding: 0.6rem 1.1rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.game-action-dock .action-btn--primary { min-width: 180px; font-size: 1rem; }
+
 .game-action-dock__label {
+  flex-basis: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -16,51 +36,58 @@
 }
 
 /* Countdown to the server's default action for an unanswered decision. */
-/* A small Monopoly-style tag: readable on the dark board and the light mobile dock. */
 .game-action-dock__deadline {
-  justify-self: center;
-  padding: 0.2rem 0.6rem;
-  border: 2px solid #000;
-  border-radius: 4px;
-  background: #fff;
-  color: var(--ink);
-  box-shadow: 2px 2px 0 #000;
-  font-size: 0.8rem;
+  flex-basis: 100%;
+  text-align: center;
+  color: #4a524d;
+  font-size: 0.74rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .game-action-dock__deadline--urgent {
-  background: #ffe3e3;
   color: #c1121f;
 }
 
-@media (max-width: 900px) {
+@keyframes dock-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1099px) {
   .game-action-dock {
-    position: fixed;
-    z-index: var(--z-sticky);
-    left: 0;
-    right: 0;
-    bottom: 0;
+    width: 100%;
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-    padding: 0.65rem 0.75rem var(--safe-bottom);
-    background: rgba(244, 247, 245, 0.97);
-    border-top: 3px solid var(--ink);
-    box-shadow: 0 -5px 0 rgba(0, 0, 0, 0.2);
+    padding: 0.6rem 0.75rem var(--safe-bottom);
+    border-width: 2px 0 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 0 rgba(0, 0, 0, 0.2);
   }
 
   .game-action-dock__label,
   .game-action-dock__deadline { grid-column: 1 / -1; }
   .game-action-dock .action-btn { min-height: 48px; padding: 0.55rem 0.7rem; }
+  .game-action-dock .action-btn--primary { min-width: 0; }
 }
 
 @media (max-width: 620px) {
   .game-action-dock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .game-action-dock > :only-child,
   .game-action-dock > button:only-of-type { grid-column: 1 / -1; }
-  .game-action-dock .action-btn { font-size: 0.78rem; }
+  .game-action-dock .action-btn { font-size: 0.8rem; }
 }
 
-@media (max-height: 420px) and (orientation: landscape) {
-  .game-action-dock { left: auto; width: min(48vw, 420px); padding: 0.4rem; }
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-action-dock {
+    display: flex;
+    padding: 0.45rem;
+    border-width: 2px;
+    border-radius: 14px;
+  }
+  .game-action-dock .action-btn { min-height: 40px; flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-action-dock { animation: none; }
 }

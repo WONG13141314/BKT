@@ -1,5 +1,5 @@
 import { RoundedBox } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import {
   CuboidCollider,
   Physics,
@@ -50,7 +50,41 @@ interface Props {
   onReady?: () => void;
 }
 
-export function PhysicsDice({ values, rollId, animate = true, onRollingChange, onReady }: Props) {
+export function PhysicsDice(props: Props) {
+  const activeValues = props.values.filter((value) => value >= 1 && value <= 6);
+  return (
+    <div className="physics-dice" aria-label={`Dice showing ${activeValues.join(' and ')}`}>
+      <Canvas
+        shadows="percentage"
+        frameloop="demand"
+        dpr={[1, 1.5]}
+        style={{ pointerEvents: 'none' }}
+        camera={{ position: [0, 6.2, 7.7], fov: 29, near: .1, far: 50 }}
+        gl={{ antialias: true, alpha: true }}
+        onCreated={({ camera }) => camera.lookAt(0, .55, 0)}
+      >
+        <Suspense fallback={null}>
+          <ambientLight intensity={1.12} />
+          <directionalLight
+            castShadow
+            position={[-4, 8, 5]}
+            intensity={2.45}
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+          />
+          <pointLight position={[4, 4, 4]} intensity={18} distance={12} color="#fff3d3" />
+          <PhysicsDiceContent {...props} />
+        </Suspense>
+      </Canvas>
+    </div>
+  );
+}
+
+/**
+ * The dice world without a canvas, so a larger scene (the 3D board) can host
+ * it. The canvas renders continuously only while a throw is in flight.
+ */
+export function PhysicsDiceContent({ values, rollId, animate = true, onRollingChange, onReady }: Props) {
   const [firstValue, secondValue] = values;
   const activeValues = useMemo(
     () => [firstValue, secondValue].filter((value) => value >= 1 && value <= 6),
@@ -64,6 +98,7 @@ export function PhysicsDice({ values, rollId, animate = true, onRollingChange, o
   activeRollRef.current = rollId;
   rollingCallback.current = onRollingChange;
   const settled = useRef(new Set<number>());
+  const setFrameloop = useThree((state) => state.setFrameloop);
   const seed = useMemo(
     () => ((rollId * 1_103_515_245) ^ (firstValue * 12_345) ^ (secondValue * 2_654_435_761)) >>> 0,
     // A server roll always produces the same visual plan after a React re-render.
@@ -72,6 +107,10 @@ export function PhysicsDice({ values, rollId, animate = true, onRollingChange, o
 
   const plan = useMemo(() => buildThrowPlan(rollId, seed, activeValues), [rollId, seed, activeValues]);
   const rolling = animate && rollId > 0 && completedRollId !== rollId;
+
+  useEffect(() => {
+    setFrameloop(rolling ? 'always' : 'demand');
+  }, [rolling, setFrameloop]);
 
   const finishRoll = useCallback((forceRest: boolean) => {
     if (activeRollRef.current !== rollId || completedRollRef.current === rollId) return;
@@ -119,33 +158,12 @@ export function PhysicsDice({ values, rollId, animate = true, onRollingChange, o
   const visiblePlan = rollId === 0 || restingRollId === rollId ? staticPlan : plan;
 
   return (
-    <div className="physics-dice" aria-label={`Dice showing ${activeValues.join(' and ')}`}>
-      <Canvas
-        shadows="percentage"
-        frameloop={rolling ? 'always' : 'demand'}
-        dpr={[1, 1.5]}
-        style={{ pointerEvents: 'none' }}
-        camera={{ position: [0, 6.2, 7.7], fov: 29, near: .1, far: 50 }}
-        gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, .55, 0)}
-      >
-        <Suspense fallback={null}>
-          <ambientLight intensity={1.12} />
-          <directionalLight
-            castShadow
-            position={[-4, 8, 5]}
-            intensity={2.45}
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
-          />
-          <pointLight position={[4, 4, 4]} intensity={18} distance={12} color="#fff3d3" />
-          <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
-            <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} />
-          </Physics>
-          <SceneReady onReady={onReady} />
-        </Suspense>
-      </Canvas>
-    </div>
+    <>
+      <Physics key={`${rollId}-${restingRollId === rollId}`} paused={!rolling} gravity={[0, -18, 0]} timeStep={1 / 60}>
+        <DiceWorld plan={visiblePlan} onSettled={markSettled} onAwake={markAwake} />
+      </Physics>
+      <SceneReady onReady={onReady} />
+    </>
   );
 }
 

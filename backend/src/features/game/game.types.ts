@@ -4,6 +4,7 @@
 // ============================================
 
 import { SKILL_NAMES, type SkillName } from './game.constants';
+import type { PlayerToken } from './game.tokens';
 
 // Re-export for convenience
 export { SKILL_NAMES, type SkillName };
@@ -61,7 +62,7 @@ export interface PlayerState {
   position: number;             // Tile index (0–19)
   money: number;                // In RM
   color: string;                // CSS color
-  tokenType: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
+  tokenType: PlayerToken;
   properties: number[];         // Tile indices owned
   isInJail: boolean;
   jailTurns: number;            // 0–2

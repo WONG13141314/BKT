@@ -7,9 +7,9 @@ export const AVATARS = [
   'dog',
   'ship',
   'boot',
-  'thimble',
+  'cat',
+  'duck',
   'wheelbarrow',
-  'iron',
 ] as const;
 
 export type Avatar = (typeof AVATARS)[number];

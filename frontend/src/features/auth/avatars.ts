@@ -6,9 +6,9 @@ export const AVATARS = [
   'dog',
   'ship',
   'boot',
-  'thimble',
+  'cat',
+  'duck',
   'wheelbarrow',
-  'iron',
 ] as const;
 
 export type Avatar = (typeof AVATARS)[number];
@@ -19,9 +19,9 @@ const LABELS: Record<Avatar, string> = {
   dog: 'Scottie Dog',
   ship: 'Battleship',
   boot: 'Boot',
-  thimble: 'Thimble',
+  cat: 'Cat',
+  duck: 'Rubber Duck',
   wheelbarrow: 'Wheelbarrow',
-  iron: 'Iron',
 };
 
 const TOKENS: Record<Avatar, string> = {
@@ -30,12 +30,12 @@ const TOKENS: Record<Avatar, string> = {
   dog: '🐕',
   ship: '🚢',
   boot: '👢',
-  thimble: '🧵',
+  cat: '🐈',
+  duck: '🦆',
   wheelbarrow: '🛒',
-  iron: '🧿',
 };
 
-function isAvatar(value: string): value is Avatar {
+export function isAvatar(value: string): value is Avatar {
   return (AVATARS as readonly string[]).includes(value);
 }
 

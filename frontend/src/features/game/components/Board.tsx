@@ -3,11 +3,20 @@ import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
 import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
 import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWebGL2 } from './BoardRendering';
-import { loadBoardPiecesScene, loadPhysicsDice } from './board.preload';
+import { loadTabletopScene } from './board.preload';
+import type { CameraMode } from './tabletop/camera';
+import { useHudInsets, usePrefersReducedMotion } from './tabletop/useViewportPreferences';
 import './Board.css';
 
-const BoardPiecesScene = lazy(() => loadBoardPiecesScene().then((module) => ({ default: module.BoardPiecesScene })));
-const PhysicsDice = lazy(() => loadPhysicsDice().then((module) => ({ default: module.PhysicsDice })));
+const TabletopScene = lazy(() => loadTabletopScene().then((module) => ({ default: module.TabletopScene })));
+
+// Phases in which the landed space is the subject: the camera holds its arrival view.
+const LANDING_PHASES = new Set([
+  'MOVING', 'RESOLVE_TILE', 'BUY_DECISION', 'SMART_BUY_CHALLENGE', 'MATH_DUEL',
+  'CARD_DRAW', 'CARD_MATH_CHALLENGE', 'JAIL_DECISION', 'JAIL_CHALLENGE',
+]);
+// After arriving, keep the close view this long into END_TURN before easing back out.
+const END_TURN_LANDING_HOLD_MS = 1400;
 
 interface Props {
   gameState: GameState;
@@ -57,6 +66,13 @@ export function Board({
   const visualPositionsRef = useRef(visualPositions);
   const wasMoving = useRef(false);
   const [settledRollId, setSettledRollId] = useState(0);
+  const [moving, setMoving] = useState(false);
+  // The roller's walk, for the "Tolak Towers · 2 of 6" label and step flashes.
+  const [walk, setWalk] = useState<{ step: number; total: number; tile: number; id: number } | null>(null);
+  const walkRef = useRef(walk);
+  const [arrivalHeld, setArrivalHeld] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const insets = useHudInsets();
   const completedMovementRoll = useRef<number | null>(null);
   const diceStatus = useRef({ rollId: 0, rolling: false });
   const activeRollId = useRef(gameState.diceRollId);
@@ -126,6 +142,9 @@ export function Board({
       }
       if (wasMoving.current) callbacks.current.onMovementChange?.(false);
       wasMoving.current = false;
+      setMoving(false);
+      walkRef.current = null;
+      setWalk(null);
       return;
     }
 
@@ -139,6 +158,8 @@ export function Board({
       jailIndex >= 0 && target === jailIndex && jailed.has(id) && visualPositionsRef.current[id] !== target;
 
     const step = () => {
+      // Each new walk counts its steps from one.
+      if (!wasMoving.current) walkRef.current = null;
       const current = visualPositionsRef.current;
       let changed = false;
       const next = { ...current };
@@ -155,6 +176,16 @@ export function Board({
         const isWalkingMove = forward <= 12 && !isJailTransfer(id, target);
         next[id] = isWalkingMove ? (position + 1) % gameState.tiles.length : target;
         if (isWalkingMove) callbacks.current.onMovementStep?.(next[id], id);
+        if (id === rollerId) {
+          const previous = walkRef.current;
+          walkRef.current = {
+            step: isWalkingMove ? (previous?.step ?? 0) + 1 : 0,
+            total: isWalkingMove ? previous?.total || forward : 0,
+            tile: next[id],
+            id: (previous?.id ?? 0) + 1,
+          };
+          setWalk(walkRef.current);
+        }
         changed = true;
       }
 
@@ -163,6 +194,8 @@ export function Board({
         setVisualPositions(next);
         if (!wasMoving.current) {
           wasMoving.current = true;
+          setMoving(true);
+          setArrivalHeld(false);
           callbacks.current.onMovementChange?.(true);
         }
         // Wait beyond the final 220 ms token hop before acknowledging arrival.
@@ -170,7 +203,11 @@ export function Board({
       } else {
         const didMove = wasMoving.current;
         wasMoving.current = false;
-        if (didMove) callbacks.current.onMovementChange?.(false);
+        if (didMove) {
+          setMoving(false);
+          setArrivalHeld(true);
+          callbacks.current.onMovementChange?.(false);
+        }
         if (isMovementPhase && completedMovementRoll.current !== rollId) {
           completedMovementRoll.current = rollId;
           callbacks.current.onMovementComplete?.();
@@ -187,16 +224,50 @@ export function Board({
     return () => clearTimeout(timer);
   }, [diceAnimating, gameState.diceRollId, gameState.tiles.length, gameState.turnPhase, jailIndex, jailedPlayerIds, rollerId, targetPositions]);
 
+  // The arrival view stays until the turn moves on, or briefly into END_TURN.
+  const turnPhase = gameState.turnPhase;
+  useEffect(() => {
+    setArrivalHeld(false);
+    walkRef.current = null;
+    setWalk(null);
+  }, [rollerId]);
+  useEffect(() => {
+    if (turnPhase === 'ROLL_PHASE') setArrivalHeld(false);
+    if (turnPhase !== 'END_TURN') return;
+    const timer = setTimeout(() => setArrivalHeld(false), END_TURN_LANDING_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [turnPhase]);
+
+  const cameraMode: CameraMode = reducedMotion ? 'overview'
+    : diceAnimating ? 'dice'
+      : moving ? 'follow'
+        : arrivalHeld || LANDING_PHASES.has(turnPhase) ? 'landing'
+          : 'overview';
+
   const visualPlayers = useMemo(() => players.map((player) => ({
     ...player,
     position: visualPositions[player.id] ?? player.position,
   })), [players, visualPositions]);
+  const roller = visualPlayers[gameState.currentPlayerIndex];
   const centerStatus = gameState.turnPhase === 'MOVING' ? 'Moving…' : 'Game in progress';
   const basicDice = <BasicDice values={gameState.diceValues} rolling={diceAnimating} />;
   const basicTokens = <BasicBoardTokens players={visualPlayers} />;
+  const routeLabel = moving && walk && walk.total > 0
+    ? `${gameState.tiles[walk.tile]?.name ?? ''} · ${walk.step} of ${walk.total}`
+    : !moving && cameraMode === 'landing' && roller
+      ? `${roller.isInJail ? 'In' : 'Landed on'} ${gameState.tiles[roller.position]?.name ?? ''}`
+      : null;
+  const stepTile = useMemo(() => walk && walk.step > 0 ? { index: walk.tile, id: walk.id } : null, [walk]);
+  const dice = useMemo(() => ({
+    values: gameState.diceValues,
+    rollId: gameState.diceRollId,
+    animate: diceAnimating,
+    onRollingChange: handleDiceRollingChange,
+    onReady: handleDiceSceneReady,
+  }), [diceAnimating, gameState.diceRollId, gameState.diceValues, handleDiceRollingChange, handleDiceSceneReady]);
 
-  return (
-    <div className={`board-grid${scenesVisible ? '' : ' board-grid--scenes-pending'}`} ref={boardElement}>
+  const basicBoard = (
+    <div className="board-grid">
       {gameState.tiles.map((tile) => {
         const position = getGridPosition(tile.index);
         const groupColor = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] : null;
@@ -239,23 +310,54 @@ export function Board({
 
       <div className="board-center">
         <div className="board-brand"><strong>MATHOPOLY</strong><span>ROLL • SOLVE • OWN</span></div>
-        {canRender3D ? <BoardSceneBoundary fallback={basicDice}>
-          <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS} placeholder={<div className="physics-dice" aria-hidden="true" />}>{basicDice}</DelayedFallback>}>
-            <PhysicsDice
-              values={gameState.diceValues}
-              rollId={gameState.diceRollId}
-              animate={diceAnimating}
-              onRollingChange={handleDiceRollingChange}
-              onReady={handleDiceSceneReady}
-            />
-          </Suspense>
-        </BoardSceneBoundary> : basicDice}
+        {basicDice}
         <div className="dice-roll-btn" aria-live="polite">{centerStatus}</div>
       </div>
+      {basicTokens}
+    </div>
+  );
 
-      {canRender3D ? <BoardSceneBoundary fallback={basicTokens}>
-        <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicTokens}</DelayedFallback>}><BoardPiecesScene players={visualPlayers} onReady={handleTokenSceneReady} /></Suspense>
-      </BoardSceneBoundary> : basicTokens}
+  return (
+    <div
+      className={`board-stage${canRender3D ? ' board-stage--3d' : ' board-stage--basic'}${scenesVisible ? '' : ' board-stage--scenes-pending'}`}
+      ref={boardElement}
+    >
+      {canRender3D ? (
+        <BoardSceneBoundary fallback={basicBoard}>
+          <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicBoard}</DelayedFallback>}>
+            <TabletopScene
+              players={visualPlayers}
+              tiles={gameState.tiles}
+              properties={properties}
+              currentPlayerIndex={gameState.currentPlayerIndex}
+              selectedTile={selectedTile}
+              stepTile={stepTile}
+              dice={dice}
+              cameraMode={cameraMode}
+              insets={insets}
+              reducedMotion={reducedMotion}
+              onTileSelect={onTileSelect}
+              onReady={handleTokenSceneReady}
+            />
+          </Suspense>
+          {/* Keyboard and screen-reader access to every space; the 3D board itself is pointer-only. */}
+          <nav className="board-space-list" aria-label="Board spaces">
+            {gameState.tiles.map((tile) => (
+              <button key={tile.index} type="button" onClick={() => onTileSelect(tile.index)} aria-pressed={selectedTile === tile.index}>
+                View {tile.name}
+              </button>
+            ))}
+          </nav>
+          <span className="sr-only" aria-live="polite">
+            {diceAnimating ? 'Rolling the dice' : `Dice showing ${gameState.diceValues.join(' and ')}`}
+          </span>
+        </BoardSceneBoundary>
+      ) : basicBoard}
+      {routeLabel && canRender3D && (
+        <div className={`board-route-label${moving ? '' : ' board-route-label--landed'}`} aria-live="polite">
+          {routeLabel}
+        </div>
+      )}
     </div>
   );
 }

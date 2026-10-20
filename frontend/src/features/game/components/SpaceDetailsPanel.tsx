@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { GameState, formatRM } from '../types/game.types';
 import { COLOR_GROUP_PRESENTATION } from '../config/board.presentation';
 import { purchaseQuote } from '../utils/purchasePrice';
@@ -19,9 +20,11 @@ interface Props {
   tileIndex: number;
   landed: boolean;
   children?: ReactNode;
+  /** Shown as a close button when the learner opened this space themselves. */
+  onClose?: () => void;
 }
 
-export function SpaceDetailsPanel({ gameState, tileIndex, landed, children }: Props) {
+export function SpaceDetailsPanel({ gameState, tileIndex, landed, children, onClose }: Props) {
   const tile = gameState.tiles[tileIndex] ?? gameState.tiles[0];
   if (!tile) return null;
   const property = gameState.properties.find((item) => item.tileIndex === tile.index);
@@ -36,7 +39,14 @@ export function SpaceDetailsPanel({ gameState, tileIndex, landed, children }: Pr
 
   return (
     <aside className={`space-details ${isProperty ? 'space-details--property' : 'space-details--event'}`}>
-      <div className="space-details__ribbon">{landed ? 'LANDED HERE' : 'SPACE DETAILS'}</div>
+      <div className="space-details__ribbon">
+        {landed ? 'LANDED HERE' : 'SPACE DETAILS'}
+        {onClose && (
+          <button type="button" className="space-details__close" onClick={onClose} aria-label="Close space details">
+            <X size={14} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       <header className="space-details__header" style={{ '--deed-color': groupColor ?? '#e0aaff' } as React.CSSProperties}>
         <small>{isProperty ? 'TITLE DEED' : tile.type.replace(/_/g, ' ')}</small>
         <h2>{tile.name}</h2>

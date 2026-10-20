@@ -155,7 +155,7 @@ test.describe('Cloudflare game transport', () => {
       await expect(page.getByRole('button', { name: 'Start Game' })).toBeEnabled();
       await page.getByRole('button', { name: 'Start Game' }).click();
       await expect(page.getByRole('button', { name: 'Roll Dice', exact: true })).toBeVisible();
-      await expect(page.locator('.panel-player__bot-tag')).toHaveText(' (Bot)');
+      await expect(page.locator('.panel-player__tag')).toHaveText('Bot');
       await page.screenshot({ path: testInfo.outputPath('solo-board.png'), fullPage: true });
       await manifest.recordRoom(roomCode, probe.state!);
 

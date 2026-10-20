@@ -69,6 +69,12 @@ export function GamePage() {
 
   const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
+  // A space the learner picked on the board stays open in the details card until closed or the turn passes.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const handleTileSelect = useCallback((tileIndex: number) => {
+    setSelectedTile(tileIndex);
+    setDetailsOpen(true);
+  }, []);
   const [rollRequested, setRollRequested] = useState(false);
   const [fatalGameError, setFatalGameError] = useState<string | null>(null);
   const {
@@ -221,6 +227,7 @@ export function GamePage() {
 
     if (prevIdx !== null && prevIdx !== gameState.currentPlayerIndex) {
       setSelectedTile(gameState.players[gameState.currentPlayerIndex]?.position ?? 0);
+      setDetailsOpen(false);
       setIsDiceRolling(false);
       setIsPawnMoving(false);
     } else if (prevIdx === null) {
@@ -405,19 +412,30 @@ export function GamePage() {
       ? currentPlayer?.position ?? selectedTile
       : selectedTile;
   const showingLandedTile = detailTileIndex === currentPlayer?.position;
+  const showDetails = !isBoardAnimating && (forcePendingDetails || renderPhase === 'END_TURN' || detailsOpen);
   return (
     <div className={`game-page${showChallenge || showChallengeLoading ? ' game-page--quiz-active' : ''}${boardReady ? '' : ' game-page--revealing'}`}>
-      <TurnIndicator
-        currentPlayer={currentPlayer}
-        isMyTurn={isMyTurn}
-        turnPhase={gameState.turnPhase}
+      {/* The table fills the screen; the interface floats above it. */}
+      <Board
+        gameState={presentationGameState}
+        selectedTile={detailTileIndex}
+        onTileSelect={handleTileSelect}
+        onDiceRollingChange={handleDiceRollingChange}
+        onMovementChange={handleMovementChange}
+        onMovementStep={playMovementStep}
+        onMovementComplete={handleMovementComplete}
+        onScenesReady={handleScenesReady}
       />
 
       <a className="skip-to-actions" href="#game-actions">Skip to game actions</a>
 
-      {/* Main Layout */}
-      <div className="game-layout">
-        {/* Left Panel */}
+      <div className="game-hud">
+        <TurnIndicator
+          currentPlayer={currentPlayer}
+          isMyTurn={isMyTurn}
+          turnPhase={gameState.turnPhase}
+        />
+
         <PlayerPanel
           players={gameState.players}
           currentPlayerIndex={gameState.currentPlayerIndex}
@@ -427,21 +445,18 @@ export function GamePage() {
           isFinalRound={gameState.isFinalRound}
         />
 
-        {/* Center: Board */}
-        <Board
-          gameState={presentationGameState}
-          selectedTile={detailTileIndex}
-          onTileSelect={setSelectedTile}
-          onDiceRollingChange={handleDiceRollingChange}
-          onMovementChange={handleMovementChange}
-          onMovementStep={playMovementStep}
-          onMovementComplete={handleMovementComplete}
-          onScenesReady={handleScenesReady}
-        />
+        {showDetails && (
+          <div className="hud-details">
+            <SpaceDetailsPanel
+              gameState={gameState}
+              tileIndex={detailTileIndex}
+              landed={showingLandedTile}
+              onClose={!forcePendingDetails && renderPhase !== 'END_TURN' ? () => setDetailsOpen(false) : undefined}
+            />
+          </div>
+        )}
 
-        {/* Right Panel: selected Monopoly space + its available actions. */}
-        <div className="game-sidebar">
-          <SpaceDetailsPanel gameState={gameState} tileIndex={detailTileIndex} landed={showingLandedTile} />
+        <div className="hud-dock">
           <GameActionDock
             state={gameState}
             currentPlayer={currentPlayer}

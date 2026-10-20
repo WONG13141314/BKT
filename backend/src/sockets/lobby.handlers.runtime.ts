@@ -1,5 +1,6 @@
 import type { RealtimeServer as Server, RealtimeSocket as Socket } from './realtime.types';
 import { shuffleTurnOrder, type RoomManager } from './lobby.manager';
+import { assignTokens } from '../features/game/game.tokens';
 import { defaultTimerScheduler, type TimerScheduler } from './runtime.scheduler';
 import type { GameService } from '../features/game/game.runtime';
 import type { GameState } from '../features/game/game.types';
@@ -157,6 +158,16 @@ export function createLobbyHandlersRuntime(options: LobbyHandlersRuntimeOptions)
       socket.emit('room:update', roomManager.serializeRoom(room));
     });
 
+    // Choose a playing piece while the room is waiting
+    socket.on('room:set-token', (data: { avatar?: unknown }) => {
+      const { room, error } = roomManager.setAvatar(playerId, data?.avatar);
+      if (!room) {
+        socket.emit('room:error', { message: error });
+        return;
+      }
+      io.to(`room:${room.code}`).emit('room:update', roomManager.serializeRoom(room));
+    });
+
     // Toggle ready status
     socket.on('room:ready', () => {
       const code = roomManager.toggleReady(playerId);
@@ -239,15 +250,17 @@ export function createLobbyHandlersRuntime(options: LobbyHandlersRuntimeOptions)
       const socketRoom = `room:${startingRoom.code}`;
       const gameId = `game_${startingRoom.code}`;
       const PLAYER_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
-      const PLAYER_TOKENS = ['race_car', 'battleship', 'top_hat', 'scottie_dog'] as const;
       const lobbyOrder = Array.from(startingRoom.players.values());
+      // Pieces resolve in join order, so an earlier seat keeps a contested pick.
+      const lobbyTokens = assignTokens(lobbyOrder.map((p) => p.avatar));
+      const tokenFor = new Map(lobbyOrder.map((p, idx) => [p.id, lobbyTokens[idx]]));
       const turnOrder = options.fixedTurnOrder ? lobbyOrder : shuffleTurnOrder(lobbyOrder);
       const gamePlayers = turnOrder.map((p, idx) => ({
         id: p.id,
         playerId: p.id,
         name: p.name,
         color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
-        tokenType: PLAYER_TOKENS[idx % PLAYER_TOKENS.length],
+        tokenType: tokenFor.get(p.id)!,
         order: idx,
         isBot: p.isBot,
         botDifficulty: p.botDifficulty,

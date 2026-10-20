@@ -423,6 +423,113 @@
 
 }
 
+/* ---- Fullscreen table ---- */
+
+.board-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.board-stage .tabletop-canvas {
+  position: absolute !important;
+  inset: 0;
+  transition: opacity .35s ease-out;
+  touch-action: manipulation;
+}
+
+.board-stage--scenes-pending .tabletop-canvas { opacity: 0; }
+
+/* Without WebGL the printed 2D board sits in the space the interface leaves open. */
+.board-stage--basic {
+  display: grid;
+  place-items: center;
+  padding: 84px 340px 104px 276px;
+}
+
+.board-stage--basic .board-grid { width: min(100%, 600px, calc(100dvh - 200px)); }
+
+@media (max-width: 1099px) {
+  .board-stage--basic { padding: 116px 8px 150px; }
+  .board-stage--basic .board-grid { width: min(100%, 600px, calc(100dvh - 280px)); }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .board-stage--basic { padding: 54px 300px 8px 8px; }
+  .board-stage--basic .board-grid { width: min(100%, calc(100dvh - 64px)); }
+}
+
+/* Keyboard access to the spaces: hidden until a space button has focus. */
+.board-space-list {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.board-space-list:focus-within {
+  z-index: 30;
+  left: 50%;
+  bottom: 120px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  width: min(92vw, 640px);
+  height: auto;
+  padding: 8px;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  background: #fffdf7;
+  border: 2px solid #000;
+  border-radius: 12px;
+  transform: translateX(-50%);
+}
+
+.board-space-list button {
+  padding: 4px 8px;
+  font: 700 .75rem var(--font-body);
+  background: #fff;
+  border: 1.5px solid #000;
+  border-radius: 6px;
+}
+
+.board-space-list button[aria-pressed='true'] { background: #ffbd19; }
+
+/* "Tolak Towers · 2 of 6", then "Landed on Tolak Drive". */
+.board-route-label {
+  position: absolute;
+  z-index: 11;
+  top: 62px;
+  left: 50%;
+  padding: 5px 14px;
+  color: #fff;
+  background: rgba(10, 20, 15, .78);
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font: 800 .88rem var(--font-body);
+  letter-spacing: .02em;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.board-route-label--landed {
+  color: #000;
+  background: #ffbd19;
+  border: 2px solid #000;
+}
+
+@media (max-width: 1099px) {
+  .board-route-label { top: auto; bottom: 96px; font-size: .8rem; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .board-route-label { top: 50px; bottom: auto; }
+}
+
 /* The dice and token canvases fade in together once both scenes have drawn. */
 .board-grid .physics-dice,
 .board-grid .board-piece-layer {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { avatarToken } from '../../auth/avatars';
+import { AVATARS, avatarLabel, avatarToken } from '../../auth/avatars';
 import { usePlayer } from '../../auth/PlayerContext';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
@@ -164,6 +164,10 @@ export function GameLobby() {
     if (socket) socket.emit('room:add-bot', { difficulty: botDifficulty });
   };
 
+  const chooseToken = (avatar: string) => {
+    if (socket) socket.emit('room:set-token', { avatar });
+  };
+
   const removeBot = (botId: string) => {
     if (socket) socket.emit('room:remove-bot', { botId });
   };
@@ -294,6 +298,34 @@ export function GameLobby() {
             </div>
           ))}
         </div>
+
+        {/* Each player brings one of the eight pieces; a piece has one owner per room. */}
+        <fieldset className="token-picker">
+          <legend>Your token</legend>
+          <div className="token-picker__options" role="radiogroup" aria-label="Choose your token">
+            {AVATARS.map((avatar) => {
+              const holder = room!.players.find((seat) => seat.avatar === avatar);
+              const mine = holder?.id === myId;
+              const taken = !!holder && !mine;
+              return (
+                <button
+                  key={avatar}
+                  type="button"
+                  role="radio"
+                  aria-checked={mine}
+                  aria-label={taken ? `${avatarLabel(avatar)}, taken by ${holder!.name}` : avatarLabel(avatar)}
+                  title={taken ? `${avatarLabel(avatar)} — ${holder!.name}` : avatarLabel(avatar)}
+                  className={`token-picker__option${mine ? ' is-mine' : ''}${taken ? ' is-taken' : ''}`}
+                  disabled={taken}
+                  onClick={() => chooseToken(avatar)}
+                >
+                  <span aria-hidden="true">{avatarToken(avatar)}</span>
+                  <small>{taken ? holder!.name : avatarLabel(avatar)}</small>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
 
         {/* Add Bot Section (Host only) */}
         {isHost && room!.players.length < room!.maxPlayers && (

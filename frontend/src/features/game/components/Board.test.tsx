@@ -11,20 +11,20 @@ vi.mock('./BoardRendering', async (importOriginal) => ({
   ...await importOriginal<typeof import('./BoardRendering')>(),
   hasWebGL2: () => rendering.supported,
 }));
-vi.mock('./PhysicsDice', () => ({
-  PhysicsDice: function MockDice({ onRollingChange, onReady }: { onRollingChange: (rolling: boolean) => void; onReady?: () => void }) {
-    useEffect(() => { onReady?.(); }, [onReady]);
+vi.mock('./tabletop/TabletopScene', () => ({
+  TabletopScene: function MockScene({ players, dice: sceneDice, onReady }: {
+    players: Player[];
+    dice: { onRollingChange: (rolling: boolean) => void; onReady: () => void };
+    onReady: () => void;
+  }) {
+    useEffect(() => { sceneDice.onReady(); }, [sceneDice]);
+    useEffect(() => { if (rendering.tokensDrawn) onReady(); }, [onReady]);
     if (dice.fail) throw new Error('Scene failed to load');
-    dice.onRollingChange = onRollingChange;
-    return <div data-testid="dice" />;
-  },
-}));
-vi.mock('./BoardPiecesScene', () => ({
-  BoardPiecesScene: function MockTokens({ players, onReady }: { players: Player[]; onReady?: () => void }) {
-    useEffect(() => { if (rendering.tokensDrawn) onReady?.(); }, [onReady]);
+    dice.onRollingChange = sceneDice.onRollingChange;
     return <>
-    <div data-testid="token-position">{players[0].position}</div>
-    {players.map((player) => <div key={player.id} data-testid={`token-${player.id}`}>{player.position}</div>)}
+      <div data-testid="dice" />
+      <div data-testid="token-position">{players[0].position}</div>
+      {players.map((player) => <div key={player.id} data-testid={`token-${player.id}`}>{player.position}</div>)}
     </>;
   },
 }));
@@ -164,20 +164,20 @@ describe('board playback ordering', () => {
 
   it('reveals the 3D dice and tokens together once both scenes have drawn', async () => {
     const { container } = await mountBoard();
-    expect(container.querySelector('.board-grid')).not.toHaveClass('board-grid--scenes-pending');
+    expect(container.querySelector('.board-stage')).not.toHaveClass('board-stage--scenes-pending');
     expect(screen.queryByText('Setting up the board…')).not.toBeInTheDocument();
   });
 
   it('keeps the dice hidden while the token scene is still loading, up to the reveal limit', async () => {
     rendering.tokensDrawn = false;
     const { container, callbacks } = await mountBoard();
-    expect(container.querySelector('.board-grid')).toHaveClass('board-grid--scenes-pending');
+    expect(container.querySelector('.board-stage')).toHaveClass('board-stage--scenes-pending');
     // No loading card: the page keeps the whole table hidden until it is ready.
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(BOARD_REVEAL_LIMIT_MS - 1));
     expect(callbacks.onScenesReady).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
-    expect(container.querySelector('.board-grid')).not.toHaveClass('board-grid--scenes-pending');
+    expect(container.querySelector('.board-stage')).not.toHaveClass('board-stage--scenes-pending');
     expect(callbacks.onScenesReady).toHaveBeenCalledTimes(1);
   });
 

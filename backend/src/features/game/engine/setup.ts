@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'crypto';
 import { GameState, PlayerState } from '../game.types';
+import { PLAYER_TOKENS, type PlayerToken } from '../game.tokens';
 import { SKILL_NAMES, STARTING_MONEY, MAX_ROUNDS } from '../game.constants';
 import { BOARD_TILES, initializeProperties } from '../board.config';
 import { createShuffledDeck } from '../card.deck';
@@ -12,7 +13,7 @@ export interface GamePlayerSeed {
   playerId: string;
   name: string;
   color: string;
-  tokenType?: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
+  tokenType?: PlayerToken;
   order: number;
   isBot?: boolean;
   botDifficulty?: 'easy' | 'medium' | 'hard';
@@ -42,7 +43,7 @@ export function initializeGameState(
     position: 0,
     money: STARTING_MONEY,
     color: p.color,
-    tokenType: p.tokenType ?? (['race_car', 'battleship', 'top_hat', 'scottie_dog'][p.order % 4] as PlayerState['tokenType']),
+    tokenType: p.tokenType ?? PLAYER_TOKENS[p.order % PLAYER_TOKENS.length],
     properties: [],
     isInJail: false,
     jailTurns: 0,

@@ -1,3 +1,5 @@
+import { AVATARS } from '../features/auth/auth.validation';
+
 export interface LobbyPlayer {
   id: string;
   name: string;
@@ -34,8 +36,20 @@ export function shuffleTurnOrder<T>(seats: readonly T[], random: () => number = 
   return order;
 }
 
-/** Fallback token when a bot joins; humans bring their own from their profile. */
-const BOT_AVATARS = ['ship', 'boot', 'thimble', 'iron'] as const;
+/** Pieces bots take first. Humans bring their own from their profile. */
+const BOT_AVATARS = ['duck', 'cat', 'boot', 'wheelbarrow', 'ship', 'dog', 'car', 'tophat'] as const;
+
+function isAvatar(value: unknown): value is (typeof AVATARS)[number] {
+  return typeof value === 'string' && (AVATARS as readonly string[]).includes(value);
+}
+
+/** Keep the preferred piece when no one else holds it; otherwise the first free one. */
+function freeAvatar(room: Room, preferred: readonly string[], exceptPlayerId?: string): string {
+  const taken = new Set([...room.players.values()].filter((player) => player.id !== exceptPlayerId).map((player) => player.avatar));
+  return preferred.find((avatar) => isAvatar(avatar) && !taken.has(avatar))
+    ?? AVATARS.find((avatar) => !taken.has(avatar))
+    ?? preferred[0] ?? AVATARS[0];
+}
 const BOT_NAMES = ['Bot Ali', 'Bot Mei', 'Bot Raju', 'Bot Siti'];
 export class RoomManager {
   private rooms: Map<string, Room> = new Map();
@@ -94,7 +108,9 @@ export class RoomManager {
     this.removePlayer(playerId);
 
     const code = this.generateCode();
-    const player: LobbyPlayer = { id: playerId, name: playerName, isReady: true, avatar, isBot: false };
+    const player: LobbyPlayer = {
+      id: playerId, name: playerName, isReady: true, avatar: isAvatar(avatar) ? avatar : AVATARS[0], isBot: false,
+    };
 
     const room: Room = {
       code,
@@ -125,7 +141,9 @@ export class RoomManager {
 
     this.removePlayer(playerId);
 
-    const player: LobbyPlayer = { id: playerId, name: playerName, isReady: false, avatar, isBot: false };
+    const player: LobbyPlayer = {
+      id: playerId, name: playerName, isReady: false, avatar: freeAvatar(room, [avatar], playerId), isBot: false,
+    };
     room.players.set(playerId, player);
     this.playerRoomMap.set(playerId, code.toUpperCase());
     return { room };
@@ -151,7 +169,7 @@ export class RoomManager {
       id: botId,
       name: botName,
       isReady: true,       // Bots are always ready
-      avatar: BOT_AVATARS[(this.botCounter - 1) % BOT_AVATARS.length],
+      avatar: freeAvatar(room, BOT_AVATARS),
       isBot: true,
       botDifficulty: difficulty,
     };
@@ -210,6 +228,20 @@ export class RoomManager {
     }
 
     return code;
+  }
+
+  /** Choose this player's piece for the coming match. Each piece has one owner per room. */
+  public setAvatar(playerId: string, avatar: unknown): { room: Room | null; error?: string } {
+    const room = this.getRoomForPlayer(playerId);
+    const player = room?.players.get(playerId);
+    if (!room || !player) return { room: null, error: 'You are not in a room.' };
+    if (room.status !== 'waiting') return { room: null, error: 'Game already in progress.' };
+    if (!isAvatar(avatar)) return { room: null, error: 'Choose one of the eight tokens.' };
+    if ([...room.players.values()].some((other) => other.id !== playerId && other.avatar === avatar)) {
+      return { room: null, error: 'Another player already has that token.' };
+    }
+    player.avatar = avatar;
+    return { room };
   }
 
   public toggleReady(playerId: string): string | null {

@@ -1,313 +1,241 @@
 /* ============================================
-   Player Panel — Classic Monopoly Theme
+   Player Panel — compact cards over the table
    ============================================ */
 
 .player-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  width: 260px;
-  flex-shrink: 0;
+  gap: 8px;
 }
 
-/* ---- Round Counter ---- */
+/* ---- Round ---- */
 
 .panel-round {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  padding: var(--space-md) var(--space-lg);
-  background: #fff;
-  border-radius: 4px;
-  border: 2px solid #000;
-  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 12px;
+  background: var(--hud-card, #fffdf7);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
 }
 
 .panel-round__label {
-  font-size: var(--text-sm);
-  color: #000;
+  font: 800 0.68rem var(--font-display);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  font-family: 'Arial Narrow', sans-serif;
 }
 
 .panel-round__value {
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 900;
+  justify-self: end;
+  font: 900 1.25rem/1 var(--font-display);
   color: #e63946;
 }
 
-.panel-round__final {
-  font-size: var(--text-sm);
-  font-weight: 900;
-  color: #fff;
-  background: #e63946;
-  border: 1px solid #000;
-  border-radius: 2px;
-  padding: 2px 6px;
+.panel-round__value small {
+  font-size: 0.8rem;
+  color: var(--ink);
 }
 
 .panel-round__bar {
-  height: 6px;
-  background: #e9ecef;
-  border: 1px solid #000;
-  border-radius: 2px;
+  grid-column: 1 / -1;
+  height: 5px;
+  background: #e8ebe6;
+  border-radius: 99px;
   overflow: hidden;
 }
 
 .panel-round__fill {
   height: 100%;
   background: #e63946;
+  border-radius: inherit;
   transition: width 0.5s var(--ease-out);
 }
 
-/* ---- Player Cards ---- */
+.panel-round__final {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 3px 6px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  color: #fff;
+  background: #e63946;
+  border-radius: 6px;
+}
+
+/* ---- Players ---- */
 
 .panel-players {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .panel-player {
-  padding: var(--space-md);
-  background: #f8f9fa;
-  border-radius: 4px;
-  border: 2px solid #000;
-  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.3);
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 8px;
+  background: var(--hud-card, #fffdf7);
+  border: 2px solid var(--ink);
+  border-left: 6px solid var(--player-color);
+  border-radius: 12px;
+  box-shadow: var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  color: #000;
 }
 
 .panel-player--active {
-  border: 3px solid #e63946;
-  background: #fff;
-  transform: scale(1.02) translateX(4px);
-  box-shadow: 6px 6px 0px rgba(230, 57, 70, 0.4);
+  background: #fff7dc;
+  transform: translateX(4px);
+  box-shadow: 0 0 0 3px #ffbd19, var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
 }
 
-.panel-player--me {
-  border-color: #2a9d8f;
-}
-
-.panel-player--debt {
-  background: #ffe5d9;
-}
-
-/* ---- Player Header ---- */
-
-.panel-player__header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-xs);
-  border-bottom: 2px solid #dee2e6;
-  padding-bottom: 0.5rem;
-}
-
-.panel-player__avatar {
-  width: 32px;
-  height: 32px;
-  border: 2px solid #000;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: var(--text-sm);
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+.panel-player__token {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-size: 1.25rem;
+  line-height: 1;
+  background: color-mix(in srgb, var(--player-color) 22%, white);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
 }
 
 .panel-player__info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
 .panel-player__name {
-  font-size: var(--text-sm);
-  font-weight: 800;
-  color: #000;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   overflow: hidden;
+  font: 800 0.86rem/1.15 var(--font-body);
+  white-space: nowrap;
   text-overflow: ellipsis;
-  text-transform: uppercase;
-  font-family: 'Arial Black', sans-serif;
-  letter-spacing: 0px;
 }
 
-.panel-player__you {
-  font-size: var(--text-xs);
-  color: #e63946;
-  font-weight: 800;
+.panel-player__you,
+.panel-player__tag {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 5px;
+}
+
+.panel-player__you { color: #fff; background: var(--ink); }
+.panel-player__tag { color: var(--ink); background: #e8ebe6; }
+
+.panel-player__stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #4a524d;
+}
+
+.panel-player__stats > span:not(.badge) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .panel-player__money {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: var(--text-sm);
-  font-weight: 900;
-  color: #2a9d8f;
-  margin-left: auto;
+  font: 900 0.95rem var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
 
-.money--negative {
-  color: #e63946 !important;
+.panel-player__money.money--negative {
+  padding: 1px 5px;
+  border-width: 1px;
 }
 
-.panel-player__turn-badge {
-  color: #e63946;
-  animation: pulse-soft 1.5s ease infinite;
-  display: flex;
+.panel-player--bankrupt {
+  opacity: 0.55;
+  filter: grayscale(100%);
 }
 
 /* ---- Badges ---- */
 
-.panel-player__badges {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-xs);
-}
-
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 0.65rem;
-  padding: 2px 6px;
-  border-radius: 2px;
-  border: 1px solid #000;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.badge--jail {
-  background: #dee2e6;
-  color: #000;
-}
-
-.badge--debt {
-  background: #e63946;
-  color: #fff;
-}
-
-.badge--streak {
-  background: #ffb703;
-  color: #000;
-}
-
-/* ---- Stats ---- */
-
-.panel-player__stats {
-  display: flex;
-  gap: var(--space-sm);
-  justify-content: space-between;
-  margin-top: 0.5rem;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.stat__label {
-  display: flex;
-  align-items: center;
   gap: 2px;
-  font-size: 0.6rem;
-  color: #495057;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.stat__value {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: var(--text-sm);
+  padding: 1px 5px;
+  font-size: 0.62rem;
   font-weight: 900;
-  color: #000;
+  border: 1.5px solid var(--ink);
+  border-radius: 5px;
 }
 
-@media (max-width: 900px) {
+.badge--jail { background: #ffcad4; color: var(--ink); }
+.badge--streak { background: #ffb703; color: var(--ink); }
+
+/* Tablets and phones: one row of compact chips across the top. */
+@media (max-width: 1099px) {
   .player-panel {
-    width: min(100%, 600px);
-    gap: 0.35rem;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .panel-round {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.65rem;
+    flex-shrink: 0;
+    grid-template-columns: auto;
+    gap: 2px;
+    padding: 5px 9px;
+    border-radius: 10px;
   }
 
-  .panel-round__value { font-size: 1rem; }
-  .panel-round__bar { min-width: 80px; }
-  .panel-players { flex-direction: row; overflow-x: auto; padding: 0 0 0.3rem; }
-  .panel-player { min-width: 180px; padding: 0.4rem 0.55rem; box-shadow: 2px 3px 0 rgba(0,0,0,.3); }
-  .panel-player__header { margin: 0; padding: 0; border: 0; }
-  .panel-player__badges, .panel-player__stats { display: none; }
+  .panel-round__label { font-size: 0.55rem; }
+  .panel-round__value { justify-self: start; font-size: 1rem; }
+  .panel-round__final { display: none; }
+
+  .panel-players {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .panel-player {
+    flex-shrink: 0;
+    grid-template-columns: 28px auto;
+    grid-template-rows: auto auto;
+    gap: 0 7px;
+    padding: 4px 9px 4px 5px;
+    border-left-width: 4px;
+    border-radius: 10px;
+  }
+
+  .panel-player--active { transform: translateY(2px); }
+
+  .panel-player__token {
+    grid-row: 1 / 3;
+    width: 28px;
+    height: 28px;
+    font-size: 0.95rem;
+  }
+
+  .panel-player__name { max-width: 9ch; font-size: 0.74rem; }
+  .panel-player__tag,
+  .panel-player__stats > span:not(.badge) { display: none; }
+  .panel-player__stats { grid-column: 2; }
+  .panel-player__stats:not(:has(.badge)) { display: none; }
+  .panel-player__money { grid-column: 2; font-size: 0.78rem; }
 }
-
-@media (max-width: 600px) {
-  .panel-player:not(.panel-player--active):not(.panel-player--me) { display: none; }
-  .panel-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
-  .panel-player { min-width: 0; transform: none; }
-}
-
-/* ---- Mastery Bars ---- */
-
-.panel-player__mastery {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 2px dashed #dee2e6;
-}
-
-.mastery-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.mastery-row__skill {
-  font-size: 0.6rem;
-  color: #000;
-  font-weight: 800;
-  text-transform: uppercase;
-  min-width: 65px;
-}
-
-.mastery-row__bar {
-  flex: 1;
-  height: 6px;
-  background: #e9ecef;
-  border: 1px solid #000;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.mastery-row__fill {
-  height: 100%;
-  background: #ffb703;
-  border-right: 1px solid #000;
-  transition: width 0.6s var(--ease-out);
-}
-
-.mastery-row__pct {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.65rem;
-  font-weight: 900;
-  color: #000;
-  min-width: 32px;
-  text-align: right;
-}
-

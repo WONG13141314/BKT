@@ -1,76 +1,79 @@
 /* ============================================ */
-/* Turn Banner — Monopoly Board Style           */
+/* Turn banner — the one line that says whose   */
+/* piece the camera is following                */
 /* ============================================ */
 
 .turn-banner-wrapper {
   position: fixed;
-  top: 0.75rem;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 120;
+  max-width: calc(100% - 24px);
   pointer-events: none;
 }
 
 .turn-banner {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 1.2rem;
-  background: #ffffff;
-  border: 3px solid #000000;
-  box-shadow: 3px 3px 0px #000000;
+  gap: 10px;
+  padding: 6px 18px 6px 6px;
+  background: #fffdf7;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.38);
   animation: bannerIn 0.25s ease-out;
+  white-space: nowrap;
 }
 
 .turn-banner--you {
-  background: #f5e6ca;
+  background: #ffbd19;
+}
+
+.turn-banner__token {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  font-size: 1.1rem;
+  background: var(--player-color, #fff);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
 }
 
 .turn-banner__who {
-  font-size: 1rem;
-  font-weight: 900;
-  color: #000000;
-  font-family: 'Impact', 'Arial Black', sans-serif;
-  letter-spacing: 0.5px;
+  font: 900 1.05rem var(--font-display);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .turn-banner__sep {
-  font-size: 0.9rem;
-  color: #000000;
-  font-weight: 400;
+  width: 2px;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0;
 }
 
 .turn-banner__hint {
-  font-size: 0.82rem;
+  overflow: hidden;
+  font-size: 0.85rem;
   font-weight: 700;
-  color: #000000;
-  font-family: 'Courier New', Courier, monospace;
+  text-overflow: ellipsis;
 }
 
 @keyframes bannerIn {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 480px) {
-  .turn-banner {
-    padding: 0.3rem 0.8rem;
-    border-width: 2px;
-    box-shadow: 2px 2px 0px #000000;
-  }
+@media (max-width: 1099px) {
+  .turn-banner-wrapper { top: 8px; }
+  .turn-banner { gap: 7px; padding: 3px 12px 3px 3px; }
+  .turn-banner__token { width: 28px; height: 28px; font-size: 0.9rem; }
+  .turn-banner__who { font-size: 0.86rem; }
+  .turn-banner__hint { font-size: 0.74rem; }
+}
 
-  .turn-banner__who {
-    font-size: 0.85rem;
-  }
-
-  .turn-banner__hint {
-    font-size: 0.72rem;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .turn-banner { animation: none; }
 }

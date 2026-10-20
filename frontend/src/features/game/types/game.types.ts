@@ -75,6 +75,11 @@ export interface ColorGroup {
 
 // ---- Players ----
 
+export const PLAYER_TOKENS = [
+  'race_car', 'top_hat', 'battleship', 'boot', 'scottie_dog', 'cat', 'rubber_duck', 'wheelbarrow',
+] as const;
+export type PlayerToken = (typeof PLAYER_TOKENS)[number];
+
 export interface Player {
   id: string;
   playerId: string;
@@ -82,7 +87,7 @@ export interface Player {
   position: number;
   money: number;
   color: string;
-  tokenType: 'race_car' | 'battleship' | 'top_hat' | 'scottie_dog';
+  tokenType: PlayerToken;
   properties: number[];
   isInJail: boolean;
   jailTurns: number;

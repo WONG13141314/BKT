@@ -15,6 +15,7 @@ const simulation = vi.hoisted(() => ({
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  useThree: (select: (state: { setFrameloop: () => void }) => unknown) => select({ setFrameloop: () => undefined }),
 }));
 vi.mock('@react-three/drei', () => ({ RoundedBox: () => null }));
 vi.mock('@react-three/rapier', async () => {

@@ -68,6 +68,10 @@ on demand; a basic board and dice remain available when WebGL is unavailable.
 Answer feedback uses one result card instead of simultaneous reward and answer
 notifications. See [runtime debugging notes](docs/gameplay-runtime.md).
 
+The board is a fullscreen 3D table with an automatic camera that follows each
+move. Players choose one of eight pewter tokens in the waiting room. See
+[the 3D tabletop notes](docs/3d-tabletop.md).
+
 ## Stack and architecture
 
 | Part | Technology |
