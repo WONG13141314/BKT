@@ -13,7 +13,8 @@ import {
   Users,
 } from 'lucide-react';
 import { useSocket } from '../../../shared/contexts/SocketContext';
-import { AVATARS, Avatar, avatarLabel, avatarToken } from '../avatars';
+import { AVATARS, Avatar, avatarLabel, avatarPiece } from '../avatars';
+import { TokenIcon } from '../../game/components/TokenIcon';
 import { usePlayer } from '../PlayerContext';
 import { authService } from '../services/auth.service';
 import { StoredProfile } from '../types/auth.types';
@@ -200,7 +201,7 @@ export function LoginPage() {
                     aria-label={avatarLabel(option)}
                     title={avatarLabel(option)}
                   >
-                    <span aria-hidden="true">{avatarToken(option)}</span>
+                    <TokenIcon token={avatarPiece(option)} size={48} />
                     <span className="sr-only">{avatarLabel(option)}</span>
                   </button>
                 ))}
@@ -232,7 +233,7 @@ export function LoginPage() {
           <div className="choice-panel">
             <div className="player-chip">
               <span className="player-chip__token" aria-hidden="true">
-                {avatarToken(player.avatar)}
+                <TokenIcon token={avatarPiece(player.avatar)} size={38} />
               </span>
               <span className="player-chip__text">
                 <small>Welcome back</small>
@@ -310,7 +311,7 @@ export function LoginPage() {
                   disabled={isBusy}
                 >
                   <span className="profile-row__token" aria-hidden="true">
-                    {avatarToken(profile.avatar)}
+                    <TokenIcon token={avatarPiece(profile.avatar)} size={30} />
                   </span>
                   <span className="profile-row__name">{profile.displayName}</span>
                   <ArrowRight size={16} />

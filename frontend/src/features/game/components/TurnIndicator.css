@@ -35,10 +35,10 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  font-size: 1.1rem;
-  background: var(--player-color, #fff);
+  background: radial-gradient(circle at 50% 40%, #ffffff, color-mix(in srgb, var(--player-color, #fff) 35%, white));
   border: 2px solid var(--ink);
   border-radius: 50%;
+  overflow: hidden;
 }
 
 .turn-banner__who {
@@ -69,7 +69,8 @@
 @media (max-width: 1099px) {
   .turn-banner-wrapper { top: 8px; }
   .turn-banner { gap: 7px; padding: 3px 12px 3px 3px; }
-  .turn-banner__token { width: 28px; height: 28px; font-size: 0.9rem; }
+  .turn-banner__token { width: 28px; height: 28px; }
+  .turn-banner__token .token-icon { width: 24px; height: 24px; }
   .turn-banner__who { font-size: 0.86rem; }
   .turn-banner__hint { font-size: 0.74rem; }
 }

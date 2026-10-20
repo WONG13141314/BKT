@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:e2e": "playwright test --config playwright.config.ts"
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "icons": "node scripts/render-token-icons.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.2",

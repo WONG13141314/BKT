@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AVATARS, avatarLabel, avatarToken } from '../../auth/avatars';
+import { AVATARS, avatarLabel, avatarPiece } from '../../auth/avatars';
+import { TokenIcon } from './TokenIcon';
 import { usePlayer } from '../../auth/PlayerContext';
 import { useSocket } from '../../../shared/contexts/SocketContext';
 import { Copy, Check, Crown, UserCheck, Clock, Gamepad2, LogOut, AlertCircle, Users, Bot, Trash2 } from 'lucide-react';
@@ -252,7 +253,7 @@ export function GameLobby() {
               key={player.id}
               className={`player-slot ${player.isReady ? 'ready' : 'not-ready'} ${player.id === myId ? 'is-me' : ''} ${player.isBot ? 'is-bot' : ''}`}
             >
-              <div className="player-avatar">{avatarToken(player.avatar)}</div>
+              <div className="player-avatar"><TokenIcon token={avatarPiece(player.avatar)} size={36} /></div>
               <div className="player-details">
                 <span className="player-name">
                   {player.name}
@@ -319,7 +320,7 @@ export function GameLobby() {
                   disabled={taken}
                   onClick={() => chooseToken(avatar)}
                 >
-                  <span aria-hidden="true">{avatarToken(avatar)}</span>
+                  <TokenIcon token={avatarPiece(avatar)} size={40} />
                   <small>{taken ? holder!.name : avatarLabel(avatar)}</small>
                 </button>
               );

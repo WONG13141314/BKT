@@ -52,4 +52,9 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // Runs in Node, and evaluates small callbacks in the browser page.
+    files: ['frontend/scripts/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 );

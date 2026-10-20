@@ -1,18 +1,22 @@
-// World layout of the 3D board. Classic proportions: square corners whose side
-// equals the depth of the narrow side spaces. Mula (0) is the near-right corner
-// and play runs clockwise when seen from above, as on the 2D board.
+// World layout of the 3D board, in the proportions of a printed Monopoly board:
+// narrow spaces around a large open centre. Mula (0) is the near-right corner
+// and play runs clockwise seen from above, as on the 2D board.
 //
 //   x → right, z → towards the viewer of the opening view, y → up.
 
 export const TILE_COUNT = 20;
+/** Width of a side space along the route. */
 export const SIDE_WIDTH = 2;
-export const TILE_DEPTH = 3;
-export const BOARD_HALF = TILE_DEPTH + 2 * SIDE_WIDTH; // 7: corner centre at ±5.5
-export const TILE_GAP = 0.07;
-export const BOARD_TOP = 0;
-export const TILE_TOP = 0.16;
+/** Depth of every space from the board edge inwards; corners are this square. */
+export const TILE_DEPTH = 2.2;
+export const BOARD_HALF = TILE_DEPTH + 2 * SIDE_WIDTH; // 6.2
+/** The printed rule lines between spaces. */
+export const TILE_GAP = 0.05;
+/** The board's printed surface; pieces stand on it. */
+export const SURFACE_Y = 0;
 /** Depth of the colour band on a property's inner edge. */
-export const BAND_DEPTH = 0.72;
+export const BAND_DEPTH = 0.52;
+export const CENTRE_SIZE = (BOARD_HALF - TILE_DEPTH) * 2;
 
 const CORNER_CENTRE = BOARD_HALF - TILE_DEPTH / 2;
 
@@ -23,7 +27,7 @@ export interface TilePlacement {
   corner: boolean;
   x: number;
   z: number;
-  /** Footprint along the track and towards the outside. */
+  /** Footprint along the route and towards the outside. */
   width: number;
   depth: number;
   /** Rotation about Y that turns the bottom-side frame into this side's frame. */
@@ -66,44 +70,65 @@ export function rotateOffset(x: number, z: number, yaw: number): [number, number
 }
 
 /**
- * Continuous side number for a track position that may run past 20. Mid-side
- * positions are whole numbers; each corner blends a quarter turn across
- * `window` spaces either side, so headings never jump.
- */
-export function sideProgress(track: number, window = 0.85): number {
-  const value = Number.isFinite(track) ? track : 0;
-  const corner = Math.round(value / 5) * 5;
-  const offset = value - corner;
-  const t = Math.min(1, Math.max(0, (offset + window) / (window * 2)));
-  return corner / 5 - 1 + t * t * (3 - 2 * t);
-}
-
-/** Pick the representation of `target` (mod 4 sides) nearest `current`. */
-export function nearestSide(target: number, current: number): number {
-  return target + Math.round((current - target) / 4) * 4;
-}
-
-/**
  * Where piece `slot` of `count` stands on a space, in world units. Pieces keep
  * clear of the colour band and spread out so all four stay visible.
  */
 export function tokenSpot(rawIndex: number, slot: number, count: number): [number, number] {
   const tile = tilePlacement(rawIndex);
-  const scale = tile.corner ? 1.25 : 1;
-  const spots: [number, number][] = count <= 1 ? [[0, 0.3]]
-    : count === 2 ? [[-0.48, 0.3], [0.48, 0.3]]
-      : [[-0.48, -0.2], [0.48, -0.2], [-0.48, 0.82], [0.48, 0.82]];
+  const scale = tile.corner ? 1.15 : 1;
+  const spots: [number, number][] = count <= 1 ? [[0, 0.25]]
+    : count === 2 ? [[-0.45, 0.25], [0.45, 0.25]]
+      : [[-0.45, -0.2], [0.45, -0.2], [-0.45, 0.65], [0.45, 0.65]];
   const [across, out] = spots[Math.min(slot, spots.length - 1)];
   const [x, z] = rotateOffset(across * scale, out * scale, tile.yaw);
   return [tile.x + x, tile.z + z];
 }
 
-/** Facing for a piece travelling along the track (models point along +x). */
-export function travelYaw(side: number): number {
-  return Math.PI - side * Math.PI / 2;
-}
-
 /** Forward spaces from one index to another, 0–19. */
 export function forwardSteps(from: number, to: number): number {
   return (wrapTile(to) - wrapTile(from) + TILE_COUNT) % TILE_COUNT;
+}
+
+/** The next `count` spaces after `from`, stopping at `to`. */
+export function spacesAhead(from: number, to: number, count: number): number[] {
+  const steps = Math.min(count, forwardSteps(from, to));
+  return Array.from({ length: steps }, (_, i) => wrapTile(from + i + 1));
+}
+
+// ---- The route field ----
+//
+// Directions on the table come from one smooth field rather than per-side
+// rules: the level sets of a superellipse |x|^n + |z|^n, which are rounded
+// squares hugging the route. Its gradient points outwards (where the camera
+// stands); its tangent is the direction of travel. Both turn gradually as a
+// piece approaches a corner and are exactly square to a side in between.
+
+const FIELD_POWER = 7;
+
+/** Outward direction at a point on the table, as an azimuth: 0 faces +z, π/2 faces +x. */
+export function outwardAzimuth(x: number, z: number): number {
+  const scale = Math.max(Math.abs(x), Math.abs(z), 1e-6);
+  const gx = Math.sign(x) * Math.abs(x / scale) ** (FIELD_POWER - 1);
+  const gz = Math.sign(z) * Math.abs(z / scale) ** (FIELD_POWER - 1);
+  return Math.atan2(gx, gz);
+}
+
+/** Model yaw that faces a piece (built facing +x) along the route at a point. */
+export function travelYaw(x: number, z: number): number {
+  const azimuth = outwardAzimuth(x, z);
+  // Clockwise travel is the outward direction turned a quarter.
+  const tx = -Math.cos(azimuth);
+  const tz = Math.sin(azimuth);
+  return Math.atan2(-tz, tx);
+}
+
+/** The outward azimuth of a whole side, for views square to it. */
+export function sideAzimuth(side: number): number {
+  return -side * Math.PI / 2;
+}
+
+/** `angle` shifted by whole turns to lie nearest `reference`. */
+export function nearestAngle(angle: number, reference: number): number {
+  const turn = Math.PI * 2;
+  return angle + Math.round((reference - angle) / turn) * turn;
 }

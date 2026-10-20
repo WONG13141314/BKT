@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { BOARD_HALF, rotateOffset, sideYaw } from './board.layout';
+import { BOARD_HALF, outwardAzimuth, tilePlacement } from './board.layout';
 
 export type CameraMode = 'overview' | 'dice' | 'follow' | 'landing';
 
@@ -13,23 +13,39 @@ export interface CameraViewport {
   insets: SafeInsets;
 }
 
-/** An orbit around a ground target. Interpolating these keeps the camera above the board. */
-export interface CameraGoal {
+/**
+ * A camera shot as an orbit around a point on the table. Moving between shots
+ * means easing these numbers, so the camera always stays outside and above the
+ * board instead of cutting through it.
+ */
+export interface CameraShot {
   target: [number, number, number];
-  /** Continuous side (see `sideProgress`): the camera sits outside this side. */
-  side: number;
+  /** Where the camera stands around the target: 0 is +z (the near side), π/2 is +x. */
+  azimuth: number;
+  /** Height angle above the table, in radians. */
+  elevation: number;
   distance: number;
-  /** Elevation above the table, in radians. */
-  pitch: number;
 }
 
 const WORLD_UP = new Vector3(0, 1, 0);
-const OVERVIEW_PITCH = 0.98;
-const DICE_PITCH = 1.05;
-const FOLLOW_PITCH = 0.6;
-const LANDING_PITCH = 0.7;
 
-function safeSize(viewport: CameraViewport) {
+// Elevations chosen for each moment: low and close while travelling, looking
+// down onto the landed space, and high enough to read the whole board.
+const ELEVATION = { overview: 0.98, dice: 1.08, follow: 0.6, landing: 0.8 };
+// The camera trails a little behind the moving piece, so the route ahead
+// recedes diagonally into the picture (a three-quarter tracking shot).
+const TRAIL = { follow: 0.34, landing: 0.12 };
+
+export function shotDirection(azimuth: number, elevation: number, out = new Vector3()): Vector3 {
+  return out.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
+}
+
+export function shotPosition(shot: CameraShot, out = new Vector3()): Vector3 {
+  return shotDirection(shot.azimuth, shot.elevation, out).multiplyScalar(shot.distance)
+    .add(new Vector3(...shot.target));
+}
+
+function safeTangents(viewport: CameraViewport) {
   const { width, height, insets } = viewport;
   const safeWidth = Math.max(160, width - insets.left - insets.right);
   const safeHeight = Math.max(160, height - insets.top - insets.bottom);
@@ -37,19 +53,9 @@ function safeSize(viewport: CameraViewport) {
   return { tanH: tanHalf * (safeWidth / height), tanV: tanHalf * (safeHeight / height) };
 }
 
-/** Unit vector from the target towards the camera. */
-export function orbitDirection(side: number, pitch: number): Vector3 {
-  const [x, z] = rotateOffset(0, Math.cos(pitch), sideYaw(side));
-  return new Vector3(x, Math.sin(pitch), z).normalize();
-}
-
-export function cameraPosition(goal: CameraGoal, out = new Vector3()): Vector3 {
-  return out.copy(orbitDirection(goal.side, goal.pitch)).multiplyScalar(goal.distance).add(new Vector3(...goal.target));
-}
-
 /** The shortest distance at which every point fits inside the uncovered part of the screen. */
 export function fitDistance(points: readonly Vector3[], target: Vector3, back: Vector3, viewport: CameraViewport, margin = 1.04): number {
-  const { tanH, tanV } = safeSize(viewport);
+  const { tanH, tanV } = safeTangents(viewport);
   const right = new Vector3().crossVectors(WORLD_UP, back).normalize();
   const up = new Vector3().crossVectors(back, right).normalize();
   const offset = new Vector3();
@@ -66,47 +72,82 @@ export function fitDistance(points: readonly Vector3[], target: Vector3, back: V
   return distance;
 }
 
-const BOARD_EXTENT = BOARD_HALF + 0.25;
+const BOARD_EXTENT = BOARD_HALF + 0.2;
 const BOARD_POINTS = [-1, 1].flatMap((x) => [-1, 1].flatMap((z) => [0, 0.9].map((y) =>
   new Vector3(x * BOARD_EXTENT, y, z * BOARD_EXTENT))));
 
-export function overviewGoal(side: number, viewport: CameraViewport, mode: 'overview' | 'dice' = 'overview'): CameraGoal {
-  const pitch = mode === 'dice' ? DICE_PITCH : OVERVIEW_PITCH;
+/** The whole board, viewed square to one side. */
+export function overviewShot(azimuth: number, viewport: CameraViewport, mode: 'overview' | 'dice' = 'overview'): CameraShot {
+  const elevation = ELEVATION[mode];
   const target = new Vector3(0, 0, 0);
-  const distance = fitDistance(BOARD_POINTS, target, orbitDirection(side, pitch), viewport);
-  return { target: [0, 0, 0], side, pitch, distance: mode === 'dice' ? distance * 0.94 : distance };
+  const distance = fitDistance(BOARD_POINTS, target, shotDirection(azimuth, elevation), viewport);
+  return { target: [0, 0, 0], azimuth, elevation, distance: mode === 'dice' ? distance * 0.92 : distance };
+}
+
+function tileCorners(index: number, y = 0): Vector3[] {
+  const tile = tilePlacement(index);
+  const half = Math.max(tile.width, tile.depth) / 2;
+  return [-1, 1].flatMap((x) => [-1, 1].map((z) => new Vector3(tile.x + x * half, y, tile.z + z * half)));
 }
 
 /**
- * Close third-person framing behind the travelling piece: about three to four
- * spaces across, the route ahead visible, widening a little around corners.
+ * Framing that knows where the move ends. While travelling it keeps the piece
+ * and the next spaces in view, with room ahead of the piece; as the piece nears
+ * its destination the destination joins the frame, so arriving needs no new
+ * camera move. Landing frames the piece on its space, looking down onto it.
  */
-export function followGoal(
+export function travelShot(
   anchor: Readonly<{ x: number; z: number }>,
-  side: number,
-  cornerness: number,
+  ahead: readonly number[],
+  destination: number | null,
   viewport: CameraViewport,
   mode: 'follow' | 'landing',
-): CameraGoal {
+): CameraShot {
   const landing = mode === 'landing';
-  const { tanH, tanV } = safeSize(viewport);
-  // Portrait screens show fewer spaces across so the piece stays a readable size.
-  const portrait = viewport.width < viewport.height;
-  const span = (landing ? (portrait ? 4.2 : 5.4) : (portrait ? 5.6 : 7.6)) * (1 + 0.28 * cornerness);
-  const depthSpan = landing ? 3.6 : 4.4;
-  const distance = Math.max(span / 2 / tanH, depthSpan / 2 / tanV);
-  // Look slightly ahead along the route and in towards the board centre.
-  const [ox, oz] = rotateOffset(landing ? 0 : -1.1 * (1 - cornerness * 0.5), landing ? -0.45 : -0.75, sideYaw(side));
+  // Over the last three spaces the travelling shot becomes the landing shot,
+  // so the arrival is already framed when the piece touches down.
+  const approach = landing ? 0 : Math.min(1, ahead.length / 3);
+  const mix = (arrive: number, travel: number) => arrive + (travel - arrive) * approach;
+  const azimuth = outwardAzimuth(anchor.x, anchor.z) + mix(TRAIL.landing, TRAIL.follow);
+  const elevation = mix(ELEVATION.landing, ELEVATION.follow);
+  const back = shotDirection(azimuth, elevation);
+  const piece = new Vector3(anchor.x, 0.5, anchor.z);
+  const points = [piece, new Vector3(anchor.x, 0, anchor.z)];
+  const aheadCentres = ahead.map((index) => {
+    const tile = tilePlacement(index);
+    return new Vector3(tile.x, 0, tile.z);
+  });
+  points.push(...aheadCentres);
+  if (destination !== null && (approach === 0 || ahead.includes(destination))) points.push(...tileCorners(destination));
+
+  // Weight the aim towards the piece; the route ahead pulls it forward.
+  const target = piece.clone().setY(0);
+  if (aheadCentres.length) {
+    const lead = aheadCentres.reduce((sum, point) => sum.add(point), new Vector3()).divideScalar(aheadCentres.length);
+    target.lerp(lead, 0.4);
+  }
+  // Aim slightly inwards, which sits the piece in the lower part of the frame.
+  const inward = new Vector3(-back.x, 0, -back.z).normalize().multiplyScalar(mix(0.35, 0.6));
+  target.add(inward);
+
+  const fitted = fitDistance(points, target, back, viewport, mix(1.5, 1.25));
+  const [near, far] = [mix(6.5, 8.5), mix(17, 21)];
   return {
-    target: [anchor.x + ox, 0.2, anchor.z + oz],
-    side,
-    pitch: landing ? LANDING_PITCH : FOLLOW_PITCH,
-    distance,
+    target: [target.x, 0.15, target.z],
+    azimuth,
+    elevation,
+    distance: Math.min(far, Math.max(near, fitted)),
   };
 }
 
-/** 1 on a corner space, falling to 0 a little over a space away. */
-export function cornerness(track: number): number {
-  const fromCorner = Math.abs(track - Math.round(track / 5) * 5);
-  return Math.max(0, 1 - fromCorner / 1.4);
+/**
+ * One step of a critically damped spring: the fastest approach to `goal`
+ * without overshoot, keeping velocity across changes of goal so the camera
+ * never jerks when the moment changes.
+ */
+export function springStep(value: number, velocity: number, goal: number, stiffness: number, dt: number): [number, number] {
+  const decay = Math.exp(-stiffness * dt);
+  const offset = value - goal;
+  const carry = (velocity + stiffness * offset) * dt;
+  return [goal + (offset + carry) * decay, (velocity - stiffness * carry) * decay];
 }

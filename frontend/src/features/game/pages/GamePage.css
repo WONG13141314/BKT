@@ -76,9 +76,7 @@
   position: absolute;
   top: 76px;
   left: var(--hud-gap);
-  width: 244px;
-  max-height: calc(100dvh - 76px - 112px);
-  overflow-y: auto;
+  width: 260px;
 }
 
 .hud-details {

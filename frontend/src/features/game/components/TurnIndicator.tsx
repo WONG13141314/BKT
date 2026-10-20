@@ -1,5 +1,5 @@
 import { Player } from '../types/game.types';
-import { TOKEN_ICONS } from '../config/tokens';
+import { TokenIcon } from './TokenIcon';
 import './TurnIndicator.css';
 
 interface TurnIndicatorProps {
@@ -67,7 +67,7 @@ export function TurnIndicator({
         className={`turn-banner ${isMyTurn ? 'turn-banner--you' : ''}`}
         style={{ '--player-color': currentPlayer.color } as React.CSSProperties}
       >
-        <span className="turn-banner__token" aria-hidden="true">{TOKEN_ICONS[currentPlayer.tokenType] ?? ''}</span>
+        <span className="turn-banner__token" aria-hidden="true"><TokenIcon token={currentPlayer.tokenType} size={30} /></span>
         <span className="turn-banner__who">
           {isMyTurn ? 'Your Turn' : `${currentPlayer.name}'s Turn`}
         </span>

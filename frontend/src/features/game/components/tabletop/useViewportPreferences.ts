@@ -23,7 +23,8 @@ export function usePrefersReducedMotion(): boolean {
  */
 export function hudInsets(width: number, height: number): SafeInsets {
   if (height <= 500 && width > height) return { top: 58, right: 300, bottom: 12, left: 12 };
-  if (width >= 1100) return { top: 84, right: 340, bottom: 104, left: 276 };
+  // Equal side insets keep the board in the middle of the screen.
+  if (width >= 1100) return { top: 84, right: 340, bottom: 104, left: 340 };
   if (width >= 700) return { top: 150, right: 16, bottom: 150, left: 16 };
   return { top: 150, right: 8, bottom: 170, left: 8 };
 }

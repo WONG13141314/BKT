@@ -443,7 +443,7 @@
 .board-stage--basic {
   display: grid;
   place-items: center;
-  padding: 84px 340px 104px 276px;
+  padding: 84px 340px 104px 340px;
 }
 
 .board-stage--basic .board-grid { width: min(100%, 600px, calc(100dvh - 200px)); }

@@ -1,6 +1,7 @@
 import { Player, formatRM } from '../types/game.types';
 import { Lock, Flame, Building2, CheckCircle2, Star, Shield, Tag } from 'lucide-react';
-import { TOKEN_ICONS, TOKEN_NAMES } from '../config/tokens';
+import { TOKEN_NAMES } from '../config/tokens';
+import { TokenIcon } from './TokenIcon';
 import './PlayerPanel.css';
 
 interface PlayerPanelProps {
@@ -54,23 +55,25 @@ export function PlayerPanel({
               style={{ '--player-color': player.color } as React.CSSProperties}
               aria-current={isCurrentTurn ? 'true' : undefined}
             >
-              <span className="panel-player__token" title={TOKEN_NAMES[player.tokenType] ?? 'Token'} aria-hidden="true">
-                {TOKEN_ICONS[player.tokenType] ?? player.name.charAt(0).toUpperCase()}
+              <span className="panel-player__token" title={TOKEN_NAMES[player.tokenType] ?? 'Token'}>
+                <TokenIcon token={player.tokenType} size={34} />
               </span>
               <span className="panel-player__info">
                 <span className="panel-player__name">
-                  {player.name}
+                  <span className="panel-player__name-text" title={player.name}>{player.name}</span>
                   {isMe && <span className="panel-player__you">You</span>}
                   {player.isBot && <span className="panel-player__tag">Bot</span>}
                   {player.autopilot && <span className="panel-player__tag">Away · bot playing</span>}
                 </span>
-                <span className="panel-player__stats">
-                  <span title="Properties"><Building2 size={11} aria-hidden="true" /> {player.properties.length}<span className="sr-only"> properties</span></span>
-                  <span title="Correct answers"><CheckCircle2 size={11} aria-hidden="true" /> {player.totalCorrect}/{player.totalQuestions}<span className="sr-only"> correct</span></span>
-                  {badges}
+                <span className="panel-player__line">
+                  <span className={`panel-player__money${player.money < 0 ? ' money--negative' : ''}`}>{formatRM(player.money)}</span>
+                  <span className="panel-player__stats">
+                    <span title="Properties"><Building2 size={11} aria-hidden="true" /> {player.properties.length}<span className="sr-only"> properties</span></span>
+                    <span title="Correct answers"><CheckCircle2 size={11} aria-hidden="true" /> {player.totalCorrect}/{player.totalQuestions}<span className="sr-only"> correct</span></span>
+                  </span>
                 </span>
+                {badges.length > 0 && <span className="panel-player__badges">{badges}</span>}
               </span>
-              <span className={`panel-player__money${player.money < 0 ? ' money--negative' : ''}`}>{formatRM(player.money)}</span>
             </li>
           );
         })}

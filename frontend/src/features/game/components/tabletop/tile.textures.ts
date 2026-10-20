@@ -1,7 +1,7 @@
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three';
 import type { TileConfig } from '../../types/game.types';
 import { GAME_CONSTANTS } from '../../types/game.types';
-import { BAND_DEPTH, TILE_DEPTH } from './board.layout';
+import { BAND_DEPTH, SIDE_WIDTH, TILE_DEPTH } from './board.layout';
 
 // Printed faces for the board, drawn once on canvases. Colours follow the 2D
 // board so the two renderers read as the same game.
@@ -190,21 +190,26 @@ function drawSideFace(context: CanvasRenderingContext2D, tile: FaceTile, width: 
   context.fillStyle = INK;
 
   if (tile.type === 'PROPERTY') {
-    fitText(context, tile.name, width / 2, bandBottom + 92, width - 56, 68);
-    if (tile.skillTheme) drawMedallion(context, width / 2, height * 0.6, 58, SKILL_SYMBOLS[tile.skillTheme] ?? '+', groupColour ?? INK);
-    context.font = `800 58px ${FONT}`;
+    // The colour band is printed on the inner edge, with a rule beneath it.
+    context.fillStyle = groupColour ?? INK;
+    context.fillRect(0, 0, width, bandBottom);
     context.fillStyle = INK;
-    context.fillText(`RM${tile.price}`, width / 2, height - 70);
+    context.fillRect(0, bandBottom - 3, width, 6);
+    fitText(context, tile.name, width / 2, bandBottom + 78, width - 48, 62);
+    if (tile.skillTheme) drawMedallion(context, width / 2, height * 0.64, 44, SKILL_SYMBOLS[tile.skillTheme] ?? '+', groupColour ?? INK);
+    context.font = `800 54px ${FONT}`;
+    context.fillStyle = INK;
+    context.fillText(`RM${tile.price}`, width / 2, height - 50);
     return;
   }
 
-  fitText(context, tile.name, width / 2, 96, width - 56, 62);
-  if (tile.type === 'CHALLENGE_CARD') drawQuestionCard(context, width / 2, height * 0.55, 1.15);
+  fitText(context, tile.name, width / 2, 82, width - 48, 60);
+  if (tile.type === 'CHALLENGE_CARD') drawQuestionCard(context, width / 2, height * 0.58, 1);
   if (tile.type === 'TAX') {
-    drawCoins(context, width / 2, height * 0.58);
+    drawCoins(context, width / 2, height * 0.6);
     context.fillStyle = INK;
-    context.font = `800 54px ${FONT}`;
-    context.fillText(`PAY RM${taxAmount(tile)}`, width / 2, height - 70);
+    context.font = `800 50px ${FONT}`;
+    context.fillText(`PAY RM${taxAmount(tile)}`, width / 2, height - 50);
   }
 }
 
@@ -213,7 +218,9 @@ function drawCornerFace(context: CanvasRenderingContext2D, tile: FaceTile, size:
   context.fillRect(0, 0, size, size);
   context.save();
   // Corner art faces outwards along the board's diagonal, as on a printed board.
+  // It is laid out on a 768-pixel square and scaled to this face.
   context.translate(size / 2, size / 2);
+  context.scale(size / 768, size / 768);
   context.rotate(-Math.PI / 4);
   context.textAlign = 'center';
   context.textBaseline = 'middle';
@@ -250,7 +257,7 @@ function drawCornerFace(context: CanvasRenderingContext2D, tile: FaceTile, size:
 }
 
 export function makeTileTexture(tile: FaceTile, corner: boolean, groupColour: string | null): CanvasTexture {
-  const size = corner ? [TILE_DEPTH * PX_PER_UNIT, TILE_DEPTH * PX_PER_UNIT] : [2 * PX_PER_UNIT, TILE_DEPTH * PX_PER_UNIT];
+  const size = (corner ? [TILE_DEPTH, TILE_DEPTH] : [SIDE_WIDTH, TILE_DEPTH]).map((units) => Math.round(units * PX_PER_UNIT));
   const { element, context } = canvas(size[0], size[1]);
   if (context) {
     if (corner) drawCornerFace(context, tile, size[0]);
@@ -339,6 +346,27 @@ export function makeCardBackTexture(): CanvasTexture {
     context.fillText('?', 192, 230);
     context.font = `800 46px ${FONT}`;
     context.fillText('CHALLENGE', 192, 420);
+  }
+  return finish(element);
+}
+
+/**
+ * A soft halo for a lifted space: a rounded rectangle glowing outwards. The
+ * rectangle fills the middle 56% of the texture, matching the space beneath.
+ */
+export const GLOW_INNER = 0.56;
+export function makeGlowTexture(): CanvasTexture {
+  const size = 256;
+  const { element, context } = canvas(size, size);
+  if (context) {
+    const inset = (size * (1 - GLOW_INNER)) / 2;
+    context.shadowColor = 'rgba(255, 255, 255, 1)';
+    context.shadowBlur = 42;
+    context.fillStyle = '#ffffff';
+    context.beginPath();
+    context.roundRect(inset, inset, size - inset * 2, size - inset * 2, 14);
+    context.fill();
+    context.fill();
   }
   return finish(element);
 }

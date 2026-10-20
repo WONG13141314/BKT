@@ -17,6 +17,6 @@ describe('Board rendering safeguards', () => {
   it('retains idle table frames instead of continuously repainting them', () => {
     expect(tabletopSource).toContain('frameloop="demand"');
     expect(tabletopSource).toContain('if (animating) invalidate()');
-    expect(cameraSource).toContain('if (remaining > 0.002 || focus?.moving) invalidate()');
+    expect(cameraSource).toContain('if (moving || focus?.moving) invalidate()');
   });
 });

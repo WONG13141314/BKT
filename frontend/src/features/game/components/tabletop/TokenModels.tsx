@@ -83,21 +83,22 @@ function Part({ geometry, dark = false, position, rotation, scale }: {
 
 function ScottieDog() {
   const [body, eye, nose] = geometries('scottie_dog', () => [
+    // Square muzzle with a hanging beard, two pricked ears and a carrot tail.
     slab(outline([
-      [-0.4, 0], [-0.24, 0], [-0.22, 0.12], [0.14, 0.12], [0.16, 0], [0.32, 0], [0.34, 0.15],
-      [0.37, 0.2], [0.5, 0.21], [0.57, 0.3], [0.58, 0.39], [0.41, 0.45], [0.36, 0.51],
-      [0.33, 0.69], [0.26, 0.53], [0.18, 0.51], [-0.3, 0.45], [-0.34, 0.58], [-0.4, 0.56],
-      [-0.42, 0.42], [-0.44, 0.16],
-    ], { 3: [-0.04, 0.09], 8: [0.44, 0.17], 9: [0.56, 0.22], 16: [-0.05, 0.5], 20: [-0.48, 0.3] }), 0.36, 0.065),
+      [-0.4, 0], [-0.27, 0], [-0.26, 0.15], [0.12, 0.15], [0.14, 0], [0.29, 0], [0.3, 0.15],
+      [0.36, 0.11], [0.5, 0.13], [0.52, 0.24], [0.63, 0.24], [0.64, 0.4], [0.46, 0.41],
+      [0.44, 0.47], [0.46, 0.71], [0.36, 0.5], [0.3, 0.5], [0.27, 0.69], [0.2, 0.47],
+      [-0.3, 0.43], [-0.33, 0.63], [-0.39, 0.63], [-0.41, 0.43], [-0.44, 0.2],
+    ], { 3: [-0.07, 0.12], 19: [-0.05, 0.47], 23: [-0.47, 0.32] }), 0.3, 0.05),
     new SphereGeometry(0.026, 12, 10),
-    new SphereGeometry(0.04, 12, 10),
+    new SphereGeometry(0.042, 12, 10),
   ]);
   return (
     <group>
       <Part geometry={body} />
-      <Part geometry={eye} dark position={[0.42, 0.45, 0.165]} />
-      <Part geometry={eye} dark position={[0.42, 0.45, -0.165]} />
-      <Part geometry={nose} dark position={[0.6, 0.39, 0]} />
+      <Part geometry={eye} dark position={[0.45, 0.44, 0.135]} />
+      <Part geometry={eye} dark position={[0.45, 0.44, -0.135]} />
+      <Part geometry={nose} dark position={[0.65, 0.38, 0]} />
     </group>
   );
 }

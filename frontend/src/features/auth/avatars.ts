@@ -1,5 +1,7 @@
 // Monopoly tokens. The server stores the id; the client owns the rendering.
 
+import type { PlayerToken } from '../game/types/game.types';
+
 export const AVATARS = [
   'tophat',
   'car',
@@ -24,15 +26,16 @@ const LABELS: Record<Avatar, string> = {
   wheelbarrow: 'Wheelbarrow',
 };
 
-const TOKENS: Record<Avatar, string> = {
-  tophat: '🎩',
-  car: '🚗',
-  dog: '🐕',
-  ship: '🚢',
-  boot: '👢',
-  cat: '🐈',
-  duck: '🦆',
-  wheelbarrow: '🛒',
+// The playing piece each avatar brings to the table (rendered from the 3D models).
+const PIECES: Record<Avatar, PlayerToken> = {
+  tophat: 'top_hat',
+  car: 'race_car',
+  dog: 'scottie_dog',
+  ship: 'battleship',
+  boot: 'boot',
+  cat: 'cat',
+  duck: 'rubber_duck',
+  wheelbarrow: 'wheelbarrow',
 };
 
 export function isAvatar(value: string): value is Avatar {
@@ -43,6 +46,6 @@ export function avatarLabel(avatar: string): string {
   return isAvatar(avatar) ? LABELS[avatar] : LABELS.tophat;
 }
 
-export function avatarToken(avatar: string): string {
-  return isAvatar(avatar) ? TOKENS[avatar] : TOKENS.tophat;
+export function avatarPiece(avatar: string): PlayerToken {
+  return isAvatar(avatar) ? PIECES[avatar] : PIECES.tophat;
 }

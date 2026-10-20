@@ -76,9 +76,11 @@
   list-style: none;
 }
 
+/* The active card is marked by colour and a gold ring, never by moving it,
+   so nothing overflows the panel. */
 .panel-player {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 8px 10px 8px 8px;
@@ -87,30 +89,28 @@
   border-left: 6px solid var(--player-color);
   border-radius: 12px;
   box-shadow: var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .panel-player--active {
-  background: #fff7dc;
-  transform: translateX(4px);
+  background: #fff4cc;
   box-shadow: 0 0 0 3px #ffbd19, var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
 }
 
 .panel-player__token {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  font-size: 1.25rem;
-  line-height: 1;
-  background: color-mix(in srgb, var(--player-color) 22%, white);
+  width: 42px;
+  height: 42px;
+  background: radial-gradient(circle at 50% 40%, #ffffff, color-mix(in srgb, var(--player-color) 30%, white));
   border: 2px solid var(--ink);
   border-radius: 50%;
+  overflow: hidden;
 }
 
 .panel-player__info {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -119,8 +119,12 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
+}
+
+.panel-player__name-text {
+  min-width: 0;
   overflow: hidden;
-  font: 800 0.86rem/1.15 var(--font-body);
+  font: 800 0.88rem/1.2 var(--font-body);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -139,30 +143,42 @@
 .panel-player__you { color: #fff; background: var(--ink); }
 .panel-player__tag { color: var(--ink); background: #e8ebe6; }
 
+.panel-player__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-player__money {
+  font: 900 1.05rem var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-player__money.money--negative {
+  padding: 0 5px;
+  border-width: 1px;
+}
+
 .panel-player__stats {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
+  gap: 8px;
   font-size: 0.7rem;
   font-weight: 700;
   color: #4a524d;
 }
 
-.panel-player__stats > span:not(.badge) {
+.panel-player__stats > span {
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
-.panel-player__money {
-  font: 900 0.95rem var(--font-display);
-  font-variant-numeric: tabular-nums;
-}
-
-.panel-player__money.money--negative {
-  padding: 1px 5px;
-  border-width: 1px;
+.panel-player__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
 }
 
 .panel-player--bankrupt {
@@ -193,8 +209,11 @@
     align-items: stretch;
     gap: 6px;
     overflow-x: auto;
+    padding: 3px;
     scrollbar-width: none;
   }
+
+  .player-panel::-webkit-scrollbar { display: none; }
 
   .panel-round {
     flex-shrink: 0;
@@ -215,27 +234,18 @@
 
   .panel-player {
     flex-shrink: 0;
-    grid-template-columns: 28px auto;
-    grid-template-rows: auto auto;
-    gap: 0 7px;
+    grid-template-columns: 30px auto;
+    gap: 7px;
     padding: 4px 9px 4px 5px;
     border-left-width: 4px;
     border-radius: 10px;
   }
 
-  .panel-player--active { transform: translateY(2px); }
-
-  .panel-player__token {
-    grid-row: 1 / 3;
-    width: 28px;
-    height: 28px;
-    font-size: 0.95rem;
-  }
-
-  .panel-player__name { max-width: 9ch; font-size: 0.74rem; }
+  .panel-player__token { width: 30px; height: 30px; }
+  .panel-player__token .token-icon { width: 26px; height: 26px; }
+  .panel-player__name-text { max-width: 9ch; font-size: 0.74rem; }
   .panel-player__tag,
-  .panel-player__stats > span:not(.badge) { display: none; }
-  .panel-player__stats { grid-column: 2; }
-  .panel-player__stats:not(:has(.badge)) { display: none; }
-  .panel-player__money { grid-column: 2; font-size: 0.78rem; }
+  .panel-player__stats { display: none; }
+  .panel-player__money { font-size: 0.8rem; }
+  .panel-player__badges { display: none; }
 }

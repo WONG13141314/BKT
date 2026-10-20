@@ -568,3 +568,8 @@
 .btn-back:hover {
   text-decoration: underline;
 }
+
+/* Rendered pewter pieces in place of emoji. */
+.token-pick .token-icon { width: 82%; height: 82%; }
+.player-chip__token .token-icon,
+.profile-row__token .token-icon { width: 88%; height: 88%; }

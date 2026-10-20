@@ -330,7 +330,8 @@ export function Board({
               tiles={gameState.tiles}
               properties={properties}
               currentPlayerIndex={gameState.currentPlayerIndex}
-              selectedTile={selectedTile}
+              highlightTile={moving || diceAnimating ? null : selectedTile}
+              destination={rollerId !== undefined ? targetPositions[rollerId] ?? null : null}
               stepTile={stepTile}
               dice={dice}
               cameraMode={cameraMode}

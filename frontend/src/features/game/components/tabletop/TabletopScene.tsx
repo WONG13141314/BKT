@@ -1,19 +1,24 @@
 import { Environment, Lightformer, RoundedBox } from '@react-three/drei';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { memo, Suspense, useEffect, useMemo, useRef } from 'react';
-import { ExtrudeGeometry, Group, MathUtils, MeshStandardMaterial, NeutralToneMapping, Shape, Vector3 } from 'three';
+import {
+  AdditiveBlending, ExtrudeGeometry, Group, MathUtils, Mesh, MeshBasicMaterial, MeshStandardMaterial,
+  NeutralToneMapping, Shape, Vector3,
+} from 'three';
 import type { Player, PropertyState, TileConfig } from '../../types/game.types';
 import { COLOR_GROUP_PRESENTATION } from '../../config/board.presentation';
 import { SceneReady } from '../BoardRendering';
 import { PhysicsDiceContent } from '../PhysicsDice';
 import { TOKEN_HOP_SECONDS } from '../board.animation';
 import {
-  BAND_DEPTH, BOARD_HALF, forwardSteps, nearestSide, sideProgress, TILE_DEPTH, TILE_GAP, TILE_TOP,
-  tilePlacement, tokenSpot, travelYaw, rotateOffset,
+  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, forwardSteps, SURFACE_Y, TILE_COUNT, TILE_GAP,
+  tilePlacement, tokenSpot, travelYaw,
 } from './board.layout';
 import { CameraRig, type TokenMotion } from './CameraRig';
-import type { CameraMode, SafeInsets } from './camera';
-import { makeCardBackTexture, makeCentreTexture, makeFeltTexture, makeTileTexture, SPACE_COLOURS } from './tile.textures';
+import { springStep, type CameraMode, type SafeInsets } from './camera';
+import {
+  GLOW_INNER, makeCardBackTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileTexture, SPACE_COLOURS,
+} from './tile.textures';
 import { TokenModel } from './TokenModels';
 
 export interface TabletopSceneProps {
@@ -21,7 +26,10 @@ export interface TabletopSceneProps {
   tiles: TileConfig[];
   properties: PropertyState[];
   currentPlayerIndex: number;
-  selectedTile: number;
+  /** The space lifted out of the board: the landed or chosen space, or none while moving. */
+  highlightTile: number | null;
+  /** Where the active piece's current move ends, for the camera's framing. */
+  destination: number | null;
   /** The space the moving piece has just reached; it flashes briefly. */
   stepTile: { index: number; id: number } | null;
   dice: {
@@ -38,11 +46,13 @@ export interface TabletopSceneProps {
   onReady: () => void;
 }
 
-const CENTRE_SIZE = (BOARD_HALF - TILE_DEPTH) * 2;
-const CENTRE_TOP = 0.06;
+const BOARD_THICKNESS = 0.24;
 const TOKEN_SCALE = 0.86;
 // Resting pieces turn a little towards the outside, so they show their profile.
-const REST_TURN = 0.45;
+const REST_TURN = 0.3;
+// How far the highlighted space rises out of the board.
+const LIFT = 0.16;
+const GOLD = '#ffbd19';
 
 export function TabletopScene(props: TabletopSceneProps) {
   return (
@@ -61,6 +71,8 @@ export function TabletopScene(props: TabletopSceneProps) {
 
 function TabletopWorld(props: TabletopSceneProps) {
   const motion = useRef(new Map<string, TokenMotion>());
+  // How far each space is lifted this frame, so pieces can ride with it.
+  const lifts = useRef(new Float32Array(TILE_COUNT));
   const active = props.players[props.currentPlayerIndex];
   // Which pieces share a space, so each can step aside for the others.
   const slots = useMemo(() => {
@@ -70,6 +82,10 @@ function TabletopWorld(props: TabletopSceneProps) {
     });
     return new Map([...byTile.values()].flatMap((ids) => ids.map((id, slot) => [id, { slot, count: ids.length }] as const)));
   }, [props.players]);
+  const ownership = useMemo(() => new Map(props.properties.map((property) => [property.tileIndex, {
+    colour: props.players.find((player) => player.id === property.ownerId)?.color ?? null,
+    house: property.isLeveledUp,
+  }])), [props.players, props.properties]);
 
   return (
     <>
@@ -77,14 +93,22 @@ function TabletopWorld(props: TabletopSceneProps) {
       <Table />
       <BoardBody />
       {props.tiles.map((tile) => (
-        <BoardSpace key={tile.index} tile={tile} onSelect={props.onTileSelect} />
+        <BoardSpace
+          key={tile.index}
+          tile={tile}
+          ownerColour={ownership.get(tile.index)?.colour ?? null}
+          house={ownership.get(tile.index)?.house ?? false}
+          raised={props.highlightTile === tile.index}
+          reducedMotion={props.reducedMotion}
+          lifts={lifts.current}
+          onSelect={props.onTileSelect}
+        />
       ))}
-      <Ownership tiles={props.tiles} properties={props.properties} players={props.players} />
-      <SelectionFrame index={props.selectedTile} />
+      <HighlightGlow index={props.highlightTile} lifts={lifts.current} />
       {props.stepTile && <StepFlash key={props.stepTile.id} index={props.stepTile.index} />}
       <CardDeck />
 
-      <group position={[0, CENTRE_TOP + 0.04, 0]}>
+      <group position={[0, SURFACE_Y + 0.042, 0]}>
         <PhysicsDiceContent
           values={props.dice.values}
           rollId={props.dice.rollId}
@@ -105,6 +129,7 @@ function TabletopWorld(props: TabletopSceneProps) {
             count={place.count}
             active={player.id === active?.id}
             motion={motion.current}
+            lifts={lifts.current}
             reducedMotion={props.reducedMotion}
           />
         );
@@ -113,7 +138,8 @@ function TabletopWorld(props: TabletopSceneProps) {
       <CameraRig
         mode={props.cameraMode}
         focusId={active?.id}
-        restingTrack={active?.position ?? 0}
+        restingIndex={active?.position ?? 0}
+        destination={props.destination}
         insets={props.insets}
         reducedMotion={props.reducedMotion}
         motion={motion.current}
@@ -123,12 +149,12 @@ function TabletopWorld(props: TabletopSceneProps) {
   );
 }
 
-/** Shared by the game table and the token lookbook. */
-export function TableLighting() {
+/** Shared by the game table, the token lookbook and the token pictures. */
+export function TableLighting({ backdrop = true }: { backdrop?: boolean }) {
   return (
     <>
-      <color attach="background" args={['#103024']} />
-      <fog attach="fog" args={['#103024', 60, 150]} />
+      {backdrop && <color attach="background" args={['#103024']} />}
+      {backdrop && <fog attach="fog" args={['#103024', 60, 150]} />}
       <ambientLight intensity={0.35} />
       <hemisphereLight args={['#fff7e6', '#1d4634', 0.75]} />
       <directionalLight
@@ -138,10 +164,10 @@ export function TableLighting() {
         color="#fff4e0"
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
+        shadow-camera-left={-9}
+        shadow-camera-right={9}
+        shadow-camera-top={9}
+        shadow-camera-bottom={-9}
         shadow-camera-far={45}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
@@ -166,36 +192,92 @@ const Table = memo(function Table() {
   const felt = useMemo(() => makeFeltTexture(), []);
   useEffect(() => () => felt.dispose(), [felt]);
   return (
-    <mesh rotation-x={-Math.PI / 2} position={[0, -0.62, 0]} receiveShadow>
+    <mesh rotation-x={-Math.PI / 2} position={[0, SURFACE_Y - BOARD_THICKNESS - 0.005, 0]} receiveShadow>
       <planeGeometry args={[160, 160]} />
       <meshStandardMaterial map={felt} roughness={0.95} color="#ffffff" />
     </mesh>
   );
 });
 
+/**
+ * Printed surfaces use unlit materials so they keep the exact colours of the
+ * 2D board; shadows land on transparent catchers laid over them.
+ */
+function Print({ map, colour, width, depth, y = 0.002 }: { map?: MeshBasicMaterial['map']; colour?: string; width: number; depth: number; y?: number }) {
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[0, y, 0]}>
+      <planeGeometry args={[width, depth]} />
+      <meshBasicMaterial map={map ?? null} color={colour ?? '#ffffff'} toneMapped={false} />
+    </mesh>
+  );
+}
+
+function ShadowCatcher({ width, depth }: { width: number; depth: number }) {
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]} receiveShadow>
+      <planeGeometry args={[width, depth]} />
+      <shadowMaterial transparent opacity={0.28} depthWrite={false} />
+    </mesh>
+  );
+}
+
 const BoardBody = memo(function BoardBody() {
   const centre = useMemo(() => makeCentreTexture(), []);
   useEffect(() => () => centre.dispose(), [centre]);
-  const edge = BOARD_HALF * 2 + 0.5;
+  const edge = BOARD_HALF * 2 + 0.3;
+  const field = CENTRE_SIZE - TILE_GAP;
   return (
-    <group>
-      {/* A thick lacquered board; the dark top shows between spaces as the printed rule lines. */}
-      <RoundedBox args={[edge, 0.6, edge]} radius={0.14} smoothness={4} position={[0, -0.3, 0]} castShadow receiveShadow>
-        <meshPhysicalMaterial color="#161d19" roughness={0.42} clearcoat={0.6} clearcoatRoughness={0.35} />
+    <group position={[0, SURFACE_Y, 0]}>
+      {/* A slim board; its dark top shows between the spaces as the printed rule lines. */}
+      <RoundedBox args={[edge, BOARD_THICKNESS, edge]} radius={0.08} smoothness={4} position={[0, -BOARD_THICKNESS / 2, 0]} castShadow receiveShadow>
+        <meshPhysicalMaterial color="#17201b" roughness={0.45} clearcoat={0.5} clearcoatRoughness={0.4} />
       </RoundedBox>
-      {/* The recessed centre. Dice shadows fall on their own catcher, so the
-          printed field skips shadow sampling and keeps its edges clean. */}
-      <mesh rotation-x={-Math.PI / 2} position={[0, CENTRE_TOP, 0]}>
-        <planeGeometry args={[CENTRE_SIZE - TILE_GAP, CENTRE_SIZE - TILE_GAP]} />
-        <meshStandardMaterial map={centre} roughness={0.85} />
-      </mesh>
+      <Print map={centre} width={field} depth={field} />
+      <ShadowCatcher width={field} depth={field} />
     </group>
   );
 });
 
-const SPACE_HEIGHT = 0.14;
+let houseGeometry: { body: ExtrudeGeometry; roof: ExtrudeGeometry } | null = null;
+function house() {
+  if (houseGeometry) return houseGeometry;
+  const body = new Shape();
+  body.moveTo(-0.15, 0);
+  body.lineTo(0.15, 0);
+  body.lineTo(0.15, 0.18);
+  body.lineTo(-0.15, 0.18);
+  body.closePath();
+  const roof = new Shape();
+  roof.moveTo(-0.19, 0.17);
+  roof.lineTo(0.19, 0.17);
+  roof.lineTo(0, 0.32);
+  roof.closePath();
+  const options = { depth: 0.24, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 2 };
+  houseGeometry = {
+    body: new ExtrudeGeometry(body, options).translate(0, 0, -0.12),
+    roof: new ExtrudeGeometry(roof, { ...options, depth: 0.28 }).translate(0, 0, -0.14),
+  };
+  return houseGeometry;
+}
+const HOUSE_MATERIAL = new MeshStandardMaterial({ color: '#1f9d55', roughness: 0.4, metalness: 0.05 });
+const ROOF_MATERIAL = new MeshStandardMaterial({ color: '#17824a', roughness: 0.45 });
 
-const BoardSpace = memo(function BoardSpace({ tile, onSelect }: { tile: TileConfig; onSelect: (index: number) => void }) {
+interface SpaceProps {
+  tile: TileConfig;
+  ownerColour: string | null;
+  house: boolean;
+  raised: boolean;
+  reducedMotion: boolean;
+  lifts: Float32Array;
+  onSelect: (index: number) => void;
+}
+
+/**
+ * One printed space. It sits flush with the board; when it is the landed or
+ * chosen space it rises out of the board like a lifted card, with a gold edge,
+ * carrying its owner strip, house and any pieces on it.
+ */
+const BoardSpace = memo(function BoardSpace({ tile, ownerColour, house: hasHouse, raised, reducedMotion, lifts, onSelect }: SpaceProps) {
   const place = tilePlacement(tile.index);
   const groupColour = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] ?? null : null;
   const texture = useMemo(
@@ -205,142 +287,122 @@ const BoardSpace = memo(function BoardSpace({ tile, onSelect }: { tile: TileConf
     [tile.index, tile.type, tile.name, tile.price, tile.colorGroup, tile.skillTheme, place.corner, groupColour],
   );
   useEffect(() => () => texture.dispose(), [texture]);
+  const group = useRef<Group>(null);
+  const lift = useRef({ value: 0, velocity: 0 });
+  const invalidate = useThree((state) => state.invalidate);
   const width = place.width - TILE_GAP;
   const depth = place.depth - TILE_GAP;
+
+  useEffect(() => { invalidate(); }, [raised, invalidate]);
+  useFrame((_, delta) => {
+    const goal = raised ? LIFT : 0;
+    const state = lift.current;
+    if (state.value === goal && state.velocity === 0) return;
+    if (reducedMotion) {
+      state.value = goal;
+      state.velocity = 0;
+    } else {
+      [state.value, state.velocity] = springStep(state.value, state.velocity, goal, 11, Math.min(delta, 0.05));
+      if (Math.abs(state.value - goal) < 0.0005 && Math.abs(state.velocity) < 0.005) {
+        state.value = goal;
+        state.velocity = 0;
+      }
+    }
+    lifts[tile.index] = state.value;
+    if (group.current) group.current.position.y = SURFACE_Y + state.value;
+    invalidate();
+  });
+
   const select = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
     onSelect(tile.index);
   };
   const setCursor = (cursor: string) => () => { document.body.style.cursor = cursor; };
+  const geometry = house();
+  const edge = 0.06;
 
   return (
-    <group position={[place.x, 0, place.z]} rotation-y={place.yaw}>
-      <RoundedBox
-        args={[width, SPACE_HEIGHT, depth]}
-        radius={0.035}
-        smoothness={3}
-        position={[0, TILE_TOP - SPACE_HEIGHT / 2, 0]}
-        castShadow
-        receiveShadow
+    <group ref={group} position={[place.x, SURFACE_Y, place.z]} rotation-y={place.yaw}>
+      {/* The card's edge, hidden inside the board until the space lifts. */}
+      <mesh position={[0, -LIFT / 2 - 0.01, 0]} castShadow>
+        <boxGeometry args={[width, LIFT + 0.02, depth]} />
+        <meshStandardMaterial color={SPACE_COLOURS[tile.type] ?? SPACE_COLOURS.PROPERTY} roughness={0.8} />
+      </mesh>
+      <mesh
+        rotation-x={-Math.PI / 2}
+        position={[0, 0.002, 0]}
         onClick={select}
         onPointerOver={setCursor('pointer')}
         onPointerOut={setCursor('')}
       >
-        <meshStandardMaterial color={SPACE_COLOURS[tile.type] ?? SPACE_COLOURS.PROPERTY} roughness={0.7} />
-      </RoundedBox>
-      <mesh rotation-x={-Math.PI / 2} position={[0, TILE_TOP + 0.002, 0]} receiveShadow>
-        <planeGeometry args={[width - 0.04, depth - 0.04]} />
-        <meshStandardMaterial map={texture} roughness={0.72} />
+        <planeGeometry args={[width, depth]} />
+        <meshBasicMaterial map={texture} toneMapped={false} />
       </mesh>
-      {groupColour && !place.corner && (
-        <RoundedBox
-          args={[width - 0.08, 0.05, BAND_DEPTH - 0.06]}
-          radius={0.02}
-          smoothness={2}
-          position={[0, TILE_TOP + 0.02, -depth / 2 + BAND_DEPTH / 2]}
-          castShadow
-          receiveShadow
-        >
-          <meshPhysicalMaterial color={groupColour} roughness={0.35} clearcoat={0.8} clearcoatRoughness={0.25} />
-        </RoundedBox>
+      {ownerColour && (
+        <group position={[0, 0, depth / 2 - 0.13]}>
+          <Print colour={ownerColour} width={width - 0.16} depth={0.14} y={0.003} />
+        </group>
+      )}
+      <ShadowCatcher width={width} depth={depth} />
+      {hasHouse && (
+        <group position={[0, 0.003, -depth / 2 + BAND_DEPTH / 2]} rotation-y={Math.PI / 2}>
+          <mesh geometry={geometry.body} material={HOUSE_MATERIAL} castShadow />
+          <mesh geometry={geometry.roof} material={ROOF_MATERIAL} castShadow />
+        </group>
+      )}
+      {raised && (
+        <group position={[0, 0.006, 0]}>
+          {[
+            [0, -depth / 2 + edge / 2, width, edge], [0, depth / 2 - edge / 2, width, edge],
+            [-width / 2 + edge / 2, 0, edge, depth], [width / 2 - edge / 2, 0, edge, depth],
+          ].map(([x, z, w, d], i) => (
+            <mesh key={i} position={[x, 0, z]} rotation-x={-Math.PI / 2}>
+              <planeGeometry args={[w, d]} />
+              <meshBasicMaterial color={GOLD} toneMapped={false} />
+            </mesh>
+          ))}
+        </group>
       )}
     </group>
   );
 });
 
-let houseGeometry: { body: ExtrudeGeometry; roof: ExtrudeGeometry } | null = null;
-function house() {
-  if (houseGeometry) return houseGeometry;
-  const body = new Shape();
-  body.moveTo(-0.17, 0);
-  body.lineTo(0.17, 0);
-  body.lineTo(0.17, 0.2);
-  body.lineTo(-0.17, 0.2);
-  body.closePath();
-  const roof = new Shape();
-  roof.moveTo(-0.21, 0.19);
-  roof.lineTo(0.21, 0.19);
-  roof.lineTo(0, 0.36);
-  roof.closePath();
-  const options = { depth: 0.26, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelSegments: 2 };
-  houseGeometry = {
-    body: new ExtrudeGeometry(body, options).translate(0, 0, -0.13),
-    roof: new ExtrudeGeometry(roof, { ...options, depth: 0.3 }).translate(0, 0, -0.15),
-  };
-  return houseGeometry;
-}
-const HOUSE_MATERIAL = new MeshStandardMaterial({ color: '#1f9d55', roughness: 0.4, metalness: 0.05 });
-const ROOF_MATERIAL = new MeshStandardMaterial({ color: '#17824a', roughness: 0.45 });
-
-/** Owner strips along each owned space's outer edge, and a house for a Level Up. */
-function Ownership({ tiles, properties, players }: { tiles: TileConfig[]; properties: PropertyState[]; players: Player[] }) {
-  const geometry = house();
+/** A warm glow on the board around the lifted space, fading in as it rises. */
+function HighlightGlow({ index, lifts }: { index: number | null; lifts: Float32Array }) {
+  const texture = useMemo(() => makeGlowTexture(), []);
+  useEffect(() => () => texture.dispose(), [texture]);
+  const material = useRef<MeshBasicMaterial>(null);
+  const shown = useRef(index ?? 0);
+  if (index !== null) shown.current = index;
+  const place = tilePlacement(shown.current);
+  useFrame(() => {
+    if (!material.current) return;
+    // Keeps glowing on the last space while it sinks back down.
+    material.current.opacity = 0.75 * (lifts[shown.current] / LIFT);
+  });
   return (
-    <>
-      {properties.map((property) => {
-        const tile = tiles[property.tileIndex];
-        const owner = players.find((player) => player.id === property.ownerId);
-        if (!tile || (!owner && !property.isLeveledUp)) return null;
-        const place = tilePlacement(tile.index);
-        const width = place.width - TILE_GAP;
-        const depth = place.depth - TILE_GAP;
-        return (
-          <group key={property.tileIndex} position={[place.x, 0, place.z]} rotation-y={place.yaw}>
-            {owner && (
-              <RoundedBox args={[width - 0.14, 0.035, 0.2]} radius={0.015} smoothness={2} position={[0, TILE_TOP + 0.01, depth / 2 - 0.18]} receiveShadow>
-                <meshStandardMaterial color={owner.color} emissive={owner.color} emissiveIntensity={0.25} roughness={0.5} />
-              </RoundedBox>
-            )}
-            {property.isLeveledUp && (
-              <group position={[0, TILE_TOP + 0.045, -depth / 2 + BAND_DEPTH / 2]} rotation-y={Math.PI / 2}>
-                <mesh geometry={geometry.body} material={HOUSE_MATERIAL} castShadow />
-                <mesh geometry={geometry.roof} material={ROOF_MATERIAL} castShadow />
-              </group>
-            )}
-          </group>
-        );
-      })}
-    </>
-  );
-}
-
-/** A soft gold frame around the space shown in the details card. */
-function SelectionFrame({ index }: { index: number }) {
-  const place = tilePlacement(index);
-  const width = place.width - TILE_GAP + 0.02;
-  const depth = place.depth - TILE_GAP + 0.02;
-  const bar = 0.09;
-  const bars: [number, number, number, number][] = [
-    [0, -depth / 2 + bar / 2, width, bar], [0, depth / 2 - bar / 2, width, bar],
-    [-width / 2 + bar / 2, 0, bar, depth], [width / 2 - bar / 2, 0, bar, depth],
-  ];
-  return (
-    <group position={[place.x, TILE_TOP + 0.05, place.z]} rotation-y={place.yaw}>
-      {bars.map(([x, z, w, d], i) => (
-        <mesh key={i} position={[x, 0, z]}>
-          <boxGeometry args={[w, 0.03, d]} />
-          <meshStandardMaterial color="#ffbd19" emissive="#ffbd19" emissiveIntensity={0.9} toneMapped={false} />
-        </mesh>
-      ))}
-    </group>
+    <mesh position={[place.x, SURFACE_Y + 0.008, place.z]} rotation-x={-Math.PI / 2} rotation-z={place.yaw}>
+      <planeGeometry args={[(place.width - TILE_GAP) / GLOW_INNER, (place.depth - TILE_GAP) / GLOW_INNER]} />
+      <meshBasicMaterial ref={material} map={texture} color={GOLD} transparent opacity={0} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+    </mesh>
   );
 }
 
 /** Each visited space lights up briefly as the piece touches down. */
 function StepFlash({ index }: { index: number }) {
   const place = tilePlacement(index);
-  const material = useRef<MeshStandardMaterial>(null);
+  const material = useRef<MeshBasicMaterial>(null);
   const started = useRef(performance.now());
   const invalidate = useThree((state) => state.invalidate);
   useFrame(() => {
     const t = (performance.now() - started.current) / 520;
-    if (material.current) material.current.opacity = Math.max(0, 0.55 * (1 - t));
+    if (material.current) material.current.opacity = Math.max(0, 0.45 * (1 - t));
     if (t < 1) invalidate();
   });
   return (
-    <mesh position={[place.x, TILE_TOP + 0.03, place.z]} rotation-x={-Math.PI / 2} rotation-z={place.yaw}>
-      <planeGeometry args={[place.width - TILE_GAP - 0.06, place.depth - TILE_GAP - 0.06]} />
-      <meshStandardMaterial ref={material} color="#ffffff" emissive="#fff6d0" emissiveIntensity={1} transparent opacity={0.55} depthWrite={false} toneMapped={false} />
+    <mesh position={[place.x, SURFACE_Y + 0.01, place.z]} rotation-x={-Math.PI / 2} rotation-z={place.yaw}>
+      <planeGeometry args={[place.width - TILE_GAP, place.depth - TILE_GAP]} />
+      <meshBasicMaterial ref={material} color="#fff6d0" transparent opacity={0.45} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
     </mesh>
   );
 }
@@ -348,9 +410,8 @@ function StepFlash({ index }: { index: number }) {
 const CardDeck = memo(function CardDeck() {
   const face = useMemo(() => makeCardBackTexture(), []);
   useEffect(() => () => face.dispose(), [face]);
-  const [x, z] = rotateOffset(-2.65, -2.85, 0);
   return (
-    <group position={[x, CENTRE_TOP, z]} rotation-y={Math.PI / 4}>
+    <group position={[-2.55, SURFACE_Y, -2.75]} rotation-y={Math.PI / 4}>
       {Array.from({ length: 7 }, (_, i) => (
         <RoundedBox key={i} args={[1.05, 0.03, 1.4]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
           <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
@@ -358,7 +419,7 @@ const CardDeck = memo(function CardDeck() {
       ))}
       <mesh rotation-x={-Math.PI / 2} position={[0, 0.016 + 7 * 0.032 + 0.001, 0]}>
         <planeGeometry args={[1.0, 1.35]} />
-        <meshStandardMaterial map={face} roughness={0.5} />
+        <meshBasicMaterial map={face} toneMapped={false} />
       </mesh>
     </group>
   );
@@ -366,12 +427,13 @@ const CardDeck = memo(function CardDeck() {
 
 interface PieceState {
   index: number;
-  liveTrack: number;
+  fromIndex: number;
   from: Vector3;
   to: Vector3;
   live: Vector3;
-  trackFrom: number;
-  trackTo: number;
+  centreFrom: Vector3;
+  centreTo: Vector3;
+  centre: Vector3;
   start: number;
   duration: number;
   height: number;
@@ -379,44 +441,51 @@ interface PieceState {
   yaw: number;
 }
 
-function TokenPiece({ player, slot, count, active, motion, reducedMotion }: {
+function centreOf(index: number): Vector3 {
+  const tile = tilePlacement(index);
+  return new Vector3(tile.x, 0, tile.z);
+}
+
+function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion }: {
   player: Player;
   slot: number;
   count: number;
   active: boolean;
   motion: Map<string, TokenMotion>;
+  lifts: Float32Array;
   reducedMotion: boolean;
 }) {
   const group = useRef<Group>(null);
   const body = useRef<Group>(null);
-  const ring = useRef<MeshStandardMaterial>(null);
+  const ring = useRef<Mesh>(null);
   const invalidate = useThree((state) => state.invalidate);
   const [spotX, spotZ] = tokenSpot(player.position, slot, count);
   const piece = useRef<PieceState | null>(null);
   if (!piece.current) {
     const start = new Vector3(spotX, 0, spotZ);
-    const track = player.position;
+    const centre = centreOf(player.position);
     piece.current = {
-      index: player.position, liveTrack: track, from: start.clone(), to: start.clone(), live: start.clone(),
-      trackFrom: track, trackTo: track, start: -1, duration: 0, height: 0, lastHop: -Infinity,
-      yaw: travelYaw(sideProgress(track)) + REST_TURN,
+      index: player.position, fromIndex: player.position,
+      from: start.clone(), to: start.clone(), live: start.clone(),
+      centreFrom: centre.clone(), centreTo: centre.clone(), centre: centre.clone(),
+      start: -1, duration: 0, height: 0, lastHop: -Infinity,
+      yaw: travelYaw(centre.x, centre.z) + REST_TURN,
     };
   }
 
   useEffect(() => {
     const state = piece.current!;
-    const now = performance.now();
     state.to.set(spotX, 0, spotZ);
     if (state.index !== player.position) {
+      // Ordinary moves hop one space; card moves and jail transfers arc straight across.
       const walk = forwardSteps(state.index, player.position) === 1;
       state.from.copy(state.live);
-      state.trackFrom = state.liveTrack;
-      // Ordinary moves step forward one space; card moves and jail transfers relocate directly.
-      // Count from the pending target: a throttled tab can deliver a step before the last hop drew.
-      state.trackTo = walk ? state.trackTo + 1 : nearestSide(player.position / 5, state.trackTo / 5) * 5;
+      state.centreFrom.copy(state.centre);
+      state.centreTo.copy(centreOf(player.position));
+      state.fromIndex = state.index;
       state.duration = reducedMotion ? 0.12 : walk ? TOKEN_HOP_SECONDS : 0.55;
       state.height = reducedMotion ? 0.05 : walk ? 0.7 : 2.1;
-      state.start = now;
+      state.start = performance.now();
       state.index = player.position;
     }
     invalidate();
@@ -429,7 +498,8 @@ function TokenPiece({ player, slot, count, active, motion, reducedMotion }: {
       const state = piece.current!;
       if (state.start < 0) {
         state.from.copy(state.live);
-        state.trackFrom = state.trackTo = state.liveTrack;
+        state.centreFrom.copy(state.centre);
+        state.fromIndex = state.index;
         state.duration = 0.34;
         state.height = 0.35;
         state.start = performance.now();
@@ -443,18 +513,20 @@ function TokenPiece({ player, slot, count, active, motion, reducedMotion }: {
     const state = piece.current!;
     const now = performance.now();
     let animating = false;
-    let lift = 0;
+    let hop = 0;
     let squash = 1;
+    let liftBlend = 1;
     if (state.start >= 0) {
       const t = Math.min(1, (now - state.start) / (state.duration * 1000));
       const eased = MathUtils.smoothstep(t, 0, 1);
       state.live.lerpVectors(state.from, state.to, eased);
-      state.liveTrack = MathUtils.lerp(state.trackFrom, state.trackTo, eased);
-      lift = Math.sin(Math.PI * t) * state.height;
+      state.centre.lerpVectors(state.centreFrom, state.centreTo, eased);
+      hop = Math.sin(Math.PI * t) * state.height;
       squash = 1 + 0.07 * Math.sin(Math.PI * t);
+      liftBlend = eased;
       if (t >= 1) {
         state.start = -1;
-        state.liveTrack = state.trackTo;
+        state.fromIndex = state.index;
         state.lastHop = now;
       }
       animating = true;
@@ -470,30 +542,31 @@ function TokenPiece({ player, slot, count, active, motion, reducedMotion }: {
       }
     }
     const travelling = state.start >= 0 || now - state.lastHop < 650;
-    const targetYaw = travelYaw(sideProgress(state.liveTrack)) + (travelling ? 0 : REST_TURN);
-    const yawStep = 1 - Math.exp(-delta * (travelling ? 16 : 5));
-    state.yaw = MathUtils.lerp(state.yaw, targetYaw, yawStep);
+    const targetYaw = travelYaw(state.centre.x, state.centre.z) + (travelling ? 0 : REST_TURN);
+    state.yaw = MathUtils.lerp(state.yaw, targetYaw, 1 - Math.exp(-delta * (travelling ? 16 : 5)));
     if (Math.abs(state.yaw - targetYaw) > 1e-3) animating = true;
     else if (!travelling && now - state.lastHop < 700) animating = true;
+    // Ride the lifted space, blending across a hop between spaces.
+    const base = MathUtils.lerp(lifts[state.fromIndex] ?? 0, lifts[state.index] ?? 0, liftBlend);
 
-    if (group.current) {
-      group.current.position.set(state.live.x, TILE_TOP, state.live.z);
-    }
+    if (group.current) group.current.position.set(state.live.x, SURFACE_Y + base, state.live.z);
     if (body.current) {
-      body.current.position.y = lift;
+      body.current.position.y = hop;
       body.current.rotation.y = state.yaw;
       body.current.scale.set(TOKEN_SCALE / Math.sqrt(squash), TOKEN_SCALE * squash, TOKEN_SCALE / Math.sqrt(squash));
     }
-    if (ring.current) ring.current.emissiveIntensity = active ? 0.9 : 0.15;
-    motion.set(player.id, { x: state.live.x, z: state.live.z, track: state.liveTrack, moving: state.start >= 0 });
+    if (ring.current) ring.current.scale.setScalar(active ? 1.08 : 1);
+    motion.set(player.id, {
+      x: state.live.x, z: state.live.z, cx: state.centre.x, cz: state.centre.z, index: state.index, moving: state.start >= 0,
+    });
     if (animating) invalidate();
   });
 
   return (
     <group ref={group}>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.012, 0]} scale={active ? 1.08 : 1}>
+      <mesh ref={ring} rotation-x={-Math.PI / 2} position={[0, 0.014, 0]}>
         <torusGeometry args={[0.36, 0.032, 10, 40]} />
-        <meshStandardMaterial ref={ring} color={player.color} emissive={player.color} emissiveIntensity={active ? 0.9 : 0.15} roughness={0.4} />
+        <meshStandardMaterial color={player.color} emissive={player.color} emissiveIntensity={active ? 0.9 : 0.15} roughness={0.4} />
       </mesh>
       <group ref={body}>
         <TokenModel token={player.tokenType} />
