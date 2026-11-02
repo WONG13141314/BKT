@@ -44,3 +44,11 @@ coverage/
 # Browser test artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Local-only files (proposal, prototypes, tool caches)
+*.pdf
+*.docx
+/docs/proposal/
+/ui-prototype/
+/.pnpm-store/
+/.claude/
