@@ -491,6 +491,7 @@ export interface FinalScore {
   playerId: string;
   playerName: string;
   color: string;
+  tokenType: PlayerToken;
   isBot: boolean;
   cash: number;
   propertyValue: number;         // Sum of purchase prices

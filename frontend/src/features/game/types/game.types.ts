@@ -344,6 +344,8 @@ export interface FinalScore {
   playerId: string;
   playerName: string;
   color: string;
+  /** Absent from results sent before tokens were recorded. */
+  tokenType?: Player['tokenType'];
   isBot: boolean;
   cash: number;
   propertyValue: number;

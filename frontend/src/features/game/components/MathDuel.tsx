@@ -1,6 +1,8 @@
 import { AnswerResult, Player, PublicDuelState, formatRM } from '../types/game.types';
 import { AnswerFeedback } from './AnswerFeedback';
 import './MathDuel.css';
+// The Continue button shares the answer card's style.
+import './AnswerFeedback.css';
 import { Swords } from 'lucide-react';
 import { useId, useRef } from 'react';
 import { useDialogFocus } from '../../../shared/hooks/useDialogFocus';
@@ -51,22 +53,22 @@ export function MathDuel({
     : null;
 
   return (
-    <div className="card-modal-overlay" style={{ zIndex: 1000 }}>
+    <div className="duel-overlay">
       <div
         ref={duelRef}
-        className="card-modal duel-card-modal"
+        className="duel-card-modal"
         onClick={(e) => e.stopPropagation()}
         role={isAnswerDialog ? 'dialog' : 'status'}
         aria-modal={isAnswerDialog ? 'true' : undefined}
         aria-labelledby={titleId}
         tabIndex={isAnswerDialog ? -1 : undefined}
       >
-        <div className="card-modal-header math-card duel-header">
+        <div className="duel-header">
           <Swords size={28} className="duel-header-icon" />
-          <h3 id={titleId} className="card-modal-title">Property Dispute</h3>
+          <h3 id={titleId} className="duel-title">Property Dispute</h3>
         </div>
 
-        <div className="card-modal-body duel-body">
+        <div className="duel-body">
           <div className="duel-banner">
             <span className={isMe(duel.challenger.playerId) ? "duel-me" : ""}>
               Challenger: {challenger?.name ?? 'Player'}

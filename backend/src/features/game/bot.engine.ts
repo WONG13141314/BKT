@@ -48,8 +48,9 @@ export function getBotActionDelay(state: GameState): number | null {
     case 'SMART_BUY_CHALLENGE':
     case 'CARD_MATH_CHALLENGE':
     case 'JAIL_CHALLENGE': return 1_500;
-    // Long enough for the table to watch the card come off the deck and turn over.
-    case 'CARD_DRAW': return 2_800;
+    // The camera reaches the deck, the card lifts, turns and rises (about 2.3 s),
+    // then the table needs a moment to read it.
+    case 'CARD_DRAW': return 5_000;
     case 'JAIL_DECISION': return 500;
     case 'END_TURN': return state.duelState?.resolution ? 6_000 : 800;
     // Presentation completion and duel settlement have separate handlers.

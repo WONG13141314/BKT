@@ -6,7 +6,9 @@
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.85);
+  /* The same green felt as the sign-in and waiting rooms. */
+  background: #1b4332;
+  background-image: radial-gradient(circle at center, #2d6a4f 0%, #081c15 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -24,6 +26,12 @@
   max-height: 96dvh;
   overflow-y: auto;
   padding: 0.25rem 0.75rem 0.75rem 0.25rem;
+}
+
+/* Sections keep their full height and the column scrolls instead; otherwise
+   the clipped score table is the first thing squeezed to nothing. */
+.gameover-container > * {
+  flex-shrink: 0;
 }
 
 /* ---- Reveal Animations ---- */
@@ -162,9 +170,16 @@
 
 .score-final {
   font-family: 'Impact', 'Arial Black', sans-serif;
-  font-weight: 900 !important;
-  color: #2a9d8f !important;
-  font-size: 1.1rem !important;
+  font-weight: 900;
+  color: #1f7a6f;
+  font-size: 1.1rem;
+}
+
+/* On the winner's yellow row, gold and teal disappear: print them in ink. */
+.score-row--winner .rank-icon,
+.score-row--winner .score-final,
+.score-row--winner .bot-label {
+  color: #000;
 }
 
 /* ---- Winner Announcement ---- */

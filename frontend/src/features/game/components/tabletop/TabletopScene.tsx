@@ -11,13 +11,13 @@ import { SceneReady } from '../BoardRendering';
 import { PhysicsDiceContent } from '../PhysicsDice';
 import { TOKEN_HOP_SECONDS } from '../board.animation';
 import {
-  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
+  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, DECK_SPOT, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
   tilePlacement, tokenSpot,
 } from './board.layout';
 import { CameraRig, type TokenMotion } from './CameraRig';
 import { springStep, type CameraMode, type SafeInsets } from './camera';
 import {
-  GLOW_INNER, makeCardBackTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileTexture, SPACE_COLOURS,
+  GLOW_INNER, makeCardBackTexture, makeCardFaceTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileTexture, SPACE_COLOURS,
 } from './tile.textures';
 import { TokenModel } from './TokenModels';
 
@@ -44,6 +44,20 @@ export interface TabletopSceneProps {
   reducedMotion: boolean;
   onTileSelect: (index: number) => void;
   onReady: () => void;
+  /** A Challenge Card being drawn from the deck, or null. */
+  cardDraw: TableCardDraw | null;
+}
+
+export interface TableCardDraw {
+  /** Changes for each new draw. */
+  id: string;
+  card: { name: string; description: string; isMathCard: boolean };
+  /** `ready`: the top card waits to be picked; `drawing`: it lifts, turns and rises; `shown`: it has left the table. */
+  stage: 'ready' | 'drawing' | 'shown';
+  /** Present when this viewer may pick the card. */
+  onPick?: () => void;
+  /** The card has risen to the camera; where it is on screen, in CSS pixels. */
+  onDrawn: (point: { x: number; y: number } | null) => void;
 }
 
 const BOARD_THICKNESS = 0.24;
@@ -110,7 +124,7 @@ function TabletopWorld(props: TabletopSceneProps) {
       ))}
       <HighlightGlow index={props.highlightTile} lifts={lifts.current} />
       {props.stepTile && <StepFlash key={props.stepTile.id} index={props.stepTile.index} />}
-      <CardDeck />
+      <CardDeck draw={props.cardDraw} />
 
       {/* The physics floor sits 0.04 below the tray origin, scaled with the dice. */}
       <group position={[0, SURFACE_Y + 0.04 * DICE_SCALE + 0.002, 0]}>
@@ -413,23 +427,130 @@ function StepFlash({ index }: { index: number }) {
   );
 }
 
-const CardDeck = memo(function CardDeck() {
+const CARD_SIZE = { width: 1.0, depth: 1.35 };
+const DECK_COUNT = 7;
+const DECK_TOP = 0.016 + DECK_COUNT * 0.032;
+// Seconds for each part of the draw: off the deck, over, then up to the camera.
+const DRAW_TIMES = { lift: 0.35, flip: 0.5, rise: 0.55 };
+
+/** The Challenge Card deck in the centre. Its top card is the one that gets drawn. */
+const CardDeck = memo(function CardDeck({ draw }: { draw: TableCardDraw | null }) {
   const face = useMemo(() => makeCardBackTexture(), []);
   useEffect(() => () => face.dispose(), [face]);
+  const pick = draw?.stage === 'ready' ? draw.onPick : undefined;
+  const select = (event: ThreeEvent<MouseEvent>) => {
+    if (!pick) return;
+    event.stopPropagation();
+    pick();
+  };
+  const setCursor = (cursor: string) => () => { document.body.style.cursor = pick ? cursor : ''; };
   return (
-    <group position={[-2.6, SURFACE_Y, -2.6]} rotation-y={Math.PI / 4} scale={0.78}>
-      {Array.from({ length: 7 }, (_, i) => (
-        <RoundedBox key={i} args={[1.05, 0.03, 1.4]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
-          <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
-        </RoundedBox>
-      ))}
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.016 + 7 * 0.032 + 0.001, 0]}>
-        <planeGeometry args={[1.0, 1.35]} />
-        <meshBasicMaterial map={face} toneMapped={false} />
-      </mesh>
+    <group position={[DECK_SPOT.x, SURFACE_Y, DECK_SPOT.z]} rotation-y={DECK_SPOT.yaw} scale={0.78}>
+      <group onClick={select} onPointerOver={setCursor('pointer')} onPointerOut={setCursor('')}>
+        {Array.from({ length: DECK_COUNT }, (_, i) => (
+          <RoundedBox key={i} args={[CARD_SIZE.width + 0.05, 0.03, CARD_SIZE.depth + 0.05]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
+            <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
+          </RoundedBox>
+        ))}
+        <mesh rotation-x={-Math.PI / 2} position={[0, DECK_TOP + 0.001, 0]}>
+          <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+          <meshBasicMaterial map={face} toneMapped={false} />
+        </mesh>
+      </group>
+      {draw && draw.stage !== 'shown' && <DrawnCard key={draw.id} draw={draw} back={face} />}
     </group>
   );
 });
+
+/**
+ * The top card coming off the deck. Waiting, it bobs to be picked; drawn, it
+ * lifts, turns face up towards the camera and rises to meet it, then reports
+ * where it is on screen so the card panel can grow out of that spot.
+ */
+function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMaterial['map'] }) {
+  const faceTexture = useMemo(() => makeCardFaceTexture(draw.card), [draw.card]);
+  useEffect(() => () => faceTexture.dispose(), [faceTexture]);
+  const holder = useRef<Group>(null);
+  const tilt = useRef<Group>(null);
+  const flip = useRef<Group>(null);
+  const camera = useThree((state) => state.camera);
+  const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
+  const started = useRef<number | null>(null);
+  const reported = useRef(false);
+  const onDrawn = useRef(draw.onDrawn);
+  onDrawn.current = draw.onDrawn;
+  const scratch = useMemo(() => ({ camera: new Vector3(), world: new Vector3(), lifted: new Vector3() }), []);
+
+  useEffect(() => {
+    if (draw.stage === 'drawing' && started.current === null) started.current = performance.now();
+    invalidate();
+  }, [draw.stage, invalidate]);
+
+  useFrame(() => {
+    const group = holder.current;
+    const parent = group?.parent;
+    if (!group || !parent || !tilt.current || !flip.current) return;
+    const now = performance.now();
+    // Turn the card so its bottom edge faces the camera, in the deck's own frame.
+    parent.worldToLocal(scratch.camera.copy(camera.position));
+    const yaw = Math.atan2(scratch.camera.x, scratch.camera.z);
+
+    if (started.current === null) {
+      // Waiting to be picked: a gentle bob says "this one".
+      group.position.set(0, DECK_TOP + 0.03 + Math.sin(now / 260) * 0.03, 0);
+      group.rotation.set(0, 0, 0);
+      tilt.current.rotation.set(0, 0, 0);
+      flip.current.rotation.set(0, 0, 0);
+      invalidate();
+      return;
+    }
+
+    const t = (now - started.current) / 1000;
+    const lift = MathUtils.smoothstep(t, 0, DRAW_TIMES.lift);
+    const over = MathUtils.smoothstep(t, DRAW_TIMES.lift * 0.6, DRAW_TIMES.lift + DRAW_TIMES.flip);
+    const riseStart = DRAW_TIMES.lift + DRAW_TIMES.flip;
+    const rise = MathUtils.smoothstep(t, riseStart, riseStart + DRAW_TIMES.rise);
+
+    scratch.lifted.set(0, DECK_TOP + 0.03 + lift * 1.3, 0);
+    // Rise towards the camera, stopping well short of it.
+    group.position.lerpVectors(scratch.lifted, scratch.camera, rise * 0.55);
+    group.rotation.set(0, MathUtils.lerp(0, yaw, lift), 0);
+    // Face up, then tip the face towards the camera as it rises.
+    const facing = Math.atan2(Math.hypot(scratch.camera.x, scratch.camera.z), scratch.camera.y - group.position.y);
+    tilt.current.rotation.set(rise * facing, 0, 0);
+    flip.current.rotation.set(over * Math.PI, 0, 0);
+
+    if (rise >= 1 && !reported.current) {
+      reported.current = true;
+      group.getWorldPosition(scratch.world).project(camera);
+      onDrawn.current({ x: (scratch.world.x + 1) / 2 * size.width, y: (1 - scratch.world.y) / 2 * size.height });
+    }
+    if (!reported.current) invalidate();
+  });
+
+  return (
+    <group ref={holder}>
+      <group ref={tilt}>
+        <group ref={flip}>
+          <mesh castShadow>
+            <boxGeometry args={[CARD_SIZE.width, 0.012, CARD_SIZE.depth]} />
+            <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
+          </mesh>
+          {/* Back on top while it lies on the deck; the face underneath turns up. */}
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.007, 0]}>
+            <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+            <meshBasicMaterial map={back} toneMapped={false} />
+          </mesh>
+          <mesh rotation-x={Math.PI / 2} position={[0, -0.007, 0]}>
+            <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+            <meshBasicMaterial map={faceTexture} toneMapped={false} />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
 
 interface PieceState {
   index: number;

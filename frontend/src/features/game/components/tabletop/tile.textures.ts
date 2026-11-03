@@ -371,6 +371,58 @@ export function makeCardBackTexture(): CanvasTexture {
   return finish(element);
 }
 
+function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && context.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
+ * The printed face of a drawn Challenge Card, in the card panel's style: a
+ * coloured header with the card's name over a white body with its text.
+ */
+export function makeCardFaceTexture(card: { name: string; description: string; isMathCard: boolean }): CanvasTexture {
+  const width = 384;
+  const height = 512;
+  const { element, context } = canvas(width, height);
+  if (context) {
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = card.isMathCard ? '#ffb703' : '#8ecae6';
+    context.fillRect(0, 0, width, 132);
+    context.fillStyle = '#000000';
+    context.fillRect(0, 128, width, 8);
+    context.lineWidth = 16;
+    context.strokeRect(0, 0, width, height);
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.font = `800 24px ${FONT}`;
+    context.fillText(card.isMathCard ? 'MATH CARD' : 'LUCK CARD', width / 2, 36);
+    let size = 52;
+    context.font = `900 ${size}px Impact, ${FONT}`;
+    while (context.measureText(card.name.toUpperCase()).width > width - 48 && size > 26) {
+      size -= 2;
+      context.font = `900 ${size}px Impact, ${FONT}`;
+    }
+    context.fillText(card.name.toUpperCase(), width / 2, 86);
+    context.font = `bold 30px 'Courier New', Courier, monospace`;
+    const lines = wrapLines(context, card.description, width - 60).slice(0, 7);
+    const top = 136 + (height - 136) / 2 - ((lines.length - 1) * 38) / 2;
+    lines.forEach((line, index) => context.fillText(line, width / 2, top + index * 38));
+  }
+  return finish(element);
+}
+
 /**
  * A soft halo for a lifted space: a rounded rectangle glowing outwards. The
  * rectangle fills the middle 56% of the texture, matching the space beneath.

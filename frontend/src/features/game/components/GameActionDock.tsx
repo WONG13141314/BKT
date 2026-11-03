@@ -21,6 +21,8 @@ export interface GameActionDockProps {
   onJailWait(): void;
   onBuild(tileIndex: number): void;
   onEndTurn(): void;
+  /** Present while the top Challenge Card waits to be drawn. */
+  onDrawCard?(): void;
 }
 
 export function GameActionDock({
@@ -39,6 +41,7 @@ export function GameActionDock({
   onJailWait,
   onBuild,
   onEndTurn,
+  onDrawCard,
 }: GameActionDockProps) {
   const secondsLeft = usePhaseCountdown(state);
   if (!isMyTurn || isBoardAnimating) return null;
@@ -89,6 +92,15 @@ export function GameActionDock({
         </button>
         <button className="action-btn action-btn--ghost" onClick={onSkipBuy}>Skip Purchase</button>
         <DeadlineNote seconds={secondsLeft} action="Skips the purchase" />
+      </div>
+    );
+  }
+
+  if (phase === 'CARD_DRAW' && onDrawCard) {
+    return (
+      <div className="game-action-dock" id="game-actions" aria-label="Challenge Card">
+        <button className="action-btn action-btn--primary" onClick={onDrawCard}>Draw a Card</button>
+        <span className="game-action-dock__deadline">or tap the deck on the board</span>
       </div>
     );
   }

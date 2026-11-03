@@ -3,6 +3,9 @@
    ============================================ */
 
 .table-feed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 8px 10px 10px;
   background: var(--hud-card, #fffdf7);
   border: 2px solid var(--ink);
@@ -27,12 +30,15 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-height: 0;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .table-feed__item {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;

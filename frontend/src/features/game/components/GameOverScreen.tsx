@@ -1,6 +1,7 @@
 import { FinalScore, MasteryReport, formatRM } from '../types/game.types';
 import { Trophy, Medal, Award, LogOut, RotateCcw } from 'lucide-react';
 import { LearningReport } from './LearningReport';
+import { TokenIcon } from './TokenIcon';
 import './GameOverScreen.css';
 
 interface GameOverScreenProps {
@@ -64,7 +65,9 @@ export function GameOverScreen({ scores, masteryReport, onPlayAgain, onExit }: G
                             className="score-player__avatar"
                             style={{ backgroundColor: score.color }}
                           >
-                            {score.isBot ? '🤖' : score.playerName.charAt(0)}
+                            {score.tokenType
+                              ? <TokenIcon token={score.tokenType} size={22} />
+                              : score.isBot ? '🤖' : score.playerName.charAt(0)}
                           </div>
                           <span>
                             {score.playerName}

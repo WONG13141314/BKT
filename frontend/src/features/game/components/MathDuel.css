@@ -1,4 +1,41 @@
-/* Math Duel — Clean and Simple style (matching ChallengeCardModal theme) */
+/* Math Duel — the game's yellow card panel over a dimmed table */
+
+.duel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  animation: duelFadeIn 0.3s ease;
+}
+
+@keyframes duelFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes duelSlideUp {
+  from { opacity: 0; transform: translateY(40px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes duelIconIn {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.duel-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #000;
+  font-family: 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 
 .duel-card-modal {
   background: #ffb703;
@@ -7,7 +44,7 @@
   width: 90%;
   max-width: 420px;
   box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.4);
-  animation: cardSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: duelSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   max-height: calc(100dvh - 2rem);
@@ -27,7 +64,7 @@
 
 .duel-header-icon {
   color: #000;
-  animation: bounceIcon 0.6s ease 0.3s both;
+  animation: duelIconIn 0.6s ease 0.3s both;
 }
 
 .duel-body {
@@ -161,7 +198,7 @@
     flex-shrink: 0;
   }
 
-  .duel-header .card-modal-title {
+  .duel-header .duel-title {
     font-size: 1.15rem;
   }
 

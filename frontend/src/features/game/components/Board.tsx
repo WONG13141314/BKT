@@ -5,6 +5,7 @@ import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE
 import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWebGL2 } from './BoardRendering';
 import { loadTabletopScene } from './board.preload';
 import type { CameraMode } from './tabletop/camera';
+import type { TableCardDraw } from './tabletop/TabletopScene';
 import { useHudInsets, usePrefersReducedMotion } from './tabletop/useViewportPreferences';
 import './Board.css';
 
@@ -30,6 +31,8 @@ interface Props {
   onScenesReady?: () => void;
   /** The route line ("Tolak Lane · 2 of 6", "Landed on …") for the turn banner to show. */
   onRouteChange?: (route: { label: string | null; moving: boolean }) => void;
+  /** A Challenge Card being drawn from the deck on the board. */
+  cardDraw?: TableCardDraw | null;
 }
 
 const TILE_ICONS: Record<string, string> = {
@@ -52,6 +55,7 @@ export function Board({
   onMovementComplete,
   onScenesReady,
   onRouteChange,
+  cardDraw = null,
 }: Props) {
   const { players, properties } = gameState;
   const boardElement = useRef<HTMLDivElement>(null);
@@ -241,8 +245,16 @@ export function Board({
     return () => clearTimeout(timer);
   }, [turnPhase]);
 
+  // The flat board has no deck to draw from: the card goes straight to the screen.
+  const drawStage = cardDraw?.stage;
+  const onCardDrawn = cardDraw?.onDrawn;
+  useEffect(() => {
+    if (drawStage === 'drawing' && (!canRender3D || reducedMotion)) onCardDrawn?.(null);
+  }, [drawStage, canRender3D, reducedMotion, onCardDrawn]);
+
   const cameraMode: CameraMode = reducedMotion ? 'overview'
     : diceAnimating ? 'dice'
+      : cardDraw && !moving ? 'deck'
       : moving ? 'follow'
         : arrivalHeld || LANDING_PHASES.has(turnPhase) ? 'landing'
           : 'overview';
@@ -346,6 +358,7 @@ export function Board({
               reducedMotion={reducedMotion}
               onTileSelect={onTileSelect}
               onReady={handleTokenSceneReady}
+              cardDraw={reducedMotion ? null : cardDraw}
             />
           </Suspense>
           {/* Keyboard and screen-reader access to every space; the 3D board itself is pointer-only. */}

@@ -66,23 +66,36 @@
   pointer-events: none;
 }
 
-.game-hud .hud-left,
 .game-hud .hud-details,
 .game-hud .hud-dock > * {
   pointer-events: auto;
 }
 
-/* Players, then what just happened, down the left edge. */
+/* Players, then what just happened, down the left edge. It never scrolls:
+   the feed takes what height is left and drops its oldest lines. */
 .game-hud .hud-left {
   position: absolute;
-  top: 76px;
-  left: var(--hud-gap);
-  width: 260px;
-  max-height: calc(100dvh - 76px - var(--hud-gap));
+  top: 72px;
+  bottom: var(--hud-gap);
+  /* Room inside the clip for the cards' shadows and the active player's ring. */
+  left: calc(var(--hud-gap) - 4px);
+  width: 270px;
+  padding: 4px 6px 6px 4px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.game-hud .hud-left > * {
+  flex: none;
+  pointer-events: auto;
+}
+
+.game-hud .hud-left > .table-feed {
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .hud-details {
@@ -116,10 +129,11 @@
 
   .game-hud .hud-left {
     top: 54px;
+    bottom: auto;
     left: var(--hud-gap);
     right: var(--hud-gap);
     width: auto;
-    max-height: none;
+    padding: 0;
     overflow: visible;
   }
 

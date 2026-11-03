@@ -1,0 +1,151 @@
+/* ============================================
+   Drawn Challenge Card — the card panel, grown
+   out of the card that rose off the board
+   ============================================ */
+
+.card-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The table dims behind the drawer's card, fading in as the duel panel's does. */
+.card-reveal--drawer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  animation: cardRevealDim 0.3s ease both;
+}
+
+/* Onlookers read it over the board; nothing to press. */
+.card-reveal--watching {
+  z-index: 50;
+  pointer-events: none;
+}
+
+.card-reveal__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(90vw, 320px);
+  overflow: hidden;
+  background: #fff;
+  border: 4px solid #000;
+  border-radius: 6px;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.4);
+  animation: cardRevealGrow 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+.card-reveal--watching .card-reveal__card { width: min(80vw, 280px); }
+
+.card-reveal__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 3px solid #000;
+}
+
+.card-reveal__header--math { background: #ffb703; }
+.card-reveal__header--luck { background: #8ecae6; }
+
+.card-reveal__icon {
+  font-size: 2.3rem;
+  animation: cardRevealIcon 0.6s ease 0.3s both;
+}
+
+.card-reveal__header small {
+  display: block;
+  font: 800 0.68rem var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.card-reveal__header h3 {
+  margin: 0;
+  font: 800 1.45rem/1.05 'Impact', 'Arial Narrow', sans-serif;
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-reveal__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.4rem 1.25rem;
+  text-align: center;
+}
+
+.card-reveal__body p {
+  margin: 0;
+  font: 800 1.12rem/1.4 'Courier New', Courier, monospace;
+  color: #000;
+}
+
+.card-reveal__note,
+.card-reveal__who {
+  padding: 3px 10px;
+  font: 800 0.74rem var(--font-display);
+  letter-spacing: 0.04em;
+  background: #fff3b0;
+  border: 2px solid #000;
+  border-radius: 999px;
+}
+
+.card-reveal__ok {
+  min-height: var(--action-min-height);
+  padding: 0.7rem 2.6rem;
+  font: 800 1.1rem 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  color: #fff;
+  background: #e63946;
+  border: 2px solid #000;
+  border-radius: 4px;
+  box-shadow: 3px 3px 0 #000;
+  cursor: pointer;
+}
+
+.card-reveal__ok:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 #000;
+}
+
+.card-reveal__ok:focus-visible {
+  outline: none;
+  box-shadow: 3px 3px 0 #000, var(--focus-ring);
+}
+
+@keyframes cardRevealDim {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* From the card's spot on the board to the middle of the screen. */
+@keyframes cardRevealGrow {
+  from {
+    opacity: 0.4;
+    transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.28);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cardRevealIcon {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-reveal--drawer,
+  .card-reveal__card,
+  .card-reveal__icon { animation: none; }
+}

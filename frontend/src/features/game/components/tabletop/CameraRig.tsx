@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { nearestAngle, sideAzimuth, spacesAhead } from './board.layout';
 import {
-  overviewShot, shotPosition, springStep, travelShot,
+  deckShot, overviewShot, shotPosition, springStep, travelShot,
   type CameraMode, type CameraShot, type CameraViewport, type SafeInsets,
 } from './camera';
 
@@ -34,7 +34,7 @@ interface Props {
 
 // Spring stiffness per moment (higher settles faster). Travel is tight so the
 // piece stays put on screen; handovers to the overview are slow and calm.
-const STIFFNESS: Record<CameraMode, number> = { follow: 7.5, landing: 8.5, dice: 4, overview: 2.7 };
+const STIFFNESS: Record<CameraMode, number> = { follow: 7.5, landing: 8.5, dice: 4, overview: 2.7, deck: 4.5 };
 const AHEAD = 2;
 
 function toArray(shot: CameraShot): number[] {
@@ -107,6 +107,9 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
       const leadZ = Math.max(-2.5, Math.min(2.5, track.vz * lead));
       shot = travelShot({ x: focus.cx, z: focus.cz }, ahead, destination, viewport.current, mode);
       shot.target = [shot.target[0] + leadX, shot.target[1], shot.target[2] + leadZ];
+    } else if (mode === 'deck') {
+      // From the side the piece is on, so the camera glides to the deck without swinging round.
+      shot = deckShot(sideAzimuth(Math.floor(index / 5)), viewport.current);
     } else {
       // Square to the side the piece is on, or about to walk along from a corner.
       shot = overviewShot(sideAzimuth(Math.floor(index / 5)), viewport.current, mode === 'dice' ? 'dice' : 'overview');

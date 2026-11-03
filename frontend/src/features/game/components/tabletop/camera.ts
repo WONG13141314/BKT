@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
-import { BOARD_HALF, outwardAzimuth, tilePlacement } from './board.layout';
+import { BOARD_HALF, DECK_SPOT, outwardAzimuth, tilePlacement } from './board.layout';
 
-export type CameraMode = 'overview' | 'dice' | 'follow' | 'landing';
+export type CameraMode = 'overview' | 'dice' | 'follow' | 'landing' | 'deck';
 
 /** Screen insets, in CSS pixels, that the interface covers. */
 export interface SafeInsets { top: number; right: number; bottom: number; left: number }
@@ -31,7 +31,7 @@ const WORLD_UP = new Vector3(0, 1, 0);
 
 // Elevations chosen for each moment: low and close while travelling, looking
 // down onto the landed space, and high enough to read the whole board.
-const ELEVATION = { overview: 0.98, dice: 0.95, follow: 0.66, landing: 0.82 };
+const ELEVATION = { overview: 0.98, dice: 0.95, follow: 0.66, landing: 0.82, deck: 0.92 };
 // The camera trails a little behind the moving piece, so the route ahead
 // recedes diagonally into the picture (a three-quarter tracking shot).
 const TRAIL = { follow: 0.34, landing: 0.12 };
@@ -90,6 +90,18 @@ export function overviewShot(azimuth: number, viewport: CameraViewport, mode: 'o
   const points = mode === 'dice' ? TRAY_POINTS : BOARD_POINTS;
   const distance = fitDistance(points, target, shotDirection(azimuth, elevation), viewport, mode === 'dice' ? 1.15 : 1.04);
   return { target: [0, 0, 0], azimuth, elevation, distance };
+}
+
+// The deck and the air above it, where a drawn card lifts and turns over.
+const DECK_POINTS = [-1, 1].flatMap((x) => [-1, 1].flatMap((z) => [0, 1.6].map((y) =>
+  new Vector3(DECK_SPOT.x + x * 1.2, y, DECK_SPOT.z + z * 1.2))));
+
+/** A close look at the Challenge Card deck, from the side the camera is already on. */
+export function deckShot(azimuth: number, viewport: CameraViewport): CameraShot {
+  const elevation = ELEVATION.deck;
+  const target = new Vector3(DECK_SPOT.x, 0.5, DECK_SPOT.z);
+  const distance = fitDistance(DECK_POINTS, target, shotDirection(azimuth, elevation), viewport, 1.25);
+  return { target: [target.x, target.y, target.z], azimuth, elevation, distance: Math.max(5, distance) };
 }
 
 function tileCorners(index: number, y = 0): Vector3[] {

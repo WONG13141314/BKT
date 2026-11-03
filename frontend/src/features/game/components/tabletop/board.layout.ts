@@ -17,6 +17,8 @@ export const SURFACE_Y = 0;
 /** Depth of the colour band on a property's inner edge. */
 export const BAND_DEPTH = 0.52;
 export const CENTRE_SIZE = (BOARD_HALF - TILE_DEPTH) * 2;
+/** Where the Challenge Card deck sits in the open centre, and its turn about Y. */
+export const DECK_SPOT = { x: -2.6, z: -2.6, yaw: Math.PI / 4 } as const;
 
 const CORNER_CENTRE = BOARD_HALF - TILE_DEPTH / 2;
 

@@ -8,7 +8,7 @@ import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
 import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
-import { CardDraw } from '../components/CardDraw';
+import { CardReveal } from '../components/CardReveal';
 import { TableFeed } from '../components/TableFeed';
 import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
@@ -34,7 +34,7 @@ import { useConnectionNotice } from '../hooks/useConnectionNotice';
 import { useGameAudio } from '../hooks/useGameAudio';
 import { usePhaseCountdown } from '../hooks/usePhaseCountdown';
 import { useTableActivity } from '../hooks/useTableActivity';
-import { usePrefersReducedMotion } from '../components/tabletop/useViewportPreferences';
+import { useCardDraw } from '../hooks/useCardDraw';
 import type { MathChallenge, MasteryReport, Player } from '../types/game.types';
 import './GamePage.css';
 
@@ -72,7 +72,6 @@ export function GamePage() {
   const { play: playSound, playMovementStep } = useGameAudio(gameState);
   const { entries: activity, recordAnswer } = useTableActivity(gameState);
   const phaseSeconds = usePhaseCountdown(gameState ?? { phaseDeadline: null });
-  const reducedMotion = usePrefersReducedMotion();
   // The board's route line ("Tolak Lane · 2 of 6", "Landed on …"), shown in the turn banner.
   const [route, setRoute] = useState<{ label: string | null; moving: boolean }>({ label: null, moving: false });
   // Onlookers see a brief verdict in the banner when someone else answers.
@@ -146,6 +145,15 @@ export function GamePage() {
   // The table stays hidden until the 3D dice and tokens have drawn, so it opens complete.
   const [boardReady, setBoardReady] = useState(false);
   const handleScenesReady = useCallback(() => setBoardReady(true), []);
+
+  // A Challenge Card is drawn from the deck on the board, then shown on screen.
+  const cardOnDeck = gameState?.turnPhase === 'CARD_DRAW' && !isDiceRolling && !isPawnMoving
+    ? gameState.pendingTileEvent?.card ?? null
+    : null;
+  const cardDrawKey = cardOnDeck && gameState
+    ? `${gameState.diceRollId}:${gameState.pendingTileEvent?.tileIndex}:${cardOnDeck.id}`
+    : null;
+  const cardDraw = useCardDraw(cardOnDeck, cardDrawKey, isMyTurn);
 
   const {
     emitRoll,
@@ -439,7 +447,6 @@ export function GamePage() {
 
   const showChallenge = ((isChallenge && !!activeChallenge) || isHoldingAnswer) && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
-  const drawnCard = renderPhase === 'CARD_DRAW' && !isBoardAnimating ? gameState.pendingTileEvent?.card ?? null : null;
 
   const forcePendingDetails = !!gameState.pendingTileEvent && [
     'BUY_DECISION',
@@ -468,6 +475,7 @@ export function GamePage() {
         onMovementComplete={handleMovementComplete}
         onScenesReady={handleScenesReady}
         onRouteChange={setRoute}
+        cardDraw={cardDraw.tableDraw}
       />
 
       <a className="skip-to-actions" href="#game-actions">Skip to game actions</a>
@@ -526,6 +534,7 @@ export function GamePage() {
             onJailWait={emitJailWait}
             onBuild={emitBuildHouse}
             onEndTurn={emitEndTurn}
+            onDrawCard={isMyTurn && cardDraw.stage === 'ready' ? cardDraw.pick : undefined}
           />
         </div>
       </div>
@@ -562,13 +571,12 @@ export function GamePage() {
       )}
 
       {/* Challenge Card: drawn from the deck in front of the whole table. */}
-      {drawnCard && currentPlayer && (
-        <CardDraw
-          key={`${gameState.diceRollId}:${gameState.pendingTileEvent?.tileIndex}:${drawnCard.id}`}
-          card={drawnCard}
+      {cardOnDeck && currentPlayer && cardDraw.stage === 'shown' && (
+        <CardReveal
+          card={cardOnDeck}
           drawerName={currentPlayer.name}
           isDrawer={isMyTurn}
-          reducedMotion={reducedMotion}
+          origin={cardDraw.origin}
           onDone={emitCardAck}
         />
       )}

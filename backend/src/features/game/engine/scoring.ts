@@ -18,6 +18,7 @@ export function calculateFinalScores(state: GameState): FinalScore[] {
       playerId: p.id,
       playerName: p.name,
       color: p.color,
+      tokenType: p.tokenType,
       isBot: p.isBot,
       cash: p.money,
       propertyValue,
