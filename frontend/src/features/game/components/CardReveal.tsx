@@ -6,28 +6,19 @@ interface Props {
   drawerName: string;
   /** The drawer carries the card out; everyone else reads it. */
   isDrawer: boolean;
-  /** Where the drawn card left the board on screen; the panel grows out of it. */
-  origin: { x: number; y: number } | null;
   onDone: () => void;
 }
 
 /**
- * The drawn Challenge Card, readable on screen. It grows out of the spot where
- * the card rose off the board, so the table's card becomes the screen's card.
+ * The drawn Challenge Card as a panel, for boards with no 3D card to hold up
+ * (the flat board, or reduced motion).
  */
-export function CardReveal({ card, drawerName, isDrawer, origin, onDone }: Props) {
-  const from = origin && typeof window !== 'undefined'
-    ? { x: origin.x - window.innerWidth / 2, y: origin.y - window.innerHeight / 2 }
-    : { x: 0, y: 0 };
+export function CardReveal({ card, drawerName, isDrawer, onDone }: Props) {
   const kind = card.isMathCard ? 'math' : 'luck';
 
   return (
     <div className={`card-reveal${isDrawer ? ' card-reveal--drawer' : ' card-reveal--watching'}`}>
-      <article
-        className="card-reveal__card"
-        style={{ '--from-x': `${from.x}px`, '--from-y': `${from.y}px` } as React.CSSProperties}
-        aria-labelledby="card-reveal-title"
-      >
+      <article className="card-reveal__card" aria-labelledby="card-reveal-title">
         <header className={`card-reveal__header card-reveal__header--${kind}`}>
           <span className="card-reveal__icon" aria-hidden="true">{card.isMathCard ? '🧮' : '🎲'}</span>
           <div>

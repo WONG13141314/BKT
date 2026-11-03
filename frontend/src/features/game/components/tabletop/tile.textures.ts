@@ -392,33 +392,59 @@ function wrapLines(context: CanvasRenderingContext2D, text: string, maxWidth: nu
  * coloured header with the card's name over a white body with its text.
  */
 export function makeCardFaceTexture(card: { name: string; description: string; isMathCard: boolean }): CanvasTexture {
-  const width = 384;
-  const height = 512;
+  // Drawn at 3× a 256 × 341 card, so it stays sharp when held up to the camera.
+  const k = 3;
+  const width = 256 * k;
+  const height = 341 * k;
+  const header = 86 * k;
   const { element, context } = canvas(width, height);
   if (context) {
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, width, height);
     context.fillStyle = card.isMathCard ? '#ffb703' : '#8ecae6';
-    context.fillRect(0, 0, width, 132);
+    context.fillRect(0, 0, width, header);
     context.fillStyle = '#000000';
-    context.fillRect(0, 128, width, 8);
-    context.lineWidth = 16;
+    context.fillRect(0, header - 3 * k, width, 5 * k);
+    context.lineWidth = 10 * k;
     context.strokeRect(0, 0, width, height);
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.font = `800 24px ${FONT}`;
-    context.fillText(card.isMathCard ? 'MATH CARD' : 'LUCK CARD', width / 2, 36);
-    let size = 52;
+    context.font = `800 ${13 * k}px ${FONT}`;
+    context.fillText(card.isMathCard ? 'MATH CARD' : 'LUCK CARD', width / 2, 24 * k);
+    let size = 32 * k;
+    const title = card.name.toUpperCase();
     context.font = `900 ${size}px Impact, ${FONT}`;
-    while (context.measureText(card.name.toUpperCase()).width > width - 48 && size > 26) {
-      size -= 2;
+    while (context.measureText(title).width > width - 32 * k && size > 16 * k) {
+      size -= k;
       context.font = `900 ${size}px Impact, ${FONT}`;
     }
-    context.fillText(card.name.toUpperCase(), width / 2, 86);
-    context.font = `bold 30px 'Courier New', Courier, monospace`;
-    const lines = wrapLines(context, card.description, width - 60).slice(0, 7);
-    const top = 136 + (height - 136) / 2 - ((lines.length - 1) * 38) / 2;
-    lines.forEach((line, index) => context.fillText(line, width / 2, top + index * 38));
+    context.fillText(title, width / 2, 56 * k);
+    // The panel's icon, above the card's text.
+    context.font = `${40 * k}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif`;
+    context.fillText(card.isMathCard ? '🧮' : '🎲', width / 2, header + 44 * k);
+    context.fillStyle = '#000000';
+    context.font = `bold ${17 * k}px 'Courier New', Courier, monospace`;
+    const lines = wrapLines(context, card.description, width - 36 * k).slice(0, 6);
+    const lineHeight = 24 * k;
+    const middle = header + (height - header) * (card.isMathCard ? 0.52 : 0.58);
+    const top = middle - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => context.fillText(line, width / 2, top + index * lineHeight));
+    if (card.isMathCard) {
+      // The panel's "a question follows" pill, printed on the card.
+      const label = 'A QUESTION FOLLOWS';
+      context.font = `800 ${11 * k}px ${FONT}`;
+      const pillWidth = context.measureText(label).width + 22 * k;
+      const pillY = height - 46 * k;
+      context.fillStyle = '#fff3b0';
+      context.strokeStyle = '#000000';
+      context.lineWidth = 2 * k;
+      context.beginPath();
+      context.roundRect(width / 2 - pillWidth / 2, pillY - 11 * k, pillWidth, 22 * k, 11 * k);
+      context.fill();
+      context.stroke();
+      context.fillStyle = '#000000';
+      context.fillText(label, width / 2, pillY);
+    }
   }
   return finish(element);
 }

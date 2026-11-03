@@ -1,6 +1,6 @@
 /* ============================================
-   Drawn Challenge Card — the card panel, grown
-   out of the card that rose off the board
+   Drawn Challenge Card as a panel — only for
+   boards with no 3D card to hold up
    ============================================ */
 
 .card-reveal {
@@ -126,16 +126,9 @@
   to { opacity: 1; }
 }
 
-/* From the card's spot on the board to the middle of the screen. */
 @keyframes cardRevealGrow {
-  from {
-    opacity: 0.4;
-    transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.28);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  from { opacity: 0; transform: translateY(24px) scale(0.95); }
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes cardRevealIcon {

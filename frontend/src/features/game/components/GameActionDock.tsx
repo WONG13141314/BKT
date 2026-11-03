@@ -23,6 +23,8 @@ export interface GameActionDockProps {
   onEndTurn(): void;
   /** Present while the top Challenge Card waits to be drawn. */
   onDrawCard?(): void;
+  /** Present once the drawn card is held up on the board, to carry it out. */
+  onCardDone?(): void;
 }
 
 export function GameActionDock({
@@ -42,6 +44,7 @@ export function GameActionDock({
   onBuild,
   onEndTurn,
   onDrawCard,
+  onCardDone,
 }: GameActionDockProps) {
   const secondsLeft = usePhaseCountdown(state);
   if (!isMyTurn || isBoardAnimating) return null;
@@ -92,6 +95,17 @@ export function GameActionDock({
         </button>
         <button className="action-btn action-btn--ghost" onClick={onSkipBuy}>Skip Purchase</button>
         <DeadlineNote seconds={secondsLeft} action="Skips the purchase" />
+      </div>
+    );
+  }
+
+  if (phase === 'CARD_DRAW' && onCardDone) {
+    const isMathCard = state.pendingTileEvent?.card?.isMathCard;
+    return (
+      <div className="game-action-dock" id="game-actions" aria-label="Challenge Card">
+        <button className="action-btn action-btn--primary" onClick={onCardDone} autoFocus>
+          {isMathCard ? 'Solve it' : 'OK'}
+        </button>
       </div>
     );
   }

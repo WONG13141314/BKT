@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { memo, Suspense, useEffect, useMemo, useRef } from 'react';
 import {
   AdditiveBlending, ExtrudeGeometry, Group, MathUtils, Mesh, MeshBasicMaterial, MeshStandardMaterial,
-  NeutralToneMapping, Shape, Vector3,
+  NeutralToneMapping, PerspectiveCamera, Quaternion, Shape, Vector3,
 } from 'three';
 import type { Player, PropertyState, TileConfig } from '../../types/game.types';
 import { COLOR_GROUP_PRESENTATION } from '../../config/board.presentation';
@@ -431,7 +431,10 @@ const CARD_SIZE = { width: 1.0, depth: 1.35 };
 const DECK_COUNT = 7;
 const DECK_TOP = 0.016 + DECK_COUNT * 0.032;
 // Seconds for each part of the draw: off the deck, over, then up to the camera.
-const DRAW_TIMES = { lift: 0.35, flip: 0.5, rise: 0.55 };
+const DRAW_TIMES = { lift: 0.35, flip: 0.5, present: 0.6 };
+/** How much of the screen's height the presented card fills, and how far above centre it sits. */
+const PRESENT = { height: 0.5, width: 0.8, raise: 0.01 };
+const WORLD_UP = new Vector3(0, 1, 0);
 
 /** The Challenge Card deck in the centre. Its top card is the one that gets drawn. */
 const CardDeck = memo(function CardDeck({ draw }: { draw: TableCardDraw | null }) {
@@ -457,50 +460,52 @@ const CardDeck = memo(function CardDeck({ draw }: { draw: TableCardDraw | null }
           <meshBasicMaterial map={face} toneMapped={false} />
         </mesh>
       </group>
-      {draw && draw.stage !== 'shown' && <DrawnCard key={draw.id} draw={draw} back={face} />}
+      {draw && <DrawnCard key={draw.id} draw={draw} back={face} />}
     </group>
   );
 });
 
 /**
  * The top card coming off the deck. Waiting, it bobs to be picked; drawn, it
- * lifts, turns face up towards the camera and rises to meet it, then reports
- * where it is on screen so the card panel can grow out of that spot.
+ * lifts, turns face up and comes to rest square to the camera, large enough to
+ * read: the card on the table is the card the player reads.
  */
 function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMaterial['map'] }) {
   const faceTexture = useMemo(() => makeCardFaceTexture(draw.card), [draw.card]);
   useEffect(() => () => faceTexture.dispose(), [faceTexture]);
   const holder = useRef<Group>(null);
-  const tilt = useRef<Group>(null);
   const flip = useRef<Group>(null);
-  const camera = useThree((state) => state.camera);
+  const camera = useThree((state) => state.camera) as PerspectiveCamera;
   const size = useThree((state) => state.size);
   const invalidate = useThree((state) => state.invalidate);
   const started = useRef<number | null>(null);
   const reported = useRef(false);
   const onDrawn = useRef(draw.onDrawn);
   onDrawn.current = draw.onDrawn;
-  const scratch = useMemo(() => ({ camera: new Vector3(), world: new Vector3(), lifted: new Vector3() }), []);
+  const scratch = useMemo(() => ({
+    camera: new Vector3(), lifted: new Vector3(), target: new Vector3(), offset: new Vector3(), screen: new Vector3(),
+    liftedTurn: new Quaternion(), targetTurn: new Quaternion(), parentTurn: new Quaternion(),
+    faceCamera: new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2),
+  }), []);
 
   useEffect(() => {
-    if (draw.stage === 'drawing' && started.current === null) started.current = performance.now();
+    if (draw.stage !== 'ready' && started.current === null) started.current = performance.now();
     invalidate();
   }, [draw.stage, invalidate]);
 
   useFrame(() => {
     const group = holder.current;
     const parent = group?.parent;
-    if (!group || !parent || !tilt.current || !flip.current) return;
+    if (!group || !parent || !flip.current) return;
     const now = performance.now();
-    // Turn the card so its bottom edge faces the camera, in the deck's own frame.
+    // Turn the card so its foot faces the camera, in the deck's own frame.
     parent.worldToLocal(scratch.camera.copy(camera.position));
     const yaw = Math.atan2(scratch.camera.x, scratch.camera.z);
 
     if (started.current === null) {
       // Waiting to be picked: a gentle bob says "this one".
       group.position.set(0, DECK_TOP + 0.03 + Math.sin(now / 260) * 0.03, 0);
-      group.rotation.set(0, 0, 0);
-      tilt.current.rotation.set(0, 0, 0);
+      group.quaternion.identity();
       flip.current.rotation.set(0, 0, 0);
       invalidate();
       return;
@@ -509,44 +514,59 @@ function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMateria
     const t = (now - started.current) / 1000;
     const lift = MathUtils.smoothstep(t, 0, DRAW_TIMES.lift);
     const over = MathUtils.smoothstep(t, DRAW_TIMES.lift * 0.6, DRAW_TIMES.lift + DRAW_TIMES.flip);
-    const riseStart = DRAW_TIMES.lift + DRAW_TIMES.flip;
-    const rise = MathUtils.smoothstep(t, riseStart, riseStart + DRAW_TIMES.rise);
+    const presentStart = DRAW_TIMES.lift + DRAW_TIMES.flip;
+    const present = MathUtils.smoothstep(t, presentStart, presentStart + DRAW_TIMES.present);
 
+    // Off the deck and turned towards the camera.
     scratch.lifted.set(0, DECK_TOP + 0.03 + lift * 1.3, 0);
-    // Rise towards the camera, stopping well short of it.
-    group.position.lerpVectors(scratch.lifted, scratch.camera, rise * 0.55);
-    group.rotation.set(0, MathUtils.lerp(0, yaw, lift), 0);
-    // Face up, then tip the face towards the camera as it rises.
-    const facing = Math.atan2(Math.hypot(scratch.camera.x, scratch.camera.z), scratch.camera.y - group.position.y);
-    tilt.current.rotation.set(rise * facing, 0, 0);
+    scratch.liftedTurn.setFromAxisAngle(WORLD_UP, MathUtils.lerp(0, yaw, lift));
+
+    // Where it comes to rest: straight in front of the camera, square to it,
+    // at the distance that gives it a set share of the screen.
+    const tanHalf = Math.tan(MathUtils.degToRad(camera.fov / 2));
+    const worldScale = parent.getWorldScale(scratch.offset).x;
+    const cardHeight = CARD_SIZE.depth * worldScale;
+    const cardWidth = CARD_SIZE.width * worldScale;
+    const aspect = size.width / Math.max(1, size.height);
+    const distance = Math.max(
+      cardHeight / (PRESENT.height * 2 * tanHalf),
+      cardWidth / (PRESENT.width * 2 * tanHalf * aspect),
+    );
+    scratch.target.set(0, PRESENT.raise * 2 * tanHalf * distance, -distance)
+      .applyQuaternion(camera.quaternion).add(camera.position);
+    parent.worldToLocal(scratch.target);
+    parent.getWorldQuaternion(scratch.parentTurn);
+    scratch.targetTurn.copy(camera.quaternion).multiply(scratch.faceCamera).premultiply(scratch.parentTurn.invert());
+
+    group.position.lerpVectors(scratch.lifted, scratch.target, present);
+    group.quaternion.slerpQuaternions(scratch.liftedTurn, scratch.targetTurn, present);
     flip.current.rotation.set(over * Math.PI, 0, 0);
 
-    if (rise >= 1 && !reported.current) {
+    if (present >= 1 && !reported.current) {
       reported.current = true;
-      group.getWorldPosition(scratch.world).project(camera);
-      onDrawn.current({ x: (scratch.world.x + 1) / 2 * size.width, y: (1 - scratch.world.y) / 2 * size.height });
+      group.getWorldPosition(scratch.screen).project(camera);
+      onDrawn.current({ x: (scratch.screen.x + 1) / 2 * size.width, y: (1 - scratch.screen.y) / 2 * size.height });
     }
-    if (!reported.current) invalidate();
+    // Once at rest it follows the camera on the frames the camera itself requests.
+    if (present < 1) invalidate();
   });
 
   return (
     <group ref={holder}>
-      <group ref={tilt}>
-        <group ref={flip}>
-          <mesh castShadow>
-            <boxGeometry args={[CARD_SIZE.width, 0.012, CARD_SIZE.depth]} />
-            <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
-          </mesh>
-          {/* Back on top while it lies on the deck; the face underneath turns up. */}
-          <mesh rotation-x={-Math.PI / 2} position={[0, 0.007, 0]}>
-            <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
-            <meshBasicMaterial map={back} toneMapped={false} />
-          </mesh>
-          <mesh rotation-x={Math.PI / 2} position={[0, -0.007, 0]}>
-            <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
-            <meshBasicMaterial map={faceTexture} toneMapped={false} />
-          </mesh>
-        </group>
+      <group ref={flip}>
+        <mesh>
+          <boxGeometry args={[CARD_SIZE.width, 0.012, CARD_SIZE.depth]} />
+          <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
+        </mesh>
+        {/* Back on top while it lies on the deck; the face underneath turns up. */}
+        <mesh rotation-x={-Math.PI / 2} position={[0, 0.007, 0]}>
+          <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+          <meshBasicMaterial map={back} toneMapped={false} />
+        </mesh>
+        <mesh rotation-x={Math.PI / 2} position={[0, -0.007, 0]}>
+          <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+          <meshBasicMaterial map={faceTexture} toneMapped={false} />
+        </mesh>
       </group>
     </group>
   );

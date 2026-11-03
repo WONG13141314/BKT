@@ -535,6 +535,7 @@ export function GamePage() {
             onBuild={emitBuildHouse}
             onEndTurn={emitEndTurn}
             onDrawCard={isMyTurn && cardDraw.stage === 'ready' ? cardDraw.pick : undefined}
+            onCardDone={isMyTurn && cardDraw.stage === 'shown' && cardDraw.origin ? emitCardAck : undefined}
           />
         </div>
       </div>
@@ -571,12 +572,12 @@ export function GamePage() {
       )}
 
       {/* Challenge Card: drawn from the deck in front of the whole table. */}
-      {cardOnDeck && currentPlayer && cardDraw.stage === 'shown' && (
+      {/* Without a 3D card to hold up (flat board, reduced motion), the card is shown as a panel. */}
+      {cardOnDeck && currentPlayer && cardDraw.stage === 'shown' && !cardDraw.origin && (
         <CardReveal
           card={cardOnDeck}
           drawerName={currentPlayer.name}
           isDrawer={isMyTurn}
-          origin={cardDraw.origin}
           onDone={emitCardAck}
         />
       )}
