@@ -520,6 +520,7 @@ export function createGameHandlersRuntime(options: GameHandlersRuntimeOptions) {
         publishTransition(io, gameId, socketRoom, step.state);
         io.to(socketRoom).emit('game:bot-action', {
           botId: bot.id, botName: bot.name, action: step.action,
+          ...(step.outcome ? { outcome: step.outcome } : {}),
         });
         checkAndEmitGameOver(io, socketRoom, gameService.getGameSync(gameId) ?? step.state);
       } catch (error) {

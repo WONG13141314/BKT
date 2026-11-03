@@ -1,0 +1,291 @@
+/* ============================================
+   Challenge Card draw — the deck, the lift and
+   the turn, in the card panel's own style
+   ============================================ */
+
+.card-draw {
+  --card-w: 240px;
+  --card-h: 330px;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  animation: cardDrawFade 0.25s ease;
+}
+
+.card-draw--drawer { background: rgba(0, 0, 0, 0.6); }
+
+/* Onlookers watch over the board: no dimming, nothing to click. */
+.card-draw--watching {
+  z-index: 50;
+  pointer-events: none;
+}
+
+.card-draw__stage {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  perspective: 1200px;
+}
+
+/* ---- The deck ---- */
+
+.card-draw__deck {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.card-draw__back--stacked {
+  position: absolute;
+  inset: 0;
+  transform: translate(calc(var(--depth) * 4px), calc(var(--depth) * 5px)) rotate(calc(var(--depth) * 1.2deg));
+}
+
+.card-draw--shown .card-draw__deck {
+  opacity: 0;
+  transform: translateY(18px) scale(0.94);
+}
+
+/* ---- The drawn card ---- */
+
+.card-draw__flipper {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.card-draw--deck.card-draw--drawer .card-draw__flipper {
+  animation: cardDrawInvite 1.6s ease-in-out infinite;
+}
+
+.card-draw--drawing .card-draw__flipper {
+  animation: cardDrawLift 1s cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+}
+
+.card-draw--shown .card-draw__flipper {
+  transform: rotateY(180deg);
+}
+
+.card-draw__face {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 4px solid #000;
+  border-radius: 10px;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.4);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-draw__face--back {
+  display: block;
+  cursor: default;
+  font: inherit;
+}
+
+.card-draw--drawer.card-draw--deck .card-draw__face--back { cursor: pointer; }
+
+.card-draw__face--back:focus-visible {
+  outline: none;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.4), var(--focus-ring);
+}
+
+.card-draw__face--front {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  transform: rotateY(180deg);
+}
+
+/* The same art as the deck on the board. */
+.card-draw__back,
+.card-draw__back-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.card-draw__back {
+  overflow: hidden;
+  border: 4px solid #000;
+  border-radius: 10px;
+}
+
+.card-draw__back-art {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #8b5cf6;
+  color: #fff;
+}
+
+.card-draw__back-art::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border: 5px solid #fff;
+  border-radius: 6px;
+}
+
+.card-draw__back-art b {
+  font: 900 7.5rem/1 'Impact', 'Arial Narrow', sans-serif;
+}
+
+.card-draw__back-art small {
+  margin-top: 18px;
+  font: 800 1.15rem 'Impact', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---- Card face: the current card panel ---- */
+
+.card-draw__header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: #ffb703;
+  border-bottom: 3px solid #000;
+}
+
+.card-draw__header--math { background: #ffb703; }
+.card-draw__header--luck { background: #8ecae6; }
+
+.card-draw__icon {
+  font-size: 2.1rem;
+}
+
+.card-draw--shown .card-draw__icon {
+  animation: cardDrawIcon 0.5s ease 0.1s both;
+}
+
+.card-draw__header small {
+  display: block;
+  font: 800 0.66rem var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.card-draw__header h3 {
+  margin: 0;
+  font: 800 1.35rem/1.05 'Impact', 'Arial Narrow', sans-serif;
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-draw__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 1.1rem;
+  text-align: center;
+}
+
+.card-draw__body p {
+  margin: 0;
+  font: 800 1.05rem/1.4 'Courier New', Courier, monospace;
+  color: #000;
+}
+
+.card-draw__note {
+  padding: 3px 10px;
+  font: 800 0.72rem var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #fff3b0;
+  border: 2px solid #000;
+  border-radius: 999px;
+}
+
+/* ---- Footer ---- */
+
+.card-draw__footer {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.card-draw__prompt {
+  padding: 6px 14px;
+  font: 800 0.9rem var(--font-display);
+  background: #fffdf7;
+  border: 2px solid #000;
+  border-radius: 999px;
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.38);
+}
+
+.card-draw__ok {
+  min-height: var(--action-min-height);
+  padding: 0.7rem 2.6rem;
+  font: 800 1.1rem 'Impact', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  color: #fff;
+  background: #e63946;
+  border: 2px solid #000;
+  border-radius: 4px;
+  box-shadow: 3px 3px 0 #000;
+  cursor: pointer;
+  animation: cardDrawFade 0.25s ease;
+}
+
+.card-draw__ok:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 #000;
+}
+
+.card-draw__ok:focus-visible {
+  outline: none;
+  box-shadow: 3px 3px 0 #000, var(--focus-ring);
+}
+
+@keyframes cardDrawFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The top card nudges up to say "pick me". */
+@keyframes cardDrawInvite {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-8px) rotate(-1.5deg); }
+}
+
+/* Off the deck, then over. */
+@keyframes cardDrawLift {
+  0% { transform: translateY(0) rotate(0) rotateY(0); }
+  35% { transform: translateY(-46px) rotate(-5deg) rotateY(0); }
+  100% { transform: translateY(0) rotate(0) rotateY(180deg); }
+}
+
+@keyframes cardDrawIcon {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+@media (max-width: 480px), (max-height: 560px) {
+  .card-draw { --card-w: 190px; --card-h: 262px; gap: 14px; }
+  .card-draw__back-art b { font-size: 5.5rem; }
+  .card-draw__header h3 { font-size: 1.1rem; }
+  .card-draw__body p { font-size: 0.92rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-draw,
+  .card-draw__flipper,
+  .card-draw__icon,
+  .card-draw__ok { animation: none !important; }
+}

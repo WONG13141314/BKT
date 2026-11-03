@@ -28,6 +28,8 @@ interface Props {
   onMovementComplete?: () => void;
   /** Called once, when the 3D dice and tokens have drawn (or the reveal limit passed). */
   onScenesReady?: () => void;
+  /** The route line ("Tolak Lane · 2 of 6", "Landed on …") for the turn banner to show. */
+  onRouteChange?: (route: { label: string | null; moving: boolean }) => void;
 }
 
 const TILE_ICONS: Record<string, string> = {
@@ -49,6 +51,7 @@ export function Board({
   onMovementStep,
   onMovementComplete,
   onScenesReady,
+  onRouteChange,
 }: Props) {
   const { players, properties } = gameState;
   const boardElement = useRef<HTMLDivElement>(null);
@@ -77,8 +80,8 @@ export function Board({
   const diceStatus = useRef({ rollId: 0, rolling: false });
   const activeRollId = useRef(gameState.diceRollId);
   activeRollId.current = gameState.diceRollId;
-  const callbacks = useRef({ onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady });
-  callbacks.current = { onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady };
+  const callbacks = useRef({ onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady, onRouteChange });
+  callbacks.current = { onDiceRollingChange, onMovementChange, onMovementStep, onMovementComplete, onScenesReady, onRouteChange };
   const diceAnimating = gameState.diceRollId > 0 && settledRollId !== gameState.diceRollId;
   // Money and status broadcasts must not restart the current hop's timer.
   const targetPositionsJson = JSON.stringify(Object.fromEntries(players.map((player) => [player.id, player.position])));
@@ -257,6 +260,10 @@ export function Board({
     : !moving && cameraMode === 'landing' && roller
       ? `${roller.isInJail ? 'In' : 'Landed on'} ${gameState.tiles[roller.position]?.name ?? ''}`
       : null;
+  // The turn banner shows the route line, so the board draws no label of its own.
+  useEffect(() => {
+    callbacks.current.onRouteChange?.({ label: routeLabel, moving });
+  }, [routeLabel, moving]);
   const stepTile = useMemo(() => walk && walk.step > 0 ? { index: walk.tile, id: walk.id } : null, [walk]);
   const dice = useMemo(() => ({
     values: gameState.diceValues,
@@ -354,11 +361,6 @@ export function Board({
           </span>
         </BoardSceneBoundary>
       ) : basicBoard}
-      {routeLabel && canRender3D && (
-        <div className={`board-route-label${moving ? '' : ' board-route-label--landed'}`} aria-live="polite">
-          {routeLabel}
-        </div>
-      )}
     </div>
   );
 }

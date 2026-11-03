@@ -389,6 +389,8 @@ export interface TileEvent {
   bankOfferApproved?: boolean;
   taxAmount?: number;
   card?: ChallengeCard;
+  /** The drawn card has not been carried out yet; it is once the drawer acknowledges it. */
+  cardPending?: boolean;
   luckyBreakReward?: LuckyBreakReward;
 }
 

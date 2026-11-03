@@ -48,7 +48,8 @@ export function getBotActionDelay(state: GameState): number | null {
     case 'SMART_BUY_CHALLENGE':
     case 'CARD_MATH_CHALLENGE':
     case 'JAIL_CHALLENGE': return 1_500;
-    case 'CARD_DRAW': return 1_500;
+    // Long enough for the table to watch the card come off the deck and turn over.
+    case 'CARD_DRAW': return 2_800;
     case 'JAIL_DECISION': return 500;
     case 'END_TURN': return state.duelState?.resolution ? 6_000 : 800;
     // Presentation completion and duel settlement have separate handlers.
@@ -58,7 +59,20 @@ export function getBotActionDelay(state: GameState): number | null {
   }
 }
 
-export interface BotStep { state: GameState; action: string }
+export interface BotStep {
+  state: GameState;
+  action: string;
+  /** For an answer: whether it was right, so onlookers see the outcome as for a person. */
+  outcome?: { isCorrect: boolean; timedOut: boolean };
+}
+
+function answered(action: string, answer: { newState: GameState; result: { isCorrect: boolean; timedOut?: boolean } }): BotStep {
+  return {
+    state: answer.newState,
+    action,
+    outcome: { isCorrect: answer.result.isCorrect, timedOut: answer.result.timedOut === true },
+  };
+}
 
 /** Compute one action when its delay has elapsed, from the latest state. */
 export function executeBotStep(state: GameState): BotStep | null {
@@ -75,16 +89,14 @@ export function executeBotStep(state: GameState): BotStep | null {
         : { state: startSmartBuyChallenge(state), action: 'smart_buy_start' };
     }
     case 'SMART_BUY_CHALLENGE':
-      return state.currentChallenge ? {
-        state: processSmartBuyAnswer(state, answerAs(player, state.currentChallenge)).newState,
-        action: 'smart_buy_answer',
-      } : null;
+      return state.currentChallenge
+        ? answered('smart_buy_answer', processSmartBuyAnswer(state, answerAs(player, state.currentChallenge)))
+        : null;
     case 'CARD_DRAW': return { state: acknowledgeCard(state), action: 'card_ack' };
     case 'CARD_MATH_CHALLENGE':
-      return state.currentChallenge ? {
-        state: processCardChallengeAnswer(state, answerAs(player, state.currentChallenge)).newState,
-        action: 'card_answer',
-      } : null;
+      return state.currentChallenge
+        ? answered('card_answer', processCardChallengeAnswer(state, answerAs(player, state.currentChallenge)))
+        : null;
     case 'JAIL_DECISION': {
       const decision = botJailDecision(player);
       if (decision === 'math') return { state: startJailMathEscape(state), action: 'jail_math_start' };
@@ -92,10 +104,9 @@ export function executeBotStep(state: GameState): BotStep | null {
       return { state: waitInJail(state), action: 'jail_wait' };
     }
     case 'JAIL_CHALLENGE':
-      return state.currentChallenge ? {
-        state: processJailEscapeAnswer(state, answerAs(player, state.currentChallenge)).newState,
-        action: 'jail_answer',
-      } : null;
+      return state.currentChallenge
+        ? answered('jail_answer', processJailEscapeAnswer(state, answerAs(player, state.currentChallenge)))
+        : null;
     case 'END_TURN': return { state: endTurn(state), action: 'end_turn' };
     default: return null;
   }

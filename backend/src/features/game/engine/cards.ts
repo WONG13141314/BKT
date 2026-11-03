@@ -17,41 +17,38 @@ export function resolveChallengeCardTile(state: GameState, player: PlayerState):
     tileIndex: player.position,
     tileName: 'Challenge Card',
     card,
+    cardPending: true,
   };
 
-  if (card.isMathCard) {
-    // Math challenge card → generate question
-    const challenge = selectChallenge({
-      masteryStates: player.masteryStates,
-      context: 'CHALLENGE_CARD',
-      consecutiveFailures: player.consecutiveFailures,
-      skillAttempts: player.skillAttempts,
-      recentQuestionFingerprints: player.recentQuestionFingerprints,
-      recentSkillHistory: player.recentIssuedSkills,
-      previousDifficultyBySkill: player.lastQuestionDifficulty,
-    });
+  // Every card is drawn and shown to the table first. Nothing happens until the
+  // drawer acknowledges it: a luck effect applies then, and a math card's
+  // question is issued then, so its timer never runs during the reveal.
+  return {
+    ...state,
+    challengeCardDeck: newDeck,
+    challengeCardIndex: newIndex,
+    turnPhase: 'CARD_DRAW',
+    pendingTileEvent: event,
+  };
+}
 
-    return {
-      ...state,
-      players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
-      challengeCardDeck: newDeck,
-      challengeCardIndex: newIndex,
-      turnPhase: 'CARD_MATH_CHALLENGE',
-      currentChallenge: challenge,
-      pendingTileEvent: event,
-    };
-  }
-
-  // Luck card → apply effect immediately
-  const stateAfterCard = applyCardEffect(
-    { ...state, challengeCardDeck: newDeck, challengeCardIndex: newIndex },
-    card.effect,
-    player
-  );
+function issueCardQuestion(state: GameState, event: TileEvent): GameState {
+  const player = getCurrentPlayer(state);
+  const challenge = selectChallenge({
+    masteryStates: player.masteryStates,
+    context: 'CHALLENGE_CARD',
+    consecutiveFailures: player.consecutiveFailures,
+    skillAttempts: player.skillAttempts,
+    recentQuestionFingerprints: player.recentQuestionFingerprints,
+    recentSkillHistory: player.recentIssuedSkills,
+    previousDifficultyBySkill: player.lastQuestionDifficulty,
+  });
 
   return {
-    ...stateAfterCard,
-    turnPhase: 'CARD_DRAW', // Show card to player briefly before END_TURN
+    ...state,
+    players: updatePlayerInList(state.players, state.currentPlayerIndex, (seat) => rememberIssuedQuestion(seat, challenge)),
+    turnPhase: 'CARD_MATH_CHALLENGE',
+    currentChallenge: challenge,
     pendingTileEvent: event,
   };
 }
@@ -105,9 +102,11 @@ export function processCardChallengeAnswer(
   };
 }
 
-/** Transition from CARD_DRAW to END_TURN (after player sees the card) */
 /**
- * Dismiss the drawn card and continue.
+ * The drawer has seen the card: carry it out.
+ *
+ * A math card issues its question now. A luck card applies its effect now, so
+ * money and pieces change after the table has read the card, not before.
  *
  * "Lompat!" (advance 3) and "Undur!" (back 2) move the token, and until Phase 6
  * the turn simply ended there — you could be teleported onto an unowned property
@@ -118,12 +117,19 @@ export function processCardChallengeAnswer(
  * whole effect and there is nothing further to resolve.
  */
 export function acknowledgeCard(state: GameState): GameState {
-  const player = getCurrentPlayer(state);
-  const drawnAt = state.pendingTileEvent?.tileIndex;
+  const event = state.pendingTileEvent;
+  // Snapshots saved before cards waited for acknowledgement have already
+  // applied their effect; `cardPending` is absent there, so nothing repeats.
+  const card = event?.cardPending ? event.card : undefined;
+  if (event && card?.isMathCard) return issueCardQuestion(state, { ...event, cardPending: false });
+
+  const stateAfterCard = card ? applyCardEffect(state, card.effect, getCurrentPlayer(state)) : state;
+  const player = getCurrentPlayer(stateAfterCard);
+  const drawnAt = event?.tileIndex;
   const wasMoved = drawnAt !== undefined && player.position !== drawnAt && !player.isInJail;
 
   return {
-    ...state,
+    ...stateAfterCard,
     turnPhase: wasMoved ? 'RESOLVE_TILE' : 'END_TURN',
     pendingTileEvent: null,
   };

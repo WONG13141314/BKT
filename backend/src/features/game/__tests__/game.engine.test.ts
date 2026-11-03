@@ -11,6 +11,7 @@ import {
   startSmartBuyChallenge,
   processSmartBuyAnswer,
   processCardChallengeAnswer,
+  acknowledgeCard,
   startJailMathEscape,
   processJailEscapeAnswer,
   waitInJail,
@@ -18,6 +19,7 @@ import {
 import { GameState } from '../game.types';
 import { STARTING_MONEY, BAIL_COST, MAX_ROUNDS, MAX_JAIL_TURNS, SKILL_NAMES, type SkillName } from '../game.constants';
 import { gameService } from '../../../test/game.service';
+import { getCardById } from '../card.deck';
 import { buildableState, currentPlayer, readyState } from '../../../test/bkt.fixtures';
 
 describe('Game Engine — Mathopoly', () => {
@@ -481,14 +483,61 @@ describe('Game Engine — Mathopoly', () => {
       expect(issued.players[0].recentQuestionFingerprints).toEqual([issued.currentChallenge!.fingerprint]);
     });
 
-    it('records a Challenge Card fingerprint once at issue time, not answer time', () => {
-      const card = resolveTileEvent({
+    it('shows a math card before issuing its question, so the timer starts after the reveal', () => {
+      const drawn = resolveTileEvent({
         ...gameState,
         turnPhase: 'RESOLVE_TILE',
         challengeCardDeck: [8],
         challengeCardIndex: 0,
         players: gameState.players.map((player, index) => index === 0 ? { ...player, position: 3 } : player),
       });
+
+      expect(drawn.turnPhase).toBe('CARD_DRAW');
+      expect(drawn.currentChallenge).toBeNull();
+      expect(drawn.pendingTileEvent?.card?.isMathCard).toBe(true);
+      expect(drawn.players[0].recentQuestionFingerprints).toEqual(gameState.players[0].recentQuestionFingerprints);
+
+      const asked = acknowledgeCard(drawn);
+      expect(asked.turnPhase).toBe('CARD_MATH_CHALLENGE');
+      expect(asked.currentChallenge?.context).toBe('CHALLENGE_CARD');
+      expect(asked.pendingTileEvent?.card?.id).toBe(8);
+      expect(asked.players[0].recentQuestionFingerprints).toContain(asked.currentChallenge!.fingerprint);
+    });
+
+    it('applies a luck card only after it has been shown', () => {
+      const drawn = resolveTileEvent({
+        ...gameState,
+        turnPhase: 'RESOLVE_TILE',
+        challengeCardDeck: [1],
+        challengeCardIndex: 0,
+        players: gameState.players.map((player, index) => index === 0 ? { ...player, position: 3 } : player),
+      });
+      const before = drawn.players[0].money;
+
+      expect(drawn.turnPhase).toBe('CARD_DRAW');
+      const done = acknowledgeCard(drawn);
+      expect(done.players[0].money).toBe(before + 80);
+      expect(done.turnPhase).toBe('END_TURN');
+      expect(done.pendingTileEvent).toBeNull();
+    });
+
+    it('does not repeat a luck effect from a snapshot saved before cards waited', () => {
+      const legacy: GameState = {
+        ...gameState,
+        turnPhase: 'CARD_DRAW',
+        pendingTileEvent: { type: 'CHALLENGE_CARD', tileIndex: 0, tileName: 'Challenge Card', card: getCardById(1)! },
+      };
+      expect(acknowledgeCard(legacy).players[0].money).toBe(gameState.players[0].money);
+    });
+
+    it('records a Challenge Card fingerprint once at issue time, not answer time', () => {
+      const card = acknowledgeCard(resolveTileEvent({
+        ...gameState,
+        turnPhase: 'RESOLVE_TILE',
+        challengeCardDeck: [8],
+        challengeCardIndex: 0,
+        players: gameState.players.map((player, index) => index === 0 ? { ...player, position: 3 } : player),
+      }));
       const history = card.players[0].recentQuestionFingerprints;
 
       expect(history).toEqual([card.currentChallenge!.fingerprint]);

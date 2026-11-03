@@ -66,17 +66,23 @@
   pointer-events: none;
 }
 
-.game-hud .player-panel,
+.game-hud .hud-left,
 .game-hud .hud-details,
 .game-hud .hud-dock > * {
   pointer-events: auto;
 }
 
-.game-hud .player-panel {
+/* Players, then what just happened, down the left edge. */
+.game-hud .hud-left {
   position: absolute;
   top: 76px;
   left: var(--hud-gap);
   width: 260px;
+  max-height: calc(100dvh - 76px - var(--hud-gap));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
 }
 
 .hud-details {
@@ -108,13 +114,17 @@
 @media (max-width: 1099px) {
   .game-hud { --hud-gap: 8px; }
 
-  .game-hud .player-panel {
+  .game-hud .hud-left {
     top: 54px;
     left: var(--hud-gap);
     right: var(--hud-gap);
     width: auto;
     max-height: none;
+    overflow: visible;
   }
+
+  /* The banner carries the live story here; the log needs the wide layout. */
+  .game-hud .table-feed { display: none; }
 
   .hud-details {
     top: auto;
@@ -142,7 +152,7 @@
 
 /* Short landscape phones: one column on the right for the deed and actions. */
 @media (max-height: 500px) and (orientation: landscape) {
-  .game-hud .player-panel { display: none; }
+  .game-hud .hud-left { display: none; }
 
   .hud-details {
     top: 54px;
@@ -332,8 +342,7 @@
   animation: fadeIn 0.2s ease;
 }
 
-.game-page--quiz-active .turn-banner-wrapper,
-.game-page--quiz-active .board-route-label {
+.game-page--quiz-active .turn-banner-wrapper {
   display: none;
 }
 

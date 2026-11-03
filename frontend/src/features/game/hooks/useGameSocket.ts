@@ -31,10 +31,18 @@ export interface GameSocketEvents {
   onDuelResult: (data: { duel: PublicDuelState; resolution: DuelResolution }) => void;
   onDuelDismissed: (data: { duelId: string }) => void;
   onGameFinished: (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => void;
-  onBotAction: (data: { botId: string; botName: string; action: string }) => void;
+  onBotAction: (data: BotActionEvent) => void;
   onSeatMismatch: (data: { seats: { playerId: string; name: string }[] }) => void;
   onError: (data: { message: string; code?: string }) => void;
   onConnectionRestored?: () => void;
+}
+
+export interface BotActionEvent {
+  botId: string;
+  botName: string;
+  action: string;
+  /** Present when the bot answered a question. */
+  outcome?: { isCorrect: boolean; timedOut: boolean };
 }
 
 export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
@@ -57,7 +65,7 @@ export function useGameSocket(gameId: string | null, events: GameSocketEvents) {
     const handleDuelResult = (data: { duel: PublicDuelState; resolution: DuelResolution }) => eventsRef.current.onDuelResult(data);
     const handleDuelDismissed = (data: { duelId: string }) => eventsRef.current.onDuelDismissed(data);
     const handleFinished = (data: { scores: FinalScore[]; masteryReport: MasteryReport | null }) => eventsRef.current.onGameFinished(data);
-    const handleBotAction = (data: { botId: string; botName: string; action: string }) => eventsRef.current.onBotAction(data);
+    const handleBotAction = (data: BotActionEvent) => eventsRef.current.onBotAction(data);
     const handleSeatMismatch = (data: { seats: { playerId: string; name: string }[] }) => eventsRef.current.onSeatMismatch(data);
     const handleError = (data: { message: string; code?: string }) => eventsRef.current.onError(data);
     const requestState = () => socket.emit('game:request-state', { gameId });

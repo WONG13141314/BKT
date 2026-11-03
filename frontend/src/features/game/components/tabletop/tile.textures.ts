@@ -59,19 +59,47 @@ function fitText(context: CanvasRenderingContext2D, text: string, x: number, y: 
   lines.forEach((line, index) => context.fillText(line, x, top + index * lineHeight));
 }
 
-const SKILL_SYMBOLS: Record<string, string> = { Addition: '+', Subtraction: '−', Multiplication: '×', Division: '÷' };
-
-function drawMedallion(context: CanvasRenderingContext2D, x: number, y: number, radius: number, symbol: string, colour: string) {
-  context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
-  context.fillStyle = '#ffffff';
-  context.fill();
-  context.lineWidth = 7;
-  context.strokeStyle = colour;
-  context.stroke();
+/** A small printed house in the street's colour: this is a space you can build on. */
+function drawHouse(context: CanvasRenderingContext2D, x: number, y: number, size: number, colour: string) {
+  const half = size / 2;
+  context.save();
+  context.lineJoin = 'round';
+  context.lineWidth = size * 0.09;
+  context.strokeStyle = INK;
   context.fillStyle = colour;
-  context.font = `900 ${radius * 1.5}px ${FONT}`;
-  context.fillText(symbol, x, y + radius * 0.06);
+  context.beginPath();
+  context.moveTo(x - half, y - size * 0.05);
+  context.lineTo(x, y - half - size * 0.12);
+  context.lineTo(x + half, y - size * 0.05);
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.fillStyle = '#ffffff';
+  context.beginPath();
+  context.rect(x - half * 0.72, y - size * 0.05, half * 1.44, half * 1.0);
+  context.fill();
+  context.stroke();
+  context.fillStyle = INK;
+  context.fillRect(x - size * 0.09, y + half * 0.4, size * 0.18, half * 0.55);
+  context.restore();
+}
+
+/** Corner art sits on a 768-pixel square turned 45°; half its diagonal is this long. */
+const CORNER_HALF_DIAGONAL = 768 / Math.SQRT2;
+
+/**
+ * One line of corner text, shrunk until it fits inside the square at its
+ * distance from the centre, with a margin, so no letter runs off the space.
+ */
+function fitCornerText(context: CanvasRenderingContext2D, text: string, y: number, size: number, weight = 900) {
+  let fontSize = size;
+  const room = () => 2 * (CORNER_HALF_DIAGONAL - Math.abs(y) - fontSize * 0.6) - 70;
+  context.font = `${weight} ${fontSize}px ${FONT}`;
+  while (context.measureText(text).width > room() && fontSize > 24) {
+    fontSize -= 2;
+    context.font = `${weight} ${fontSize}px ${FONT}`;
+  }
+  context.fillText(text, 0, y);
 }
 
 function drawQuestionCard(context: CanvasRenderingContext2D, x: number, y: number, scale: number) {
@@ -196,11 +224,11 @@ function drawSideFace(context: CanvasRenderingContext2D, tile: FaceTile, width: 
     context.fillRect(0, 0, width, bandBottom);
     context.fillStyle = INK;
     context.fillRect(0, bandBottom - 3, width, 6);
-    fitText(context, tile.name, width / 2, bandBottom + 78, width - 48, 62);
-    if (tile.skillTheme) drawMedallion(context, width / 2, height * 0.64, 44, SKILL_SYMBOLS[tile.skillTheme] ?? '+', groupColour ?? INK);
-    context.font = `800 54px ${FONT}`;
+    fitText(context, tile.name, width / 2, bandBottom + 92, width - 56, 66);
+    drawHouse(context, width / 2, height * 0.66, 64, groupColour ?? INK);
+    context.font = `800 56px ${FONT}`;
     context.fillStyle = INK;
-    context.fillText(`RM${tile.price}`, width / 2, height - 50);
+    context.fillText(`RM${tile.price}`, width / 2, height - 54);
     return;
   }
 
@@ -228,31 +256,23 @@ function drawCornerFace(context: CanvasRenderingContext2D, tile: FaceTile, size:
   context.fillStyle = INK;
 
   if (tile.type === 'GO') {
-    context.font = `900 170px ${FONT}`;
     context.fillStyle = RED;
-    context.fillText('MULA', 0, -40);
+    fitCornerText(context, 'MULA', -40, 170);
     context.fillStyle = INK;
-    context.font = `800 40px ${FONT}`;
-    context.fillText(`COLLECT RM${GAME_CONSTANTS.GO_SALARY} AS YOU PASS`, 0, 70);
+    fitCornerText(context, `COLLECT RM${GAME_CONSTANTS.GO_SALARY} AS YOU PASS`, 70, 40, 800);
     drawArrow(context, 0, 175, 420);
   } else if (tile.type === 'JAIL') {
     drawBars(context, 0, -10, 250);
-    context.font = `900 84px ${FONT}`;
-    context.fillText('PENJARA', 0, -210);
-    context.font = `800 40px ${FONT}`;
-    context.fillText('JUST VISITING', 0, 190);
+    fitCornerText(context, 'PENJARA', -210, 84);
+    fitCornerText(context, 'JUST VISITING', 190, 40, 800);
   } else if (tile.type === 'GO_TO_JAIL') {
     drawWhistle(context, -20, -5);
-    context.font = `900 84px ${FONT}`;
-    context.fillText('KE PENJARA', 0, -200);
-    context.font = `800 40px ${FONT}`;
-    context.fillText('GO DIRECTLY TO JAIL', 0, 190);
+    fitCornerText(context, 'KE PENJARA', -200, 84);
+    fitCornerText(context, 'GO DIRECTLY TO JAIL', 190, 40, 800);
   } else {
-    drawClover(context, -10, -40, 120);
-    context.font = `900 88px ${FONT}`;
-    context.fillText(tile.name.toUpperCase(), 0, -215);
-    context.font = `800 40px ${FONT}`;
-    context.fillText('A GIFT FROM THE BANK', 0, 200);
+    drawClover(context, -10, -30, 110);
+    fitCornerText(context, tile.name.toUpperCase(), -190, 84);
+    fitCornerText(context, 'A GIFT FROM THE BANK', 190, 40, 800);
   }
   context.restore();
 }

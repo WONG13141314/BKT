@@ -3,12 +3,13 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { PlayerPanel } from '../components/PlayerPanel';
 import { SpaceDetailsPanel } from '../components/SpaceDetailsPanel';
-import { TurnIndicator } from '../components/TurnIndicator';
+import { TurnIndicator, type TurnFlash } from '../components/TurnIndicator';
 import { GameOverScreen } from '../components/GameOverScreen';
 import { GameNotifications } from '../components/GameNotification';
 import { ColumnQuestion } from '../components/ColumnQuestion';
 import { LongDivisionQuestion } from '../components/LongDivisionQuestion';
-import { ChallengeCardModal } from '../components/ChallengeCardModal';
+import { CardDraw } from '../components/CardDraw';
+import { TableFeed } from '../components/TableFeed';
 import { MathDuel } from '../components/MathDuel';
 import { GameActionDock } from '../components/GameActionDock';
 import { ChallengeDialog } from '../components/ChallengeDialog';
@@ -31,7 +32,10 @@ import { useQuestionCards } from '../hooks/useQuestionCards';
 import { useGameSeatRecovery } from '../hooks/useGameSeatRecovery';
 import { useConnectionNotice } from '../hooks/useConnectionNotice';
 import { useGameAudio } from '../hooks/useGameAudio';
-import type { MathChallenge, MasteryReport } from '../types/game.types';
+import { usePhaseCountdown } from '../hooks/usePhaseCountdown';
+import { useTableActivity } from '../hooks/useTableActivity';
+import { usePrefersReducedMotion } from '../components/tabletop/useViewportPreferences';
+import type { MathChallenge, MasteryReport, Player } from '../types/game.types';
 import './GamePage.css';
 
 export function GamePage() {
@@ -66,6 +70,37 @@ export function GamePage() {
     dismissNotification,
   } = useGameState(myPlayerId);
   const { play: playSound, playMovementStep } = useGameAudio(gameState);
+  const { entries: activity, recordAnswer } = useTableActivity(gameState);
+  const phaseSeconds = usePhaseCountdown(gameState ?? { phaseDeadline: null });
+  const reducedMotion = usePrefersReducedMotion();
+  // The board's route line ("Tolak Lane · 2 of 6", "Landed on …"), shown in the turn banner.
+  const [route, setRoute] = useState<{ label: string | null; moving: boolean }>({ label: null, moving: false });
+  // Onlookers see a brief verdict in the banner when someone else answers.
+  const [turnFlash, setTurnFlash] = useState<TurnFlash | null>(null);
+  const answerContexts = useRef<Record<string, string>>({});
+  /** Log an answer for everyone, and flash the verdict in the banner for onlookers. */
+  const announceAnswer = (seat: Player, result: { isCorrect: boolean; timedOut?: boolean }) => {
+    recordAnswer(seat, answerContexts.current[seat.id] ?? null, result);
+    if (seat.playerId === myPlayerId || seat.id === myPlayerId) return;
+    setTurnFlash({
+      id: Date.now(),
+      tone: result.isCorrect ? 'good' : 'bad',
+      text: result.timedOut ? 'Time’s up' : result.isCorrect ? 'Correct!' : 'Missed',
+    });
+  };
+  useEffect(() => {
+    if (!turnFlash) return;
+    const timer = setTimeout(() => setTurnFlash(null), 2_600);
+    return () => clearTimeout(timer);
+  }, [turnFlash]);
+  // A verdict belongs to the turn it was given in.
+  const activeSeatId = gameState?.players[gameState.currentPlayerIndex]?.id;
+  useEffect(() => setTurnFlash(null), [activeSeatId]);
+  // Every question phase reaches every browser before its answer does, bots' included.
+  const questionContext = gameState ? QUESTION_PHASE_CONTEXTS[gameState.turnPhase] : undefined;
+  useEffect(() => {
+    if (questionContext && activeSeatId) answerContexts.current[activeSeatId] = questionContext;
+  }, [questionContext, activeSeatId]);
 
   const [masteryReport, setMasteryReport] = useState<MasteryReport | null>(null);
   const [selectedTile, setSelectedTile] = useState(0);
@@ -153,11 +188,17 @@ export function GamePage() {
       cards.syncWithState(state, gameState);
     },
     onChallenge: cards.onChallenge,
-    onChallengeStarted: () => {
-      // The turn banner already shows "<name>'s Turn — Answering".
+    onChallengeStarted: (data) => {
+      // The banner already says who is answering; remember why, for the feed.
+      answerContexts.current[data.playerId] = data.context;
     },
     onAnswerResult: (data) => {
       const answeringSeat = gameState?.players.find((seat) => seat.id === data.playerId);
+      const activeSeat = gameState?.players[gameState.currentPlayerIndex];
+      // A duellist's private verdict is shown on the duel card instead.
+      if (answeringSeat && answeringSeat.id === activeSeat?.id && gameState?.turnPhase !== 'MATH_DUEL') {
+        announceAnswer(answeringSeat, data.result);
+      }
       // Other players receive an outcome-only event for table synchronisation.
       // It must not open our private question card (which we never received)
       // or spam us with every bot's learning feedback.
@@ -175,9 +216,10 @@ export function GamePage() {
       dismissAnswerResult();
       dismissDuelResult();
     },
-    onBotAction: () => {
-      // Bot actions are communicated through board animations (dice, piece movement).
-      // No text banner needed.
+    onBotAction: (data) => {
+      // Moves show on the board; an answer's outcome is announced as for a person.
+      const bot = gameState?.players.find((seat) => seat.id === data.botId);
+      if (bot && data.outcome) announceAnswer(bot, data.outcome);
     },
     onSeatMismatch: (data) => recoverGameSeat(data.seats),
     onConnectionRestored: cards.resetAfterReconnect,
@@ -397,7 +439,7 @@ export function GamePage() {
 
   const showChallenge = ((isChallenge && !!activeChallenge) || isHoldingAnswer) && !!activeChallenge;
   const showChallengeLoading = isChallenge && !activeChallenge;
-  const showCardDraw = renderPhase === 'CARD_DRAW' && isMyTurn && !isBoardAnimating;
+  const drawnCard = renderPhase === 'CARD_DRAW' && !isBoardAnimating ? gameState.pendingTileEvent?.card ?? null : null;
 
   const forcePendingDetails = !!gameState.pendingTileEvent && [
     'BUY_DECISION',
@@ -425,6 +467,7 @@ export function GamePage() {
         onMovementStep={playMovementStep}
         onMovementComplete={handleMovementComplete}
         onScenesReady={handleScenesReady}
+        onRouteChange={setRoute}
       />
 
       <a className="skip-to-actions" href="#game-actions">Skip to game actions</a>
@@ -434,16 +477,26 @@ export function GamePage() {
           currentPlayer={currentPlayer}
           isMyTurn={isMyTurn}
           turnPhase={gameState.turnPhase}
+          routeLabel={route.label}
+          moving={route.moving}
+          spaceName={currentPlayer ? gameState.tiles[currentPlayer.position]?.name ?? null : null}
+          pendingTileEvent={gameState.pendingTileEvent}
+          // A bot acts within seconds; its fallback deadline would only mislead.
+          secondsLeft={currentPlayer?.isBot ? null : phaseSeconds}
+          flash={turnFlash}
         />
 
-        <PlayerPanel
-          players={gameState.players}
-          currentPlayerIndex={gameState.currentPlayerIndex}
-          myPlayerId={myPlayerId}
-          round={gameState.round}
-          maxRounds={gameState.maxRounds}
-          isFinalRound={gameState.isFinalRound}
-        />
+        <div className="hud-left">
+          <PlayerPanel
+            players={gameState.players}
+            currentPlayerIndex={gameState.currentPlayerIndex}
+            myPlayerId={myPlayerId}
+            round={gameState.round}
+            maxRounds={gameState.maxRounds}
+            isFinalRound={gameState.isFinalRound}
+          />
+          <TableFeed entries={activity} players={gameState.players} />
+        </div>
 
         {showDetails && (
           <div className="hud-details">
@@ -508,17 +561,15 @@ export function GamePage() {
         </ChallengeDialog>
       )}
 
-      {/* Challenge Card Modal */}
-      {showCardDraw && (
-        <ChallengeCardModal
-          card={gameState.pendingTileEvent?.card || {
-            id: 8,
-            name: 'Challenge Card',
-            description: 'You drew a Challenge Card! Click OK to continue.',
-            isMathCard: false,
-            effect: { type: 'NOTHING' }
-          }}
-          onClose={emitCardAck}
+      {/* Challenge Card: drawn from the deck in front of the whole table. */}
+      {drawnCard && currentPlayer && (
+        <CardDraw
+          key={`${gameState.diceRollId}:${gameState.pendingTileEvent?.tileIndex}:${drawnCard.id}`}
+          card={drawnCard}
+          drawerName={currentPlayer.name}
+          isDrawer={isMyTurn}
+          reducedMotion={reducedMotion}
+          onDone={emitCardAck}
         />
       )}
 
@@ -536,6 +587,12 @@ export function GamePage() {
     </div>
   );
 }
+
+const QUESTION_PHASE_CONTEXTS: Partial<Record<string, string>> = {
+  SMART_BUY_CHALLENGE: 'SMART_BUY',
+  CARD_MATH_CHALLENGE: 'CHALLENGE_CARD',
+  JAIL_CHALLENGE: 'JAIL_ESCAPE',
+};
 
 function formatContext(context: string): string {
   const labels: Record<string, string> = {

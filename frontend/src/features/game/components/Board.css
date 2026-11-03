@@ -498,38 +498,6 @@
 
 .board-space-list button[aria-pressed='true'] { background: #ffbd19; }
 
-/* "Tolak Towers · 2 of 6", then "Landed on Tolak Drive". */
-.board-route-label {
-  position: absolute;
-  z-index: 11;
-  top: 62px;
-  left: 50%;
-  padding: 5px 14px;
-  color: #fff;
-  background: rgba(10, 20, 15, .78);
-  border-radius: 999px;
-  transform: translateX(-50%);
-  font: 800 .88rem var(--font-body);
-  letter-spacing: .02em;
-  white-space: nowrap;
-  pointer-events: none;
-  backdrop-filter: blur(4px);
-}
-
-.board-route-label--landed {
-  color: #000;
-  background: #ffbd19;
-  border: 2px solid #000;
-}
-
-@media (max-width: 1099px) {
-  .board-route-label { top: auto; bottom: 96px; font-size: .8rem; }
-}
-
-@media (max-height: 500px) and (orientation: landscape) {
-  .board-route-label { top: 50px; bottom: auto; }
-}
-
 /* The dice and token canvases fade in together once both scenes have drawn. */
 .board-grid .physics-dice,
 .board-grid .board-piece-layer {

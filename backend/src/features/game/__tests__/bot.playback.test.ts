@@ -52,6 +52,27 @@ describe('live bot phases and presentation barriers', () => {
     expect(gameService.executeBotStep(gameId)).toBeNull();
   });
 
+  it('draws a card, then answers its question, reporting the outcome for onlookers', () => {
+    const state = gameService.getGameSync(gameId)!;
+    gameService.replaceState(gameId, {
+      ...state,
+      turnPhase: 'CARD_DRAW',
+      pendingTileEvent: {
+        type: 'CHALLENGE_CARD', tileIndex: 3, tileName: 'Challenge Card', cardPending: true,
+        card: { id: 8, name: 'Hadiah', description: '', isMathCard: true, effect: { type: 'NOTHING' } },
+      },
+    });
+
+    const drawn = gameService.executeBotStep(gameId)!;
+    expect(drawn.action).toBe('card_ack');
+    expect(drawn.outcome).toBeUndefined();
+    expect(drawn.state.turnPhase).toBe('CARD_MATH_CHALLENGE');
+
+    const answer = gameService.executeBotStep(gameId)!;
+    expect(answer.action).toBe('card_answer');
+    expect(answer.outcome).toEqual({ isCorrect: expect.any(Boolean), timedOut: false });
+  });
+
   it('starts one roll after its delay and holds movement until a viewer finishes', async () => {
     const { socket, io } = browser();
     const state = gameService.getGameSync(gameId)!;

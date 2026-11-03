@@ -1,0 +1,71 @@
+/* ============================================
+   Table feed — what just happened, for everyone
+   ============================================ */
+
+.table-feed {
+  padding: 8px 10px 10px;
+  background: var(--hud-card, #fffdf7);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: var(--hud-shadow, 3px 4px 0 rgba(0, 0, 0, 0.38));
+}
+
+.table-feed__title {
+  margin: 0 0 6px;
+  font: 800 0.68rem var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.table-feed__empty {
+  margin: 0;
+  font-size: 0.76rem;
+  color: rgba(17, 17, 17, 0.6);
+}
+
+.table-feed__list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.table-feed__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.2;
+  animation: feedIn 0.28s ease-out;
+}
+
+/* Older lines step back so the newest reads first. */
+.table-feed__item:nth-child(n + 3) { opacity: 0.7; }
+.table-feed__item:nth-child(n + 4) { opacity: 0.5; }
+
+.table-feed__token {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  background: color-mix(in srgb, var(--player-color) 30%, white);
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.table-feed__item--good .table-feed__text { color: #1f7a6f; }
+.table-feed__item--bad .table-feed__text { color: #c1121f; }
+
+@keyframes feedIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-feed__item { animation: none; }
+}

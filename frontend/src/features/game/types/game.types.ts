@@ -225,6 +225,8 @@ export interface TileEvent {
   bankOfferApproved?: boolean;
   taxAmount?: number;
   card?: ChallengeCard;
+  /** The drawn card has not been carried out yet. */
+  cardPending?: boolean;
   luckyBreakReward?: LuckyBreakReward;
 }
 
