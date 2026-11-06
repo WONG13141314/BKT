@@ -88,6 +88,3 @@
   .game-action-dock .action-btn { min-height: 40px; flex: 1 1 auto; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .game-action-dock { animation: none; }
-}

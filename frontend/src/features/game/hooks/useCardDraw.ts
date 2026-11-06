@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChallengeCard } from '../types/game.types';
 import type { TableCardDraw } from '../components/tabletop/TabletopScene';
 
-/** How long the drawer may leave the deck before the top card is drawn for them. */
-export const AUTO_DRAW_MS = 6_000;
-/** Onlookers' draw starts once the camera has reached the deck. */
-export const WATCH_DRAW_MS = 900;
+/** Every screen draws the top card together, once the camera has reached the deck. */
+export const DRAW_DELAY_MS = 900;
 /** If the board never reports the card arriving (a hidden tab, a lost scene), show it anyway. */
 export const DRAW_FALLBACK_MS = 2_600;
 
@@ -19,11 +17,11 @@ interface DrawState {
 
 /**
  * The stages of drawing one Challenge Card: the top card waits on the deck,
- * is drawn (picked by the drawer, or on its own for onlookers), rises off the
- * board, and is then shown on screen. Nothing here talks to the server: the
- * drawer's OK on the shown card is the acknowledgement.
+ * is drawn on every screen at the same moment, rises off the board, and is
+ * then shown on screen. Nothing here talks to the server: the drawer's OK on
+ * the shown card is the acknowledgement.
  */
-export function useCardDraw(card: ChallengeCard | null, drawKey: string | null, isDrawer: boolean) {
+export function useCardDraw(card: ChallengeCard | null, drawKey: string | null) {
   const [state, setState] = useState<DrawState | null>(null);
   const current = state && state.key === drawKey ? state : null;
   const stage: Stage | null = drawKey ? current?.stage ?? 'ready' : null;
@@ -38,19 +36,19 @@ export function useCardDraw(card: ChallengeCard | null, drawKey: string | null, 
       : previous);
   }, [drawKey]);
 
-  const pick = useCallback(() => advance('ready', 'drawing'), [advance]);
+  const draw = useCallback(() => advance('ready', 'drawing'), [advance]);
   const onDrawn = useCallback((point: { x: number; y: number } | null) => advance('drawing', 'shown', point), [advance]);
 
   useEffect(() => {
     if (stage === 'ready') {
-      const timer = setTimeout(pick, isDrawer ? AUTO_DRAW_MS : WATCH_DRAW_MS);
+      const timer = setTimeout(draw, DRAW_DELAY_MS);
       return () => clearTimeout(timer);
     }
     if (stage === 'drawing') {
       const timer = setTimeout(() => onDrawn(null), DRAW_FALLBACK_MS);
       return () => clearTimeout(timer);
     }
-  }, [stage, isDrawer, pick, onDrawn]);
+  }, [stage, draw, onDrawn]);
 
   const cardId = card?.id;
   const cardName = card?.name;
@@ -67,9 +65,8 @@ export function useCardDraw(card: ChallengeCard | null, drawKey: string | null, 
     id: drawKey,
     card: tableCard,
     stage,
-    onPick: isDrawer ? pick : undefined,
     onDrawn,
-  } : null), [drawKey, stage, tableCard, isDrawer, pick, onDrawn]);
+  } : null), [drawKey, stage, tableCard, onDrawn]);
 
-  return { stage, origin: current?.origin ?? null, pick, tableDraw };
+  return { stage, origin: current?.origin ?? null, tableDraw };
 }

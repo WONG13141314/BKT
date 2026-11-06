@@ -1,0 +1,12 @@
+# Cloudflare applies these to the static files it serves.
+
+# Vite names each built file in /assets/ after its contents, so a changed file
+# always gets a new name. Browsers can keep them for a year and never re-check,
+# so a returning player's game opens straight from their own cache.
+# (Anything put in public/assets/ keeps its own name: don't add files there.)
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Token pictures keep their names; re-check them once a day.
+/tokens/*
+  Cache-Control: public, max-age=86400

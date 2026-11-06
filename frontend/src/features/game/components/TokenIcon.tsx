@@ -10,7 +10,7 @@ export function TokenIcon({ token, size = 40, label = false }: { token: PlayerTo
   return (
     <img
       className="token-icon"
-      src={`/tokens/${token}.png`}
+      src={`/tokens/${token}.webp`}
       width={size}
       height={size}
       alt={label ? TOKEN_NAMES[token] : ''}

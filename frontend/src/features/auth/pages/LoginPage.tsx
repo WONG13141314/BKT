@@ -49,9 +49,9 @@ export function LoginPage() {
     setStep(player ? 'welcome' : 'newPlayer');
   }, [isRestoring, player]);
 
-  // A known player is about to host or join: fetch the 3D board while this page is idle.
+  // Everyone on this page is about to host or join, new players included:
+  // fetch the 3D board while the page is idle, so the game opens without waiting.
   useEffect(() => {
-    if (!player) return;
     const preload = () => {
       void import('../../game/components/board.preload')
         .then((module) => module.preloadBoardScenes())
@@ -63,7 +63,7 @@ export function LoginPage() {
     }
     const timer = window.setTimeout(preload, 500);
     return () => window.clearTimeout(timer);
-  }, [player]);
+  }, []);
 
   const clearMessages = () => {
     setError('');

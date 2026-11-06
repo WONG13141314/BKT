@@ -153,7 +153,7 @@ export function GamePage() {
   const cardDrawKey = cardOnDeck && gameState
     ? `${gameState.diceRollId}:${gameState.pendingTileEvent?.tileIndex}:${cardOnDeck.id}`
     : null;
-  const cardDraw = useCardDraw(cardOnDeck, cardDrawKey, isMyTurn);
+  const cardDraw = useCardDraw(cardOnDeck, cardDrawKey);
 
   const {
     emitRoll,
@@ -534,7 +534,6 @@ export function GamePage() {
             onJailWait={emitJailWait}
             onBuild={emitBuildHouse}
             onEndTurn={emitEndTurn}
-            onDrawCard={isMyTurn && cardDraw.stage === 'ready' ? cardDraw.pick : undefined}
             onCardDone={isMyTurn && cardDraw.stage === 'shown' && cardDraw.origin ? emitCardAck : undefined}
           />
         </div>

@@ -260,10 +260,6 @@
   to { transform: translateY(4px) rotate(18deg); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .basic-dice--rolling .basic-die { animation: none; }
-}
-
 .board-center .dice-roll-btn {
   position: relative;
   z-index: 30;
@@ -509,7 +505,3 @@
   opacity: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .board-grid .physics-dice,
-  .board-grid .board-piece-layer { transition: none; }
-}

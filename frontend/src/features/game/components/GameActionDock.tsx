@@ -21,8 +21,6 @@ export interface GameActionDockProps {
   onJailWait(): void;
   onBuild(tileIndex: number): void;
   onEndTurn(): void;
-  /** Present while the top Challenge Card waits to be drawn. */
-  onDrawCard?(): void;
   /** Present once the drawn card is held up on the board, to carry it out. */
   onCardDone?(): void;
 }
@@ -43,7 +41,6 @@ export function GameActionDock({
   onJailWait,
   onBuild,
   onEndTurn,
-  onDrawCard,
   onCardDone,
 }: GameActionDockProps) {
   const secondsLeft = usePhaseCountdown(state);
@@ -106,15 +103,6 @@ export function GameActionDock({
         <button className="action-btn action-btn--primary" onClick={onCardDone} autoFocus>
           {isMathCard ? 'Solve it' : 'OK'}
         </button>
-      </div>
-    );
-  }
-
-  if (phase === 'CARD_DRAW' && onDrawCard) {
-    return (
-      <div className="game-action-dock" id="game-actions" aria-label="Challenge Card">
-        <button className="action-btn action-btn--primary" onClick={onDrawCard}>Draw a Card</button>
-        <span className="game-action-dock__deadline">or tap the deck on the board</span>
       </div>
     );
   }

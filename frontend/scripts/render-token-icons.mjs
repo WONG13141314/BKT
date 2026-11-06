@@ -1,8 +1,11 @@
 // Saves a picture of each pewter piece to public/tokens, rendered from the same
-// 3D models the board uses. Start the dev server first:
+// 3D models the board uses, as lossless WebP (the same pixels as PNG, about
+// 60% smaller). Start the dev server first:
 //   npm run dev --workspace=frontend
 //   npm run icons --workspace=frontend
 import { chromium } from '@playwright/test';
+// sharp ships with the Cloudflare test runtime (miniflare) in the root workspace.
+import sharp from 'sharp';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,8 +23,9 @@ try {
   const icons = await page.evaluate(() => window.__icons);
   await mkdir(out, { recursive: true });
   for (const [token, url] of Object.entries(icons)) {
-    await writeFile(join(out, `${token}.png`), Buffer.from(url.split(',')[1], 'base64'));
-    console.log(`Saved tokens/${token}.png`);
+    const png = Buffer.from(url.split(',')[1], 'base64');
+    await writeFile(join(out, `${token}.webp`), await sharp(png).webp({ lossless: true, effort: 6, exact: true }).toBuffer());
+    console.log(`Saved tokens/${token}.webp`);
   }
 } finally {
   await browser.close();

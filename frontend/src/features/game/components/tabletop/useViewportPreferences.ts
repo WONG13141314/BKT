@@ -1,22 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SafeInsets } from './camera';
 
-function query(media: string): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(media).matches;
-}
-
-export function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => query('(prefers-reduced-motion: reduce)'));
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const list = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReduced(list.matches);
-    list.addEventListener?.('change', update);
-    return () => list.removeEventListener?.('change', update);
-  }, []);
-  return reduced;
-}
-
 /**
  * The screen edges the game interface covers, matching the breakpoints in
  * GamePage.css. The camera frames the board inside what remains.

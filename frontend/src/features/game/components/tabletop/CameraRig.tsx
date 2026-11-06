@@ -28,7 +28,6 @@ interface Props {
   /** Where the active piece's current move ends. */
   destination: number | null;
   insets: SafeInsets;
-  reducedMotion: boolean;
   motion: Map<string, TokenMotion>;
 }
 
@@ -50,7 +49,7 @@ function fromArray(values: readonly number[]): CameraShot {
  * for the current moment and eases towards it with critically damped springs,
  * then stops requesting frames once everything has settled.
  */
-export function CameraRig({ mode, focusId, restingIndex, destination, insets, reducedMotion, motion }: Props) {
+export function CameraRig({ mode, focusId, restingIndex, destination, insets, motion }: Props) {
   const camera = useThree((state) => state.camera) as PerspectiveCamera;
   const size = useThree((state) => state.size);
   const invalidate = useThree((state) => state.invalidate);
@@ -72,7 +71,7 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
     invalidate();
   }, [camera, insets.bottom, insets.left, insets.right, insets.top, invalidate, size.height, size.width]);
 
-  useEffect(() => { invalidate(); }, [mode, focusId, restingIndex, destination, reducedMotion, invalidate]);
+  useEffect(() => { invalidate(); }, [mode, focusId, restingIndex, destination, invalidate]);
 
   useFrame((_, delta) => {
     const focus = focusId ? motion.get(focusId) : undefined;
@@ -118,8 +117,7 @@ export function CameraRig({ mode, focusId, restingIndex, destination, insets, re
     const goal = toArray(shot);
 
     let moving = false;
-    if (!current || reducedMotion) {
-      // Reduced motion cuts between framings instead of travelling.
+    if (!current) {
       values.current = goal;
       velocities.current = [0, 0, 0, 0, 0, 0];
     } else {

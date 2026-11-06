@@ -592,13 +592,6 @@
   to { transform: scale(1); opacity: 1; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .game-page .game-hud,
-  .game-page .board-stage { transition: none; }
-  .game-opening__card,
-  .hud-details { animation: none; }
-}
-
 /* Phones: the sound button joins the top bar instead of covering the action dock. */
 @media (max-width: 640px) {
   body:has(.game-hud) .audio-control { top: 8px; right: 8px; bottom: auto; left: auto; }

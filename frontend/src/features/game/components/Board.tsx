@@ -6,7 +6,7 @@ import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWe
 import { loadTabletopScene } from './board.preload';
 import type { CameraMode } from './tabletop/camera';
 import type { TableCardDraw } from './tabletop/TabletopScene';
-import { useHudInsets, usePrefersReducedMotion } from './tabletop/useViewportPreferences';
+import { useHudInsets } from './tabletop/useViewportPreferences';
 import './Board.css';
 
 const TabletopScene = lazy(() => loadTabletopScene().then((module) => ({ default: module.TabletopScene })));
@@ -78,7 +78,6 @@ export function Board({
   const [walk, setWalk] = useState<{ step: number; total: number; tile: number; id: number } | null>(null);
   const walkRef = useRef(walk);
   const [arrivalHeld, setArrivalHeld] = useState(false);
-  const reducedMotion = usePrefersReducedMotion();
   const insets = useHudInsets();
   const completedMovementRoll = useRef<number | null>(null);
   const diceStatus = useRef({ rollId: 0, rolling: false });
@@ -249,11 +248,11 @@ export function Board({
   const drawStage = cardDraw?.stage;
   const onCardDrawn = cardDraw?.onDrawn;
   useEffect(() => {
-    if (drawStage === 'drawing' && (!canRender3D || reducedMotion)) onCardDrawn?.(null);
-  }, [drawStage, canRender3D, reducedMotion, onCardDrawn]);
+    if (drawStage === 'drawing' && !canRender3D) onCardDrawn?.(null);
+  }, [drawStage, canRender3D, onCardDrawn]);
 
-  const cameraMode: CameraMode = reducedMotion ? 'overview'
-    : diceAnimating ? 'dice'
+  // Every screen gets the same camera, whatever the system's motion setting.
+  const cameraMode: CameraMode = diceAnimating ? 'dice'
       : cardDraw && !moving ? 'deck'
       : moving ? 'follow'
         : arrivalHeld || LANDING_PHASES.has(turnPhase) ? 'landing'
@@ -355,10 +354,9 @@ export function Board({
               dice={dice}
               cameraMode={cameraMode}
               insets={insets}
-              reducedMotion={reducedMotion}
               onTileSelect={onTileSelect}
               onReady={handleTokenSceneReady}
-              cardDraw={reducedMotion ? null : cardDraw}
+              cardDraw={cardDraw}
             />
           </Suspense>
           {/* Keyboard and screen-reader access to every space; the 3D board itself is pointer-only. */}

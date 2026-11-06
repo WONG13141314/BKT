@@ -277,14 +277,77 @@ function drawCornerFace(context: CanvasRenderingContext2D, tile: FaceTile, size:
   context.restore();
 }
 
-export function makeTileTexture(tile: FaceTile, corner: boolean, groupColour: string | null): CanvasTexture {
+export interface TileFace {
+  tile: FaceTile;
+  corner: boolean;
+  groupColour: string | null;
+}
+
+function drawTileFace({ tile, corner, groupColour }: TileFace): HTMLCanvasElement {
   const size = (corner ? [TILE_DEPTH, TILE_DEPTH] : [SIDE_WIDTH, TILE_DEPTH]).map((units) => Math.round(units * PX_PER_UNIT));
   const { element, context } = canvas(size[0], size[1]);
   if (context) {
     if (corner) drawCornerFace(context, tile, size[0]);
     else drawSideFace(context, tile, size[0], size[1], groupColour);
   }
-  return finish(element);
+  return element;
+}
+
+/** Where a space's face sits on the atlas: [u0, v0, u1, v1]. */
+export type AtlasRect = [number, number, number, number];
+
+export interface TileAtlas {
+  texture: CanvasTexture;
+  rects: Map<number, AtlasRect>;
+}
+
+// Each face is surrounded by a copy of its own edge pixels, so the smaller
+// mipmap levels used at a distance never pick up a neighbouring face.
+const ATLAS_GUTTER = 16;
+const ATLAS_COLUMNS = 5;
+
+/**
+ * Every space's printed face on one sheet, at the same resolution as drawing
+ * each face on its own, so the board can be printed in a single draw.
+ */
+export function makeTileAtlas(faces: TileFace[]): TileAtlas {
+  const drawn = faces.map((face) => ({ index: face.tile.index, image: drawTileFace(face) }));
+  const g = ATLAS_GUTTER;
+  const rows: (typeof drawn)[] = [];
+  for (let i = 0; i < drawn.length; i += ATLAS_COLUMNS) rows.push(drawn.slice(i, i + ATLAS_COLUMNS));
+  const rowWidth = (row: typeof drawn) => row.reduce((sum, item) => sum + item.image.width + 2 * g, 0);
+  const rowHeight = (row: typeof drawn) => Math.max(...row.map((item) => item.image.height)) + 2 * g;
+  const width = Math.max(1, ...rows.map(rowWidth));
+  const height = Math.max(1, rows.reduce((sum, row) => sum + rowHeight(row), 0));
+  const { element, context } = canvas(width, height);
+  const rects = new Map<number, AtlasRect>();
+  let y = 0;
+  for (const row of rows) {
+    let x = 0;
+    for (const { index, image } of row) {
+      const w = image.width;
+      const h = image.height;
+      const left = x + g;
+      const top = y + g;
+      if (context) {
+        context.drawImage(image, left, top);
+        // Edges, then corners, stretched outwards into the gutter.
+        context.drawImage(image, 0, 0, 1, h, left - g, top, g, h);
+        context.drawImage(image, w - 1, 0, 1, h, left + w, top, g, h);
+        context.drawImage(image, 0, 0, w, 1, left, top - g, w, g);
+        context.drawImage(image, 0, h - 1, w, 1, left, top + h, w, g);
+        context.drawImage(image, 0, 0, 1, 1, left - g, top - g, g, g);
+        context.drawImage(image, w - 1, 0, 1, 1, left + w, top - g, g, g);
+        context.drawImage(image, 0, h - 1, 1, 1, left - g, top + h, g, g);
+        context.drawImage(image, w - 1, h - 1, 1, 1, left + w, top + h, g, g);
+      }
+      // The canvas's top row is the texture's top (flipY), so v counts up from the bottom.
+      rects.set(index, [left / width, 1 - (top + h) / height, (left + w) / width, 1 - top / height]);
+      x += w + 2 * g;
+    }
+    y += rowHeight(row);
+  }
+  return { texture: finish(element), rects };
 }
 
 /** The open centre: pale green field, diagonal red banner and the strapline. */

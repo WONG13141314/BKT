@@ -116,7 +116,3 @@
   .turn-banner__flash { padding: 2px 7px; font-size: 0.72rem; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .turn-banner,
-  .turn-banner__flash { animation: none; }
-}

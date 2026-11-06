@@ -2,22 +2,24 @@ import { Environment, Lightformer, RoundedBox } from '@react-three/drei';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { memo, Suspense, useEffect, useMemo, useRef } from 'react';
 import {
-  AdditiveBlending, ExtrudeGeometry, Group, MathUtils, Mesh, MeshBasicMaterial, MeshStandardMaterial,
-  NeutralToneMapping, PerspectiveCamera, Quaternion, Shape, Vector3,
+  AdditiveBlending, BufferAttribute, ExtrudeGeometry, Group, MathUtils, Mesh, MeshBasicMaterial, MeshStandardMaterial,
+  NeutralToneMapping, PerspectiveCamera, PlaneGeometry, Quaternion, ShaderMaterial, Shape, Vector3,
 } from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Player, PropertyState, TileConfig } from '../../types/game.types';
 import { COLOR_GROUP_PRESENTATION } from '../../config/board.presentation';
-import { SceneReady } from '../BoardRendering';
-import { PhysicsDiceContent } from '../PhysicsDice';
+import { TableDice } from '../TableDice';
 import { TOKEN_HOP_SECONDS } from '../board.animation';
 import {
   BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, DECK_SPOT, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
-  tilePlacement, tokenSpot,
+  tilePlacement, tokenSpot, wrapTile,
 } from './board.layout';
 import { CameraRig, type TokenMotion } from './CameraRig';
+import { ShadowSync, TableRenderer } from './TableRendering';
+import { makePrintMaterial } from './boardPrint';
 import { springStep, type CameraMode, type SafeInsets } from './camera';
 import {
-  GLOW_INNER, makeCardBackTexture, makeCardFaceTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileTexture, SPACE_COLOURS,
+  GLOW_INNER, makeCardBackTexture, makeCardFaceTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileAtlas, SPACE_COLOURS,
 } from './tile.textures';
 import { TokenModel } from './TokenModels';
 
@@ -41,7 +43,6 @@ export interface TabletopSceneProps {
   };
   cameraMode: CameraMode;
   insets: SafeInsets;
-  reducedMotion: boolean;
   onTileSelect: (index: number) => void;
   onReady: () => void;
   /** A Challenge Card being drawn from the deck, or null. */
@@ -52,10 +53,8 @@ export interface TableCardDraw {
   /** Changes for each new draw. */
   id: string;
   card: { name: string; description: string; isMathCard: boolean };
-  /** `ready`: the top card waits to be picked; `drawing`: it lifts, turns and rises; `shown`: it has left the table. */
+  /** `ready`: the top card waits on the deck; `drawing`: it lifts, turns and rises; `shown`: it has left the table. */
   stage: 'ready' | 'drawing' | 'shown';
-  /** Present when this viewer may pick the card. */
-  onPick?: () => void;
   /** The card has risen to the camera; where it is on screen, in CSS pixels. */
   onDrawn: (point: { x: number; y: number } | null) => void;
 }
@@ -108,8 +107,10 @@ function TabletopWorld(props: TabletopSceneProps) {
   return (
     <>
       <TableLighting />
+      <ShadowSync />
       <Table />
       <BoardBody />
+      <BoardPrints tiles={props.tiles} lifts={lifts.current} />
       {props.tiles.map((tile) => (
         <BoardSpace
           key={tile.index}
@@ -117,19 +118,19 @@ function TabletopWorld(props: TabletopSceneProps) {
           ownerColour={ownership.get(tile.index)?.colour ?? null}
           house={ownership.get(tile.index)?.house ?? false}
           raised={props.highlightTile === tile.index}
-          reducedMotion={props.reducedMotion}
           lifts={lifts.current}
           onSelect={props.onTileSelect}
         />
       ))}
       <HighlightGlow index={props.highlightTile} lifts={lifts.current} />
-      {props.stepTile && <StepFlash key={props.stepTile.id} index={props.stepTile.index} />}
+      <StepFlashes step={props.stepTile} />
+      <ShaderWarmup />
       <CardDeck draw={props.cardDraw} />
 
-      {/* The physics floor sits 0.04 below the tray origin, scaled with the dice. */}
+      {/* The recorded floor sits 0.04 below the tray origin, scaled with the dice. */}
       <group position={[0, SURFACE_Y + 0.04 * DICE_SCALE + 0.002, 0]}>
-        <PhysicsDiceContent
-          visualScale={DICE_SCALE}
+        <TableDice
+          scale={DICE_SCALE}
           values={props.dice.values}
           rollId={props.dice.rollId}
           animate={props.dice.animate}
@@ -150,7 +151,6 @@ function TabletopWorld(props: TabletopSceneProps) {
             active={player.id === active?.id}
             motion={motion.current}
             lifts={lifts.current}
-            reducedMotion={props.reducedMotion}
           />
         );
       })}
@@ -161,10 +161,9 @@ function TabletopWorld(props: TabletopSceneProps) {
         restingIndex={active?.position ?? 0}
         destination={props.destination}
         insets={props.insets}
-        reducedMotion={props.reducedMotion}
         motion={motion.current}
       />
-      <SceneReady onReady={props.onReady} />
+      <TableRenderer onReady={props.onReady} />
     </>
   );
 }
@@ -220,30 +219,24 @@ const Table = memo(function Table() {
 });
 
 /**
- * Printed surfaces use unlit materials so they keep the exact colours of the
- * 2D board; shadows land on transparent catchers laid over them.
+ * Printed surfaces are unlit so they keep the exact colours of the 2D board,
+ * with the table's shadows darkening them in the same draw.
  */
-function Print({ map, colour, width, depth, y = 0.002 }: { map?: MeshBasicMaterial['map']; colour?: string; width: number; depth: number; y?: number }) {
+function OwnerStrip({ colour, width, depth }: { colour: string; width: number; depth: number }) {
   return (
-    <mesh rotation-x={-Math.PI / 2} position={[0, y, 0]}>
+    <mesh rotation-x={-Math.PI / 2} position={[0, 0.003, 0]} material={ownerStripMaterial(colour)} receiveShadow>
       <planeGeometry args={[width, depth]} />
-      <meshBasicMaterial map={map ?? null} color={colour ?? '#ffffff'} toneMapped={false} />
-    </mesh>
-  );
-}
-
-function ShadowCatcher({ width, depth }: { width: number; depth: number }) {
-  return (
-    <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]} receiveShadow>
-      <planeGeometry args={[width, depth]} />
-      <shadowMaterial transparent opacity={0.28} depthWrite={false} />
     </mesh>
   );
 }
 
 const BoardBody = memo(function BoardBody() {
   const centre = useMemo(() => makeCentreTexture(), []);
-  useEffect(() => () => centre.dispose(), [centre]);
+  const material = useMemo(() => makePrintMaterial({ map: centre }), [centre]);
+  useEffect(() => () => {
+    centre.dispose();
+    material.dispose();
+  }, [centre, material]);
   const edge = BOARD_HALF * 2 + 0.3;
   const field = CENTRE_SIZE - TILE_GAP;
   return (
@@ -252,10 +245,52 @@ const BoardBody = memo(function BoardBody() {
       <RoundedBox args={[edge, BOARD_THICKNESS, edge]} radius={0.08} smoothness={4} position={[0, -BOARD_THICKNESS / 2, 0]} castShadow receiveShadow>
         <meshPhysicalMaterial color="#17201b" roughness={0.45} clearcoat={0.5} clearcoatRoughness={0.4} />
       </RoundedBox>
-      <Print map={centre} width={field} depth={field} />
-      <ShadowCatcher width={field} depth={field} />
+      <mesh rotation-x={-Math.PI / 2} position={[0, 0.002, 0]} material={material} receiveShadow>
+        <planeGeometry args={[field, field]} />
+      </mesh>
     </group>
   );
+});
+
+/**
+ * Every space's printed face as one sheet in one draw. A lifted space's part
+ * of the sheet rises with it, read from the same lift heights the pieces use.
+ */
+const BoardPrints = memo(function BoardPrints({ tiles, lifts }: { tiles: TileConfig[]; lifts: Float32Array }) {
+  // Every game update brings a fresh copy of the spaces, but names and prices
+  // are fixed for the match: only a real change may rebuild the sheet, or each
+  // update would re-upload its picture and recompile its shader mid-move.
+  const faceKey = JSON.stringify(tiles.map((tile) => [tile.index, tile.type, tile.name, tile.price, tile.colorGroup, tile.skillTheme]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const spaces = useMemo(() => tiles, [faceKey]);
+  const atlas = useMemo(() => makeTileAtlas(spaces.map((tile) => ({
+    tile,
+    corner: tilePlacement(tile.index).corner,
+    groupColour: tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] ?? null : null,
+  }))), [spaces]);
+  useEffect(() => () => atlas.texture.dispose(), [atlas]);
+  const geometry = useMemo(() => {
+    const parts = spaces.map((tile) => {
+      const place = tilePlacement(tile.index);
+      const part = new PlaneGeometry(place.width - TILE_GAP, place.depth - TILE_GAP)
+        .rotateX(-Math.PI / 2)
+        .translate(0, 0.002, 0)
+        .rotateY(place.yaw)
+        .translate(place.x, 0, place.z);
+      const [u0, v0, u1, v1] = atlas.rects.get(tile.index) ?? [0, 0, 1, 1];
+      const uv = part.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0));
+      part.setAttribute('tile', new BufferAttribute(new Float32Array(uv.count).fill(wrapTile(tile.index)), 1));
+      return part;
+    });
+    const merged = mergeGeometries(parts);
+    parts.forEach((part) => part.dispose());
+    return merged;
+  }, [spaces, atlas]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  const material = useMemo(() => makePrintMaterial({ map: atlas.texture, lifts }), [atlas, lifts]);
+  useEffect(() => () => material.dispose(), [material]);
+  return <mesh position={[0, SURFACE_Y, 0]} geometry={geometry} material={material} receiveShadow />;
 });
 
 let houseGeometry: { body: ExtrudeGeometry; roof: ExtrudeGeometry } | null = null;
@@ -287,7 +322,6 @@ interface SpaceProps {
   ownerColour: string | null;
   house: boolean;
   raised: boolean;
-  reducedMotion: boolean;
   lifts: Float32Array;
   onSelect: (index: number) => void;
 }
@@ -297,17 +331,10 @@ interface SpaceProps {
  * chosen space it rises out of the board like a lifted card, with a gold edge,
  * carrying its owner strip, house and any pieces on it.
  */
-const BoardSpace = memo(function BoardSpace({ tile, ownerColour, house: hasHouse, raised, reducedMotion, lifts, onSelect }: SpaceProps) {
+const BoardSpace = memo(function BoardSpace({ tile, ownerColour, house: hasHouse, raised, lifts, onSelect }: SpaceProps) {
   const place = tilePlacement(tile.index);
-  const groupColour = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] ?? null : null;
-  const texture = useMemo(
-    () => makeTileTexture(tile, place.corner, groupColour),
-    // Prices and names are fixed for the match; ownership updates must not redraw faces.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tile.index, tile.type, tile.name, tile.price, tile.colorGroup, tile.skillTheme, place.corner, groupColour],
-  );
-  useEffect(() => () => texture.dispose(), [texture]);
   const group = useRef<Group>(null);
+  const cardEdge = useRef<Mesh>(null);
   const lift = useRef({ value: 0, velocity: 0 });
   const invalidate = useThree((state) => state.invalidate);
   const width = place.width - TILE_GAP;
@@ -317,19 +344,17 @@ const BoardSpace = memo(function BoardSpace({ tile, ownerColour, house: hasHouse
   useFrame((_, delta) => {
     const goal = raised ? LIFT : 0;
     const state = lift.current;
+    // The edge is hidden inside the board until the space lifts, so it is not drawn until then.
+    if (cardEdge.current) cardEdge.current.visible = state.value > 0;
     if (state.value === goal && state.velocity === 0) return;
-    if (reducedMotion) {
+    [state.value, state.velocity] = springStep(state.value, state.velocity, goal, 11, Math.min(delta, 0.05));
+    if (Math.abs(state.value - goal) < 0.0005 && Math.abs(state.velocity) < 0.005) {
       state.value = goal;
       state.velocity = 0;
-    } else {
-      [state.value, state.velocity] = springStep(state.value, state.velocity, goal, 11, Math.min(delta, 0.05));
-      if (Math.abs(state.value - goal) < 0.0005 && Math.abs(state.velocity) < 0.005) {
-        state.value = goal;
-        state.velocity = 0;
-      }
     }
     lifts[tile.index] = state.value;
     if (group.current) group.current.position.y = SURFACE_Y + state.value;
+    if (cardEdge.current) cardEdge.current.visible = state.value > 0;
     invalidate();
   });
 
@@ -344,45 +369,43 @@ const BoardSpace = memo(function BoardSpace({ tile, ownerColour, house: hasHouse
   return (
     <group ref={group} position={[place.x, SURFACE_Y, place.z]} rotation-y={place.yaw}>
       {/* The card's edge, hidden inside the board until the space lifts. */}
-      <mesh position={[0, -LIFT / 2 - 0.01, 0]} castShadow>
+      <mesh ref={cardEdge} position={[0, -LIFT / 2 - 0.01, 0]} castShadow visible={false}>
         <boxGeometry args={[width, LIFT + 0.02, depth]} />
         <meshStandardMaterial color={SPACE_COLOURS[tile.type] ?? SPACE_COLOURS.PROPERTY} roughness={0.8} />
       </mesh>
+      {/* The face is printed by BoardPrints; this undrawn plane takes the clicks. */}
       <mesh
         rotation-x={-Math.PI / 2}
         position={[0, 0.002, 0]}
+        visible={false}
         onClick={select}
         onPointerOver={setCursor('pointer')}
         onPointerOut={setCursor('')}
       >
         <planeGeometry args={[width, depth]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
       </mesh>
       {ownerColour && (
         <group position={[0, 0, depth / 2 - 0.13]}>
-          <Print colour={ownerColour} width={width - 0.16} depth={0.14} y={0.003} />
+          <OwnerStrip colour={ownerColour} width={width - 0.16} depth={0.14} />
         </group>
       )}
-      <ShadowCatcher width={width} depth={depth} />
       {hasHouse && (
         <group position={[0, 0.003, -depth / 2 + BAND_DEPTH / 2]} rotation-y={Math.PI / 2}>
           <mesh geometry={geometry.body} material={HOUSE_MATERIAL} castShadow />
           <mesh geometry={geometry.roof} material={ROOF_MATERIAL} castShadow />
         </group>
       )}
-      {raised && (
-        <group position={[0, 0.006, 0]}>
-          {[
-            [0, -depth / 2 + edge / 2, width, edge], [0, depth / 2 - edge / 2, width, edge],
-            [-width / 2 + edge / 2, 0, edge, depth], [width / 2 - edge / 2, 0, edge, depth],
-          ].map(([x, z, w, d], i) => (
-            <mesh key={i} position={[x, 0, z]} rotation-x={-Math.PI / 2}>
-              <planeGeometry args={[w, d]} />
-              <meshBasicMaterial color={GOLD} toneMapped={false} />
-            </mesh>
-          ))}
-        </group>
-      )}
+      {/* Kept on the space and only shown while raised, so its shader is never rebuilt. */}
+      <group position={[0, 0.006, 0]} visible={raised}>
+        {[
+          [0, -depth / 2 + edge / 2, width, edge], [0, depth / 2 - edge / 2, width, edge],
+          [-width / 2 + edge / 2, 0, edge, depth], [width / 2 - edge / 2, 0, edge, depth],
+        ].map(([x, z, w, d], i) => (
+          <mesh key={i} position={[x, 0, z]} rotation-x={-Math.PI / 2} material={GOLD_MATERIAL}>
+            <planeGeometry args={[w, d]} />
+          </mesh>
+        ))}
+      </group>
     </group>
   );
 });
@@ -408,24 +431,95 @@ function HighlightGlow({ index, lifts }: { index: number | null; lifts: Float32A
   );
 }
 
-/** Each visited space lights up briefly as the piece touches down. */
-function StepFlash({ index }: { index: number }) {
-  const place = tilePlacement(index);
-  const material = useRef<MeshBasicMaterial>(null);
-  const started = useRef(performance.now());
+const FLASH_SECONDS = 0.52;
+
+/**
+ * Each visited space lights up briefly as the piece touches down. Two flashes
+ * take turns (a step comes every 0.34 s, a flash lasts 0.52 s) and stay on the
+ * table between steps, so their shader is built once, not again at every step.
+ */
+function StepFlashes({ step }: { step: { index: number; id: number } | null }) {
+  const meshes = useRef<(Mesh | null)[]>([]);
+  const materials = useRef<(MeshBasicMaterial | null)[]>([]);
+  const flashes = useRef([{ index: 0, started: -Infinity }, { index: 0, started: -Infinity }]);
   const invalidate = useThree((state) => state.invalidate);
+
+  const stepId = step?.id;
+  const stepIndex = step?.index;
+  useEffect(() => {
+    if (stepId === undefined || stepIndex === undefined) return;
+    flashes.current[stepId % 2] = { index: stepIndex, started: performance.now() };
+    invalidate();
+  }, [stepId, stepIndex, invalidate]);
+
   useFrame(() => {
-    const t = (performance.now() - started.current) / 520;
-    if (material.current) material.current.opacity = Math.max(0, 0.45 * (1 - t));
-    if (t < 1) invalidate();
+    const now = performance.now();
+    flashes.current.forEach((flash, slot) => {
+      const mesh = meshes.current[slot];
+      const material = materials.current[slot];
+      if (!mesh || !material) return;
+      const t = (now - flash.started) / (FLASH_SECONDS * 1000);
+      mesh.visible = t < 1;
+      if (t >= 1) return;
+      const place = tilePlacement(flash.index);
+      mesh.position.set(place.x, SURFACE_Y + 0.01, place.z);
+      mesh.rotation.set(-Math.PI / 2, 0, place.yaw);
+      mesh.scale.set(place.width - TILE_GAP, place.depth - TILE_GAP, 1);
+      material.opacity = Math.max(0, 0.45 * (1 - t));
+      invalidate();
+    });
   });
+
   return (
-    <mesh position={[place.x, SURFACE_Y + 0.01, place.z]} rotation-x={-Math.PI / 2} rotation-z={place.yaw}>
-      <planeGeometry args={[place.width - TILE_GAP, place.depth - TILE_GAP]} />
-      <meshBasicMaterial ref={material} color="#fff6d0" transparent opacity={0.45} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
-    </mesh>
+    <>
+      {[0, 1].map((slot) => (
+        <mesh key={slot} ref={(mesh) => { meshes.current[slot] = mesh; }} visible={false}>
+          <planeGeometry args={[1, 1]} />
+          <meshBasicMaterial
+            ref={(material) => { materials.current[slot] = material; }}
+            color="#fff6d0" transparent opacity={0} blending={AdditiveBlending} depthWrite={false} toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </>
   );
 }
+
+const GOLD_MATERIAL = new MeshBasicMaterial({ color: GOLD, toneMapped: false });
+// The drawn card's body; the deck's own cards also catch shadows, so they use another shader.
+const CARD_BODY_MATERIAL = new MeshStandardMaterial({ color: '#f4f0ff', roughness: 0.6 });
+const OWNER_STRIP_MATERIALS = new Map<string, ShaderMaterial>();
+/** One owner-strip print per player colour, kept for the whole session. */
+function ownerStripMaterial(colour: string): ShaderMaterial {
+  let material = OWNER_STRIP_MATERIALS.get(colour);
+  if (!material) {
+    // Shadows are read at the old shadow sheet's height (0.005), 0.002 above the strip.
+    material = makePrintMaterial({ colour, shadowRise: 0.002 });
+    OWNER_STRIP_MATERIALS.set(colour, material);
+  }
+  return material;
+}
+
+/**
+ * Undrawn copies of things that first appear mid-game (a bought space's owner
+ * strip, a house, a drawn card), so their shaders are built with the rest of
+ * the table before it is shown, instead of stalling the first purchase or draw.
+ */
+const ShaderWarmup = memo(function ShaderWarmup() {
+  const strip = useMemo(() => ownerStripMaterial('#ffffff'), []);
+  const geometry = house();
+  return (
+    <group visible={false}>
+      <mesh material={strip} receiveShadow>
+        <planeGeometry args={[0.1, 0.1]} />
+      </mesh>
+      <mesh geometry={geometry.body} material={HOUSE_MATERIAL} castShadow />
+      <mesh material={CARD_BODY_MATERIAL}>
+        <boxGeometry args={[0.1, 0.1, 0.1]} />
+      </mesh>
+    </group>
+  );
+});
 
 const CARD_SIZE = { width: 1.0, depth: 1.35 };
 const DECK_COUNT = 7;
@@ -440,33 +534,24 @@ const WORLD_UP = new Vector3(0, 1, 0);
 const CardDeck = memo(function CardDeck({ draw }: { draw: TableCardDraw | null }) {
   const face = useMemo(() => makeCardBackTexture(), []);
   useEffect(() => () => face.dispose(), [face]);
-  const pick = draw?.stage === 'ready' ? draw.onPick : undefined;
-  const select = (event: ThreeEvent<MouseEvent>) => {
-    if (!pick) return;
-    event.stopPropagation();
-    pick();
-  };
-  const setCursor = (cursor: string) => () => { document.body.style.cursor = pick ? cursor : ''; };
   return (
     <group position={[DECK_SPOT.x, SURFACE_Y, DECK_SPOT.z]} rotation-y={DECK_SPOT.yaw} scale={0.78}>
-      <group onClick={select} onPointerOver={setCursor('pointer')} onPointerOut={setCursor('')}>
-        {Array.from({ length: DECK_COUNT }, (_, i) => (
-          <RoundedBox key={i} args={[CARD_SIZE.width + 0.05, 0.03, CARD_SIZE.depth + 0.05]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
-            <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
-          </RoundedBox>
-        ))}
-        <mesh rotation-x={-Math.PI / 2} position={[0, DECK_TOP + 0.001, 0]}>
-          <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
-          <meshBasicMaterial map={face} toneMapped={false} />
-        </mesh>
-      </group>
+      {Array.from({ length: DECK_COUNT }, (_, i) => (
+        <RoundedBox key={i} args={[CARD_SIZE.width + 0.05, 0.03, CARD_SIZE.depth + 0.05]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
+          <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
+        </RoundedBox>
+      ))}
+      <mesh rotation-x={-Math.PI / 2} position={[0, DECK_TOP + 0.001, 0]}>
+        <planeGeometry args={[CARD_SIZE.width, CARD_SIZE.depth]} />
+        <meshBasicMaterial map={face} toneMapped={false} />
+      </mesh>
       {draw && <DrawnCard key={draw.id} draw={draw} back={face} />}
     </group>
   );
 });
 
 /**
- * The top card coming off the deck. Waiting, it bobs to be picked; drawn, it
+ * The top card coming off the deck. Waiting, it bobs on the deck; drawn, it
  * lifts, turns face up and comes to rest square to the camera, large enough to
  * read: the card on the table is the card the player reads.
  */
@@ -503,7 +588,7 @@ function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMateria
     const yaw = Math.atan2(scratch.camera.x, scratch.camera.z);
 
     if (started.current === null) {
-      // Waiting to be picked: a gentle bob says "this one".
+      // Waiting for the camera: a gentle bob says "this one".
       group.position.set(0, DECK_TOP + 0.03 + Math.sin(now / 260) * 0.03, 0);
       group.quaternion.identity();
       flip.current.rotation.set(0, 0, 0);
@@ -554,9 +639,8 @@ function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMateria
   return (
     <group ref={holder}>
       <group ref={flip}>
-        <mesh>
+        <mesh material={CARD_BODY_MATERIAL}>
           <boxGeometry args={[CARD_SIZE.width, 0.012, CARD_SIZE.depth]} />
-          <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
         </mesh>
         {/* Back on top while it lies on the deck; the face underneath turns up. */}
         <mesh rotation-x={-Math.PI / 2} position={[0, 0.007, 0]}>
@@ -593,14 +677,13 @@ function centreOf(index: number): Vector3 {
   return new Vector3(tile.x, 0, tile.z);
 }
 
-function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion }: {
+function TokenPiece({ player, slot, count, active, motion, lifts }: {
   player: Player;
   slot: number;
   count: number;
   active: boolean;
   motion: Map<string, TokenMotion>;
   lifts: Float32Array;
-  reducedMotion: boolean;
 }) {
   const group = useRef<Group>(null);
   const body = useRef<Group>(null);
@@ -630,18 +713,18 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
       state.centreFrom.copy(state.centre);
       state.centreTo.copy(centreOf(player.position));
       state.fromIndex = state.index;
-      state.duration = reducedMotion ? 0.12 : walk ? TOKEN_HOP_SECONDS : 0.55;
-      state.height = reducedMotion ? 0.04 : walk ? 0.45 : 1.6;
+      state.duration = walk ? TOKEN_HOP_SECONDS : 0.55;
+      state.height = walk ? 0.45 : 1.6;
       state.start = performance.now();
       state.index = player.position;
     }
     invalidate();
-  }, [invalidate, player.position, reducedMotion, spotX, spotZ]);
+  }, [invalidate, player.position, spotX, spotZ]);
 
   // A small hello hop marks the start of this player's turn.
   const wasActive = useRef(active);
   useEffect(() => {
-    if (active && !wasActive.current && !reducedMotion) {
+    if (active && !wasActive.current) {
       const state = piece.current!;
       if (state.start < 0) {
         state.from.copy(state.live);
@@ -654,7 +737,7 @@ function TokenPiece({ player, slot, count, active, motion, lifts, reducedMotion 
     }
     wasActive.current = active;
     invalidate();
-  }, [active, invalidate, reducedMotion]);
+  }, [active, invalidate]);
 
   useFrame((_, delta) => {
     const state = piece.current!;

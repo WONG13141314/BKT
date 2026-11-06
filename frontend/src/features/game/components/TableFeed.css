@@ -72,6 +72,3 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .table-feed__item { animation: none; }
-}

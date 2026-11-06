@@ -137,8 +137,3 @@
   100% { transform: scale(1); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .card-reveal--drawer,
-  .card-reveal__card,
-  .card-reveal__icon { animation: none; }
-}
