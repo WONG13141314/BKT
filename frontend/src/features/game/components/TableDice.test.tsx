@@ -1,4 +1,5 @@
 import { act, render } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TableDice } from './TableDice';
 import { DICE_ROLL_LIMIT_MS } from './board.animation';
@@ -97,5 +98,30 @@ describe('TableDice', () => {
     frame(duration + 5);
     rerender(<TableDice values={[4, 4]} rollId={2} onRollingChange={onRollingChange} />);
     expect(onRollingChange.mock.calls).toEqual([[true], [false], [true]]);
+  });
+
+  it('plays the next throw in full even when a frame arrives before the new roll effects run', () => {
+    const onRollingChange = vi.fn();
+    // On a real screen the next frame can come straight after the new roll renders,
+    // before React runs its effects. That frame must start the new throw, not end it.
+    function FrameRightAfterRender({ rollId, values }: { rollId: number; values: [number, number] }) {
+      useLayoutEffect(() => {
+        frames.now += 16;
+        frames.callbacks.forEach((callback) => callback());
+      }, [rollId]);
+      return <TableDice values={values} rollId={rollId} onRollingChange={onRollingChange} />;
+    }
+    const { rerender } = render(<FrameRightAfterRender rollId={1} values={[2, 3]} />);
+    frame(16);
+    frame(duration + 5);
+    expect(onRollingChange.mock.calls).toEqual([[true], [false]]);
+
+    frames.now += 60_000;
+    rerender(<FrameRightAfterRender rollId={2} values={[4, 4]} />);
+    const next = throwDurationMs(buildThrowPlan(2, throwSeed(2, [4, 4]), [4, 4]).recording);
+    frame(next - 50);
+    expect(onRollingChange.mock.calls).toEqual([[true], [false], [true]]);
+    frame(60);
+    expect(onRollingChange.mock.calls).toEqual([[true], [false], [true], [false]]);
   });
 });

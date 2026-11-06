@@ -64,7 +64,10 @@ export function TableDice({ values, rollId, animate = true, onRollingChange, onR
   activeRollRef.current = rollId;
   rollingCallback.current = onRollingChange;
   const rolling = animate && rollId > 0 && completedRollId !== rollId;
-  const started = useRef<number | null>(null);
+  // When each throw's first frame was drawn. Kept with its roll, so a frame
+  // that arrives before React's effects for a new roll never reads the last
+  // roll's start (which would end the new throw at once).
+  const started = useRef<{ rollId: number; at: number } | null>(null);
   const groups = useRef<(Group | null)[]>([]);
   const invalidate = useThree((state) => state.invalidate);
   const scratch = useMemo(() => ({ position: new Vector3(), rotation: new Quaternion() }), []);
@@ -77,7 +80,6 @@ export function TableDice({ values, rollId, animate = true, onRollingChange, onR
   }, [rollId]);
 
   useEffect(() => {
-    started.current = null;
     if (rollId === 0) return;
     rollingCallback.current?.(true);
     // A background tab draws no frames; the roll still ends on time.
@@ -103,8 +105,8 @@ export function TableDice({ values, rollId, animate = true, onRollingChange, onR
     if (rolling) {
       const now = performance.now();
       // The throw starts on the first frame actually drawn, so it never skips its opening.
-      if (started.current === null) started.current = now;
-      elapsed = now - started.current;
+      if (started.current?.rollId !== rollId) started.current = { rollId, at: now };
+      elapsed = now - started.current.at;
       if (elapsed >= throwDurationMs(plan.recording)) finishRoll();
       else invalidate();
     }
