@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChallengeCard } from '../types/game.types';
-import type { TableCardDraw } from '../components/tabletop/TabletopScene';
+import type { TableCardDraw } from '../components/board.types';
 
 /** Every screen draws the top card together, once the camera has reached the deck. */
 export const DRAW_DELAY_MS = 900;

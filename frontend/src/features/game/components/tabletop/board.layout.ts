@@ -10,6 +10,8 @@ export const SIDE_WIDTH = 2;
 /** Depth of every space from the board edge inwards; corners are this square. */
 export const TILE_DEPTH = 2.2;
 export const BOARD_HALF = TILE_DEPTH + 2 * SIDE_WIDTH; // 6.2
+/** The board's full width, including its slim rim. */
+export const BOARD_EDGE = BOARD_HALF * 2 + 0.3;
 /** The printed rule lines between spaces. */
 export const TILE_GAP = 0.05;
 /** The board's printed surface; pieces stand on it. */
@@ -19,6 +21,12 @@ export const BAND_DEPTH = 0.52;
 export const CENTRE_SIZE = (BOARD_HALF - TILE_DEPTH) * 2;
 /** Where the Challenge Card deck sits in the open centre, and its turn about Y. */
 export const DECK_SPOT = { x: -2.6, z: -2.6, yaw: Math.PI / 4 } as const;
+/** The Challenge Cards: their size, how many lie in the deck, and the deck's scale on the board. */
+export const CARD_SIZE = { width: 1.0, depth: 1.35 } as const;
+export const DECK_COUNT = 7;
+export const DECK_SCALE = 0.78;
+/** The coloured ring around each piece, marking whose it is. */
+export const RING_RADIUS = 0.27;
 
 const CORNER_CENTRE = BOARD_HALF - TILE_DEPTH / 2;
 

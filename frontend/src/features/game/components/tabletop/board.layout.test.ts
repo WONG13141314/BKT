@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { getGridPosition } from '../../config/board.presentation';
 import {
   BOARD_HALF, CENTRE_SIZE, forwardSteps, nearestAngle, outwardAzimuth, spacesAhead, TILE_COUNT, pieceFacing, tilePlacement, tokenSpot,
 } from './board.layout';
@@ -8,8 +7,16 @@ import { overviewShot, shotPosition, springStep, travelShot, type CameraViewport
 const desktop: CameraViewport = { width: 1440, height: 900, fov: 38, insets: { top: 84, right: 340, bottom: 104, left: 340 } };
 const phone: CameraViewport = { width: 375, height: 812, fov: 38, insets: { top: 150, right: 8, bottom: 170, left: 8 } };
 
+/** The classic printed board as a 6 × 6 grid: Mula bottom right, play running clockwise. */
+function getGridPosition(index: number): { gridRow: number; gridColumn: number } {
+  if (index <= 5) return { gridRow: 6, gridColumn: 6 - index };
+  if (index <= 9) return { gridRow: 5 - (index - 6), gridColumn: 1 };
+  if (index <= 15) return { gridRow: 1, gridColumn: index - 9 };
+  return { gridRow: index - 14, gridColumn: 6 };
+}
+
 describe('3D board layout', () => {
-  it('places every space where the 2D board draws it', () => {
+  it('places every space where the classic printed board has it', () => {
     for (let index = 0; index < TILE_COUNT; index++) {
       const { gridRow, gridColumn } = getGridPosition(index);
       const { x, z } = tilePlacement(index);

@@ -27,7 +27,9 @@ const FACES = [
 
 const DIE_SCALE = 1.02;
 const DIE_HALF_EXTENT = .55;
-const FLOOR_Y = -.04;
+/** The tray floor the throws were recorded on, at full size. */
+export const DICE_FLOOR_Y = -.04;
+const FLOOR_Y = DICE_FLOOR_Y;
 
 interface Props {
   values: [number, number];

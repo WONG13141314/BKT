@@ -1,17 +1,29 @@
 import { Component, useEffect, useState, type ReactNode } from 'react';
-import { getGridPosition } from '../config/board.presentation';
-import type { Player } from '../types/game.types';
 
-/** Three's renderer requires WebGL2. Release the probe's context immediately. */
-export function hasWebGL2(): boolean {
-  try {
-    const context = document.createElement('canvas').getContext('webgl2');
-    if (!context) return false;
-    context.getExtension('WEBGL_lose_context')?.loseContext();
-    return true;
-  } catch {
-    return false;
-  }
+/**
+ * How this browser can draw 3D: on the graphics chip (`hardware`), only in
+ * software on the processor (`software`, e.g. with graphics acceleration
+ * turned off, far too slow for the full table), or not at all (`none`).
+ */
+export type GraphicsSupport = 'hardware' | 'software' | 'none';
+
+let support: GraphicsSupport | null = null;
+
+/** Probed once per page; the probe's contexts are released straight away. */
+export function graphicsSupport(): GraphicsSupport {
+  if (support) return support;
+  const probe = (options?: WebGLContextAttributes) => {
+    try {
+      const context = document.createElement('canvas').getContext('webgl2', options);
+      context?.getExtension('WEBGL_lose_context')?.loseContext();
+      return !!context;
+    } catch {
+      return false;
+    }
+  };
+  // Browsers refuse this flag when they would draw in software.
+  support = probe({ failIfMajorPerformanceCaveat: true }) ? 'hardware' : probe() ? 'software' : 'none';
+  return support;
 }
 
 export class BoardSceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
@@ -53,34 +65,12 @@ const PIP_POSITIONS: Record<number, number[]> = {
 export function BasicDice({ values, rolling }: { values: [number, number]; rolling: boolean }) {
   const activeValues = values.filter((value) => value >= 1 && value <= 6);
   return (
-    <div className={`physics-dice basic-dice${rolling ? ' basic-dice--rolling' : ''}`} aria-label={`Dice showing ${activeValues.join(' and ')}`}>
+    <div className={`basic-dice${rolling ? ' basic-dice--rolling' : ''}`} aria-label={`Dice showing ${activeValues.join(' and ')}`}>
       {activeValues.map((value, index) => (
         <span key={index} className="basic-die" aria-hidden="true">
           {Array.from({ length: 9 }, (_, pip) => <i key={pip} className={PIP_POSITIONS[value].includes(pip) ? 'basic-die-pip' : ''} />)}
         </span>
       ))}
-    </div>
-  );
-}
-
-const TOKEN_OFFSETS = [[-65, -65], [65, -65], [-65, 65], [65, 65]];
-
-export function BasicBoardTokens({ players }: { players: Player[] }) {
-  return (
-    <div className="board-piece-layer basic-token-layer" aria-label="Player tokens">
-      {players.map((player, index) => {
-        if (player.isBankrupt) return null;
-        const { gridRow, gridColumn } = getGridPosition(player.position);
-        const [across, down] = TOKEN_OFFSETS[index] ?? [0, 0];
-        return <span
-          key={player.id}
-          className="basic-player-token"
-          role="img"
-          aria-label={`${player.name} on space ${player.position}`}
-          title={player.name}
-          style={{ gridRow, gridColumn, backgroundColor: player.color, transform: `translate(${across}%, ${down}%)` }}
-        >{player.name.slice(0, 1).toUpperCase()}</span>;
-      })}
     </div>
   );
 }

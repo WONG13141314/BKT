@@ -6,57 +6,31 @@ import {
   NeutralToneMapping, PerspectiveCamera, PlaneGeometry, Quaternion, ShaderMaterial, Shape, Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { Player, PropertyState, TileConfig } from '../../types/game.types';
+import type { Player, TileConfig } from '../../types/game.types';
+import type { BoardViewProps, TableCardDraw } from '../board.types';
 import { COLOR_GROUP_PRESENTATION } from '../../config/board.presentation';
 import { TableDice } from '../TableDice';
-import { TOKEN_HOP_SECONDS } from '../board.animation';
 import {
-  BAND_DEPTH, BOARD_HALF, CENTRE_SIZE, DECK_SPOT, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
-  tilePlacement, tokenSpot, wrapTile,
+  CARD_PRESENT, cardDrawFrame, hopFrame, landingSquash, SPACE_LIFT, STEP_FLASH_SECONDS, TOKEN_HOP_HEIGHT,
+  TOKEN_HOP_SECONDS, TOKEN_JUMP_HEIGHT, TOKEN_JUMP_SECONDS, TURN_HOP,
+} from '../board.animation';
+import {
+  BAND_DEPTH, BOARD_EDGE, CARD_SIZE, CENTRE_SIZE, DECK_COUNT, DECK_SCALE, DECK_SPOT, forwardSteps, nearestAngle, pieceFacing, SURFACE_Y, TILE_COUNT, TILE_GAP,
+  RING_RADIUS, tilePlacement, tokenSpot, wrapTile,
 } from './board.layout';
 import { CameraRig, type TokenMotion } from './CameraRig';
 import { ShadowSync, TableRenderer } from './TableRendering';
 import { makePrintMaterial } from './boardPrint';
-import { springStep, type CameraMode, type SafeInsets } from './camera';
+import { springStep, type CameraMode } from './camera';
 import {
   GLOW_INNER, makeCardBackTexture, makeCardFaceTexture, makeCentreTexture, makeFeltTexture, makeGlowTexture, makeTileAtlas, SPACE_COLOURS,
 } from './tile.textures';
 import { TokenModel } from './TokenModels';
 
-export interface TabletopSceneProps {
-  players: Player[];
-  tiles: TileConfig[];
-  properties: PropertyState[];
-  currentPlayerIndex: number;
-  /** The space lifted out of the board: the landed or chosen space, or none while moving. */
-  highlightTile: number | null;
+export interface TabletopSceneProps extends BoardViewProps {
   /** Where the active piece's current move ends, for the camera's framing. */
   destination: number | null;
-  /** The space the moving piece has just reached; it flashes briefly. */
-  stepTile: { index: number; id: number } | null;
-  dice: {
-    values: [number, number];
-    rollId: number;
-    animate: boolean;
-    onRollingChange: (rolling: boolean) => void;
-    onReady: () => void;
-  };
   cameraMode: CameraMode;
-  insets: SafeInsets;
-  onTileSelect: (index: number) => void;
-  onReady: () => void;
-  /** A Challenge Card being drawn from the deck, or null. */
-  cardDraw: TableCardDraw | null;
-}
-
-export interface TableCardDraw {
-  /** Changes for each new draw. */
-  id: string;
-  card: { name: string; description: string; isMathCard: boolean };
-  /** `ready`: the top card waits on the deck; `drawing`: it lifts, turns and rises; `shown`: it has left the table. */
-  stage: 'ready' | 'drawing' | 'shown';
-  /** The card has risen to the camera; where it is on screen, in CSS pixels. */
-  onDrawn: (point: { x: number; y: number } | null) => void;
 }
 
 const BOARD_THICKNESS = 0.24;
@@ -65,10 +39,9 @@ const BOARD_THICKNESS = 0.24;
 // as on a printed board.
 const TOKEN_SCALE = 0.56;
 export const DICE_SCALE = 0.6;
-const RING_RADIUS = 0.27;
 
 // How far the highlighted space rises out of the board.
-const LIFT = 0.16;
+const LIFT = SPACE_LIFT;
 const GOLD = '#ffbd19';
 
 export function TabletopScene(props: TabletopSceneProps) {
@@ -237,7 +210,7 @@ const BoardBody = memo(function BoardBody() {
     centre.dispose();
     material.dispose();
   }, [centre, material]);
-  const edge = BOARD_HALF * 2 + 0.3;
+  const edge = BOARD_EDGE;
   const field = CENTRE_SIZE - TILE_GAP;
   return (
     <group position={[0, SURFACE_Y, 0]}>
@@ -431,7 +404,7 @@ function HighlightGlow({ index, lifts }: { index: number | null; lifts: Float32A
   );
 }
 
-const FLASH_SECONDS = 0.52;
+const FLASH_SECONDS = STEP_FLASH_SECONDS;
 
 /**
  * Each visited space lights up briefly as the piece touches down. Two flashes
@@ -521,13 +494,8 @@ const ShaderWarmup = memo(function ShaderWarmup() {
   );
 });
 
-const CARD_SIZE = { width: 1.0, depth: 1.35 };
-const DECK_COUNT = 7;
 const DECK_TOP = 0.016 + DECK_COUNT * 0.032;
-// Seconds for each part of the draw: off the deck, over, then up to the camera.
-const DRAW_TIMES = { lift: 0.35, flip: 0.5, present: 0.6 };
-/** How much of the screen's height the presented card fills, and how far above centre it sits. */
-const PRESENT = { height: 0.5, width: 0.8, raise: 0.01 };
+const PRESENT = CARD_PRESENT;
 const WORLD_UP = new Vector3(0, 1, 0);
 
 /** The Challenge Card deck in the centre. Its top card is the one that gets drawn. */
@@ -535,7 +503,7 @@ const CardDeck = memo(function CardDeck({ draw }: { draw: TableCardDraw | null }
   const face = useMemo(() => makeCardBackTexture(), []);
   useEffect(() => () => face.dispose(), [face]);
   return (
-    <group position={[DECK_SPOT.x, SURFACE_Y, DECK_SPOT.z]} rotation-y={DECK_SPOT.yaw} scale={0.78}>
+    <group position={[DECK_SPOT.x, SURFACE_Y, DECK_SPOT.z]} rotation-y={DECK_SPOT.yaw} scale={DECK_SCALE}>
       {Array.from({ length: DECK_COUNT }, (_, i) => (
         <RoundedBox key={i} args={[CARD_SIZE.width + 0.05, 0.03, CARD_SIZE.depth + 0.05]} radius={0.012} smoothness={2} position={[(i % 2) * 0.012, 0.016 + i * 0.032, (i % 3) * 0.01]} rotation-y={(i % 3 - 1) * 0.02} castShadow receiveShadow>
           <meshStandardMaterial color="#f4f0ff" roughness={0.6} />
@@ -596,11 +564,7 @@ function DrawnCard({ draw, back }: { draw: TableCardDraw; back: MeshBasicMateria
       return;
     }
 
-    const t = (now - started.current) / 1000;
-    const lift = MathUtils.smoothstep(t, 0, DRAW_TIMES.lift);
-    const over = MathUtils.smoothstep(t, DRAW_TIMES.lift * 0.6, DRAW_TIMES.lift + DRAW_TIMES.flip);
-    const presentStart = DRAW_TIMES.lift + DRAW_TIMES.flip;
-    const present = MathUtils.smoothstep(t, presentStart, presentStart + DRAW_TIMES.present);
+    const { lift, over, present } = cardDrawFrame((now - started.current) / 1000);
 
     // Off the deck and turned towards the camera.
     scratch.lifted.set(0, DECK_TOP + 0.03 + lift * 1.3, 0);
@@ -713,8 +677,8 @@ function TokenPiece({ player, slot, count, active, motion, lifts }: {
       state.centreFrom.copy(state.centre);
       state.centreTo.copy(centreOf(player.position));
       state.fromIndex = state.index;
-      state.duration = walk ? TOKEN_HOP_SECONDS : 0.55;
-      state.height = walk ? 0.45 : 1.6;
+      state.duration = walk ? TOKEN_HOP_SECONDS : TOKEN_JUMP_SECONDS;
+      state.height = walk ? TOKEN_HOP_HEIGHT : TOKEN_JUMP_HEIGHT;
       state.start = performance.now();
       state.index = player.position;
     }
@@ -730,8 +694,8 @@ function TokenPiece({ player, slot, count, active, motion, lifts }: {
         state.from.copy(state.live);
         state.centreFrom.copy(state.centre);
         state.fromIndex = state.index;
-        state.duration = 0.34;
-        state.height = 0.25;
+        state.duration = TURN_HOP.seconds;
+        state.height = TURN_HOP.height;
         state.start = performance.now();
       }
     }
@@ -744,16 +708,16 @@ function TokenPiece({ player, slot, count, active, motion, lifts }: {
     const now = performance.now();
     let animating = false;
     let hop = 0;
-    let squash = 1;
+    let squash: number;
     let liftBlend = 1;
     if (state.start >= 0) {
       const t = Math.min(1, (now - state.start) / (state.duration * 1000));
-      const eased = MathUtils.smoothstep(t, 0, 1);
-      state.live.lerpVectors(state.from, state.to, eased);
-      state.centre.lerpVectors(state.centreFrom, state.centreTo, eased);
-      hop = Math.sin(Math.PI * t) * state.height;
-      squash = 1 + 0.07 * Math.sin(Math.PI * t);
-      liftBlend = eased;
+      const frame = hopFrame(t, state.height);
+      state.live.lerpVectors(state.from, state.to, frame.along);
+      state.centre.lerpVectors(state.centreFrom, state.centreTo, frame.along);
+      hop = frame.lift;
+      squash = frame.stretch;
+      liftBlend = frame.along;
       if (t >= 1) {
         state.start = -1;
         state.fromIndex = state.index;
@@ -765,11 +729,8 @@ function TokenPiece({ player, slot, count, active, motion, lifts }: {
       state.live.lerp(state.to, k);
       if (state.live.distanceToSquared(state.to) > 1e-6) animating = true;
       // Touch-down squash shortly after landing.
-      const since = (now - state.lastHop) / 160;
-      if (since < 1) {
-        squash = 1 - 0.09 * Math.sin(Math.PI * since);
-        animating = true;
-      }
+      squash = landingSquash(now - state.lastHop);
+      if (squash !== 1) animating = true;
     }
     // Turn only when the facing changes (at a corner), the short way round.
     const targetYaw = nearestAngle(pieceFacing(state.index), state.yaw);

@@ -160,14 +160,5 @@ export function travelShot(
   };
 }
 
-/**
- * One step of a critically damped spring: the fastest approach to `goal`
- * without overshoot, keeping velocity across changes of goal so the camera
- * never jerks when the moment changes.
- */
-export function springStep(value: number, velocity: number, goal: number, stiffness: number, dt: number): [number, number] {
-  const decay = Math.exp(-stiffness * dt);
-  const offset = value - goal;
-  const carry = (velocity + stiffness * offset) * dt;
-  return [goal + (offset + carry) * decay, (velocity - stiffness * carry) * decay];
-}
+// Shared with the flat board's camera.
+export { springStep } from '../board.animation';

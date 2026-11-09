@@ -1,6 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { PerspectiveCamera, Vector3 } from 'three';
+import { CAMERA_STIFFNESS } from '../board.animation';
 import { nearestAngle, sideAzimuth, spacesAhead } from './board.layout';
 import {
   deckShot, overviewShot, shotPosition, springStep, travelShot,
@@ -33,7 +34,7 @@ interface Props {
 
 // Spring stiffness per moment (higher settles faster). Travel is tight so the
 // piece stays put on screen; handovers to the overview are slow and calm.
-const STIFFNESS: Record<CameraMode, number> = { follow: 7.5, landing: 8.5, dice: 4, overview: 2.7, deck: 4.5 };
+const STIFFNESS: Record<CameraMode, number> = CAMERA_STIFFNESS;
 const AHEAD = 2;
 
 function toArray(shot: CameraShot): number[] {

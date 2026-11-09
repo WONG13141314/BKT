@@ -6,10 +6,17 @@ import { Board } from './Board';
 import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, TOKEN_STEP_MS } from './board.animation';
 
 const dice = vi.hoisted(() => ({ onRollingChange: undefined as ((rolling: boolean) => void) | undefined, fail: false }));
-const rendering = vi.hoisted(() => ({ supported: true, tokensDrawn: true }));
+const rendering = vi.hoisted(() => ({ support: 'hardware' as 'hardware' | 'software' | 'none', tokensDrawn: true }));
 vi.mock('./BoardRendering', async (importOriginal) => ({
   ...await importOriginal<typeof import('./BoardRendering')>(),
-  hasWebGL2: () => rendering.supported,
+  graphicsSupport: () => rendering.support,
+}));
+vi.mock('./flat/FlatDice', () => ({
+  FlatDice: function MockFlatDice({ dice: flatDice }: { dice: { onRollingChange: (rolling: boolean) => void; onReady: () => void } }) {
+    useEffect(() => { flatDice.onReady(); }, [flatDice]);
+    dice.onRollingChange = flatDice.onRollingChange;
+    return <div data-testid="flat-dice" />;
+  },
 }));
 vi.mock('./tabletop/TabletopScene', () => ({
   TabletopScene: function MockScene({ players, dice: sceneDice, onReady }: {
@@ -45,7 +52,7 @@ async function mountBoard() {
   const props = { selectedTile: 0, onTileSelect: vi.fn(), ...callbacks };
   const view = render(<Board gameState={makeState()} {...props} />);
   await act(async () => { await Promise.resolve(); });
-  if (rendering.supported && !dice.fail) expect(screen.getByTestId('dice')).toBeInTheDocument();
+  if (rendering.support === 'hardware' && !dice.fail) expect(screen.getByTestId('dice')).toBeInTheDocument();
   return { ...view, callbacks, update: (state: GameState) => view.rerender(<Board gameState={state} {...props} />) };
 }
 
@@ -65,7 +72,10 @@ function makeTableState(
 
 describe('board playback ordering', () => {
   beforeEach(() => {
-    vi.useFakeTimers(); dice.onRollingChange = undefined; dice.fail = false; rendering.supported = true; rendering.tokensDrawn = true;
+    vi.useFakeTimers(); dice.onRollingChange = undefined; dice.fail = false; rendering.support = 'hardware'; rendering.tokensDrawn = true;
+    // The test DOM has no canvas drawing; the flat board just skips its artwork.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:,');
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -191,9 +201,31 @@ describe('board playback ordering', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps visible dice, player markers and paced turns when WebGL is unavailable', async () => {
-    rendering.supported = false;
+  it('plays on the flat board with 3D dice when the browser draws 3D only in software', async () => {
+    rendering.support = 'software';
+    const { container, update, callbacks } = await mountBoard();
+    // Like the 3D table, the flat board is shown once it has drawn a frame.
+    act(() => vi.advanceTimersByTime(16));
+    expect(container.querySelector('.board-stage')).toHaveClass('board-stage--flat');
+    expect(container.querySelector('.board-stage')).not.toHaveClass('board-stage--scenes-pending');
+    expect(screen.queryByTestId('dice')).not.toBeInTheDocument();
+    expect(screen.getByTestId('flat-dice')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Alex on space 0' })).toBeVisible();
+    // The same pacing: the token waits for the dice, then walks.
+    update(makeState(1, 1, 'MOVING'));
+    act(() => vi.advanceTimersByTime(500));
+    expect(callbacks.onMovementStep).not.toHaveBeenCalled();
+    act(() => { dice.onRollingChange?.(false); });
+    act(() => vi.advanceTimersByTime(0));
+    expect(screen.getByRole('img', { name: 'Alex on space 1' })).toBeVisible();
+    act(() => vi.advanceTimersByTime(TOKEN_STEP_MS));
+    expect(callbacks.onMovementComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps visible dice, pieces and paced turns when the browser has no 3D at all', async () => {
+    rendering.support = 'none';
     const { update, callbacks } = await mountBoard();
+    act(() => vi.advanceTimersByTime(16));
     expect(screen.getByLabelText('Dice showing 2 and 3')).toBeVisible();
     expect(screen.getByRole('img', { name: 'Alex on space 0' })).toBeVisible();
     expect(screen.queryByTestId('dice')).not.toBeInTheDocument();
@@ -207,7 +239,7 @@ describe('board playback ordering', () => {
     expect(screen.getByLabelText('Dice showing 2 and 3')).not.toHaveClass('basic-dice--rolling');
   });
 
-  it('switches to visible basic pieces if a mounted canvas loses its context', async () => {
+  it('switches to the flat board with flat dice if a mounted canvas loses its context', async () => {
     await mountBoard();
     fireEvent(screen.getByTestId('dice'), new Event('webglcontextlost', { bubbles: false }));
     expect(screen.getByLabelText('Dice showing 2 and 3')).toBeVisible();
@@ -219,7 +251,10 @@ describe('board playback ordering', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     dice.fail = true;
     const { update, callbacks } = await mountBoard();
-    expect(screen.getByLabelText('Dice showing 2 and 3')).toBeVisible();
+    act(() => vi.advanceTimersByTime(16));
+    // The flat board takes over, with its own small 3D dice view.
+    expect(screen.getByTestId('flat-dice')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Alex on space 0' })).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'View Go' })).toHaveLength(20);
     update(makeState(1, 1, 'MOVING'));
     act(() => vi.advanceTimersByTime(DICE_ROLL_LIMIT_MS));

@@ -1,0 +1,238 @@
+/* The flat board: the 3D table seen straight from above, for computers that
+   cannot draw 3D quickly. Sizes come from the board's own units (--u). */
+
+.flat-table {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* Everything on the table stays beneath the game interface drawn over it. */
+  isolation: isolate;
+  /* The 3D table's felt as it looks lit. A plain colour: without the graphics
+     chip, a textured background behind a moving board is redrawn every frame. */
+  background: #377a59;
+  touch-action: manipulation;
+}
+
+.flat-board {
+  position: absolute;
+  transition: opacity .35s ease-out;
+}
+
+.board-stage--scenes-pending .flat-board { opacity: 0; }
+
+/* The printed board with its shadow on the felt drawn in, once: a live CSS
+   shadow would be recalculated on every frame the camera moves. */
+.flat-board__print {
+  position: absolute;
+}
+
+.flat-board__layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.flat-space-button {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.flat-owner {
+  position: absolute;
+  pointer-events: none;
+}
+
+.flat-house {
+  position: absolute;
+  pointer-events: none;
+  filter: drop-shadow(0 calc(var(--u) * .03) calc(var(--u) * .03) rgba(0, 0, 0, .35));
+}
+
+/* The landed or chosen space rises off the board with a gold edge and a warm glow. */
+.flat-lift {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: calc(var(--u) * .06) solid #ffbd19;
+  box-shadow: 0 0 calc(var(--u) * .45) rgba(255, 189, 25, .55), 0 calc(var(--u) * .16) calc(var(--u) * .3) rgba(0, 0, 0, .35);
+  opacity: 0;
+  scale: 1;
+  translate: 0 0;
+  transition: opacity .3s ease-out, scale .35s cubic-bezier(.2, .8, .2, 1), translate .35s cubic-bezier(.2, .8, .2, 1);
+  will-change: opacity, scale, translate;
+}
+
+.flat-lift--raised {
+  opacity: 1;
+  scale: 1.06;
+  translate: 0 calc(var(--u) * -.1);
+}
+
+.flat-lift canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.flat-step {
+  position: absolute;
+  pointer-events: none;
+  /* A plain light wash: as bright as the 3D board's flash, without a costly blend. */
+  background: #fffbe8;
+  animation: flat-step-flash .52s linear forwards;
+  will-change: opacity;
+}
+
+@keyframes flat-step-flash {
+  from { opacity: .4; }
+  to { opacity: 0; }
+}
+
+/* The landing close-up: the landed space shown large and upright in the
+   middle of the screen. It fades in with a slight grow; only this card moves. */
+.flat-landing {
+  position: absolute;
+  z-index: 15;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .25s ease-out;
+  will-change: transform, opacity;
+}
+
+.flat-landing--open { opacity: 1; }
+
+/* The face, gold edge, glow and shadow, drawn in one picture. */
+.flat-landing__face {
+  position: absolute;
+  display: block;
+}
+
+.flat-landing__ring,
+.flat-landing__piece {
+  position: absolute;
+}
+
+.flat-landing__ring {
+  box-sizing: border-box;
+  border-radius: 50%;
+  border-style: solid;
+}
+
+.flat-landing__piece {
+  max-width: none;
+  user-select: none;
+}
+
+/* The Challenge Card deck in the centre. */
+.flat-deck {
+  position: absolute;
+  pointer-events: none;
+  border-radius: calc(var(--u) * .03);
+  box-shadow:
+    calc(var(--u) * .02) calc(var(--u) * .02) 0 #ece6ff,
+    calc(var(--u) * .04) calc(var(--u) * .04) 0 #ddd4fb,
+    calc(var(--u) * .06) calc(var(--u) * .06) 0 #ece6ff,
+    calc(var(--u) * .08) calc(var(--u) * .08) 0 #d4c9f7,
+    calc(var(--u) * .1) calc(var(--u) * .16) calc(var(--u) * .2) rgba(0, 0, 0, .35);
+}
+
+.flat-deck canvas,
+.flat-card__face canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The drawn card: it lifts off the deck, turns over and comes up to the viewer. */
+.flat-card {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  perspective: 1400px;
+  transform-origin: 50% 50%;
+  /* Drawn once at full size, then only moved and scaled while it animates. */
+  will-change: transform;
+}
+
+.flat-card__flip {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.flat-card__face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
+}
+
+.flat-card__face--front { transform: rotateY(180deg); }
+
+/* The dice tray in the centre. */
+.flat-dice {
+  position: absolute;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+.flat-dice canvas {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+}
+
+/* The pieces: each is a picture of its pewter model, with a coloured ring. */
+.flat-piece {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.flat-piece__shadow,
+.flat-piece__ring,
+.flat-piece__body {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.flat-piece__shadow {
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, .38), rgba(0, 0, 0, 0));
+}
+
+.flat-piece__ring {
+  box-sizing: border-box;
+  border-radius: 50%;
+  border-style: solid;
+}
+
+.flat-piece__body {
+  /* The piece's box has no width of its own; keep the global image cap off. */
+  max-width: none;
+  transform-origin: 50% 85%;
+  user-select: none;
+  will-change: transform;
+}
+
+/* With the flat board (no graphics chip), panels over the board skip their
+   backdrop blur, which would be redrawn on every frame; a little more shade
+   keeps the question just as clear of the board behind it. */
+.flat-graphics .challenge-dialog-overlay {
+  backdrop-filter: none;
+  background: rgba(8, 28, 21, 0.9);
+}

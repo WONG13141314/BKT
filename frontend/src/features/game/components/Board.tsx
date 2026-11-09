@@ -1,11 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GameState, formatRM } from '../types/game.types';
-import { COLOR_GROUP_PRESENTATION, getGridPosition } from '../config/board.presentation';
+import { GameState } from '../types/game.types';
 import { BOARD_REVEAL_LIMIT_MS, DICE_ROLL_LIMIT_MS, JAIL_TRANSFER_HOLD_MS, SCENE_FALLBACK_DELAY_MS, TOKEN_STEP_MS } from './board.animation';
-import { BasicBoardTokens, BasicDice, BoardSceneBoundary, DelayedFallback, hasWebGL2 } from './BoardRendering';
+import { BoardSceneBoundary, DelayedFallback, graphicsSupport } from './BoardRendering';
 import { loadTabletopScene } from './board.preload';
+import { FlatBoard } from './flat/FlatBoard';
 import type { CameraMode } from './tabletop/camera';
-import type { TableCardDraw } from './tabletop/TabletopScene';
+import type { TableCardDraw } from './board.types';
 import { useHudInsets } from './tabletop/useViewportPreferences';
 import './Board.css';
 
@@ -35,16 +35,6 @@ interface Props {
   cardDraw?: TableCardDraw | null;
 }
 
-const TILE_ICONS: Record<string, string> = {
-  GO: 'GO',
-  JAIL: 'JAIL',
-  GO_TO_JAIL: 'GO TO JAIL',
-  LUCKY_BREAK: 'LUCKY',
-  TAX: 'TAX',
-  CHALLENGE_CARD: '?',
-  REST: 'REST',
-};
-
 export function Board({
   gameState,
   selectedTile,
@@ -59,14 +49,19 @@ export function Board({
 }: Props) {
   const { players, properties } = gameState;
   const boardElement = useRef<HTMLDivElement>(null);
-  const [canRender3D, setCanRender3D] = useState(hasWebGL2);
+  // The 3D table needs the graphics chip. Without it (acceleration turned off,
+  // or no 3D at all) the flat board plays the same game; it keeps 3D dice
+  // whenever the browser can draw 3D at all.
+  const [support] = useState(graphicsSupport);
+  const [use3D, setUse3D] = useState(support === 'hardware');
+  const [dice3D, setDice3D] = useState(support !== 'none');
   const [diceSceneReady, setDiceSceneReady] = useState(false);
   const [tokenSceneReady, setTokenSceneReady] = useState(false);
   const [revealTimedOut, setRevealTimedOut] = useState(false);
   const handleDiceSceneReady = useCallback(() => setDiceSceneReady(true), []);
   const handleTokenSceneReady = useCallback(() => setTokenSceneReady(true), []);
-  // Hold the reveal until the dice and tokens have both drawn, so it opens complete.
-  const scenesVisible = !canRender3D || revealTimedOut || (diceSceneReady && tokenSceneReady);
+  // Hold the reveal until the dice and the board have both drawn, so it opens complete.
+  const scenesVisible = revealTimedOut || (diceSceneReady && tokenSceneReady);
   const [visualPositions, setVisualPositions] = useState<Record<string, number>>(() =>
     Object.fromEntries(players.map((player) => [player.id, player.position]))
   );
@@ -93,18 +88,31 @@ export function Board({
   const jailedPlayerIds = players.filter((player) => player.isInJail).map((player) => player.id).join(',');
   const rollerId = players[gameState.currentPlayerIndex]?.id;
 
+  // Without the graphics chip, a blurred backdrop behind a panel is redrawn on
+  // every frame anything beneath it changes (11 fps behind the question window,
+  // measured). The flat board marks the page so those panels skip the blur.
+  useEffect(() => {
+    if (use3D) return;
+    document.documentElement.classList.add('flat-graphics');
+    return () => document.documentElement.classList.remove('flat-graphics');
+  }, [use3D]);
+
   useEffect(() => {
     const board = boardElement.current;
-    if (!board || !canRender3D) return;
-    const useBasicBoard = () => setCanRender3D(false);
-    // Capture non-bubbling WebGL events from either canvas.
-    board.addEventListener('webglcontextlost', useBasicBoard, true);
-    board.addEventListener('webglcontextcreationerror', useBasicBoard, true);
-    return () => {
-      board.removeEventListener('webglcontextlost', useBasicBoard, true);
-      board.removeEventListener('webglcontextcreationerror', useBasicBoard, true);
+    if (!board || (!use3D && !dice3D)) return;
+    // A lost graphics context: carry on with the flat board and flat dice.
+    const useFlatBoard = () => {
+      setUse3D(false);
+      setDice3D(false);
     };
-  }, [canRender3D]);
+    // Capture non-bubbling WebGL events from any canvas on the board.
+    board.addEventListener('webglcontextlost', useFlatBoard, true);
+    board.addEventListener('webglcontextcreationerror', useFlatBoard, true);
+    return () => {
+      board.removeEventListener('webglcontextlost', useFlatBoard, true);
+      board.removeEventListener('webglcontextcreationerror', useFlatBoard, true);
+    };
+  }, [use3D, dice3D]);
 
   useEffect(() => {
     if (scenesVisible) {
@@ -244,13 +252,6 @@ export function Board({
     return () => clearTimeout(timer);
   }, [turnPhase]);
 
-  // The flat board has no deck to draw from: the card goes straight to the screen.
-  const drawStage = cardDraw?.stage;
-  const onCardDrawn = cardDraw?.onDrawn;
-  useEffect(() => {
-    if (drawStage === 'drawing' && !canRender3D) onCardDrawn?.(null);
-  }, [drawStage, canRender3D, onCardDrawn]);
-
   // Every screen gets the same camera, whatever the system's motion setting.
   const cameraMode: CameraMode = diceAnimating ? 'dice'
       : cardDraw && !moving ? 'deck'
@@ -263,9 +264,6 @@ export function Board({
     position: visualPositions[player.id] ?? player.position,
   })), [players, visualPositions]);
   const roller = visualPlayers[gameState.currentPlayerIndex];
-  const centerStatus = gameState.turnPhase === 'MOVING' ? 'Moving…' : 'Game in progress';
-  const basicDice = <BasicDice values={gameState.diceValues} rolling={diceAnimating} />;
-  const basicTokens = <BasicBoardTokens players={visualPlayers} />;
   const routeLabel = moving && walk && walk.total > 0
     ? `${gameState.tiles[walk.tile]?.name ?? ''} · ${walk.step} of ${walk.total}`
     : !moving && cameraMode === 'landing' && roller
@@ -284,94 +282,48 @@ export function Board({
     onReady: handleDiceSceneReady,
   }), [diceAnimating, gameState.diceRollId, gameState.diceValues, handleDiceRollingChange, handleDiceSceneReady]);
 
-  const basicBoard = (
-    <div className="board-grid">
-      {gameState.tiles.map((tile) => {
-        const position = getGridPosition(tile.index);
-        const groupColor = tile.colorGroup ? COLOR_GROUP_PRESENTATION[tile.colorGroup] : null;
-        const property = properties.find((item) => item.tileIndex === tile.index);
-        const owner = property?.ownerId ? players.find((player) => player.id === property.ownerId) : null;
-        const side = tile.index <= 5 ? 'bottom' : tile.index <= 9 ? 'left' : tile.index <= 15 ? 'top' : 'right';
-
-        return (
-          <button
-            type="button"
-            key={tile.index}
-            className={`board-tile tile-${tile.type.toLowerCase().replace('_', '-')} tile-rotate-${side} ${selectedTile === tile.index ? 'selected-tile' : ''}`}
-            style={{
-              gridRow: position.gridRow,
-              gridColumn: position.gridColumn,
-              '--color-group': groupColor ?? 'transparent',
-            } as React.CSSProperties}
-            onClick={() => onTileSelect(tile.index)}
-            aria-label={`View ${tile.name}`}
-          >
-            {groupColor && <div className="tile-color-strip" style={{ background: groupColor }} />}
-            <div className="tile-content">
-              <span className="tile-icon">{tile.type === 'PROPERTY' ? '' : TILE_ICONS[tile.type]}</span>
-              <span className="tile-name">{tile.name}</span>
-              {tile.type === 'PROPERTY' && <span className="tile-price">{formatRM(tile.price)}</span>}
-              {tile.type === 'TAX' && <span className="tile-price">{formatRM(tile.name === 'Cukai Mewah' ? 75 : 50)}</span>}
-            </div>
-            {property?.isLeveledUp && <span className="house-sticker" aria-label="House built"><i /><b /></span>}
-            {owner && (
-              <span
-                className="tile-owner-marker"
-                style={{ background: owner.color }}
-                title={`Owned by ${owner.name}`}
-                aria-label={`Owned by ${owner.name}`}
-              />
-            )}
-          </button>
-        );
-      })}
-
-      <div className="board-center">
-        <div className="board-brand"><strong>MATHOPOLY</strong><span>ROLL • SOLVE • OWN</span></div>
-        {basicDice}
-        <div className="dice-roll-btn" aria-live="polite">{centerStatus}</div>
-      </div>
-      {basicTokens}
-    </div>
-  );
+  const view = {
+    players: visualPlayers,
+    tiles: gameState.tiles,
+    properties,
+    currentPlayerIndex: gameState.currentPlayerIndex,
+    highlightTile: moving || diceAnimating ? null : selectedTile,
+    stepTile,
+    dice,
+    insets,
+    onTileSelect,
+    onReady: handleTokenSceneReady,
+    cardDraw,
+  };
+  const flatBoard = <FlatBoard {...view} dice3D={dice3D} cameraMode={cameraMode} />;
 
   return (
     <div
-      className={`board-stage${canRender3D ? ' board-stage--3d' : ' board-stage--basic'}${scenesVisible ? '' : ' board-stage--scenes-pending'}`}
+      className={`board-stage${use3D ? ' board-stage--3d' : ' board-stage--flat'}${scenesVisible ? '' : ' board-stage--scenes-pending'}`}
       ref={boardElement}
     >
-      {canRender3D ? (
-        <BoardSceneBoundary fallback={basicBoard}>
-          <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{basicBoard}</DelayedFallback>}>
+      {use3D ? (
+        <BoardSceneBoundary fallback={flatBoard}>
+          <Suspense fallback={<DelayedFallback delayMs={SCENE_FALLBACK_DELAY_MS}>{flatBoard}</DelayedFallback>}>
             <TabletopScene
-              players={visualPlayers}
-              tiles={gameState.tiles}
-              properties={properties}
-              currentPlayerIndex={gameState.currentPlayerIndex}
-              highlightTile={moving || diceAnimating ? null : selectedTile}
+              {...view}
               destination={rollerId !== undefined ? targetPositions[rollerId] ?? null : null}
-              stepTile={stepTile}
-              dice={dice}
               cameraMode={cameraMode}
-              insets={insets}
-              onTileSelect={onTileSelect}
-              onReady={handleTokenSceneReady}
-              cardDraw={cardDraw}
             />
           </Suspense>
-          {/* Keyboard and screen-reader access to every space; the 3D board itself is pointer-only. */}
-          <nav className="board-space-list" aria-label="Board spaces">
-            {gameState.tiles.map((tile) => (
-              <button key={tile.index} type="button" onClick={() => onTileSelect(tile.index)} aria-pressed={selectedTile === tile.index}>
-                View {tile.name}
-              </button>
-            ))}
-          </nav>
-          <span className="sr-only" aria-live="polite">
-            {diceAnimating ? 'Rolling the dice' : `Dice showing ${gameState.diceValues.join(' and ')}`}
-          </span>
         </BoardSceneBoundary>
-      ) : basicBoard}
+      ) : flatBoard}
+      {/* Keyboard and screen-reader access to every space; both boards are pointer-only. */}
+      <nav className="board-space-list" aria-label="Board spaces">
+        {gameState.tiles.map((tile) => (
+          <button key={tile.index} type="button" onClick={() => onTileSelect(tile.index)} aria-pressed={selectedTile === tile.index}>
+            View {tile.name}
+          </button>
+        ))}
+      </nav>
+      <span className="sr-only" aria-live="polite">
+        {diceAnimating ? 'Rolling the dice' : `Dice showing ${gameState.diceValues.join(' and ')}`}
+      </span>
     </div>
   );
 }
